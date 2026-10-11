@@ -14,6 +14,13 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Secret Scanning (Gitleaks)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install pnpm
         uses: pnpm/action-setup@v3
@@ -29,8 +36,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Validate Prisma Schema
+        run: pnpm --filter api prisma:validate
+
       - name: Generate Prisma Client
         run: pnpm db:generate
+
+      - name: Security Audit (Production Dependencies)
+        run: pnpm audit --prod
 
       - name: Run ESLint
         run: pnpm lint

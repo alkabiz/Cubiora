@@ -3,6 +3,12 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import * as bcrypt from 'bcryptjs';
 
+// Salvaguarda crítica: jamás ejecutar seed en producción
+if (process.env.NODE_ENV === 'production') {
+  console.error('❌ ERROR FATAL: El seed de datos de prueba está estrictamente prohibido en NODE_ENV=production.');
+  process.exit(1);
+}
+
 const connectionString =
   process.env.DIRECT_URL ||
   process.env.DATABASE_URL ||
@@ -15,62 +21,70 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
   console.log('🌱 Iniciando seed de desarrollo para Cubiora...');
 
-  // 1. Cubículos iniciales (Q1: 3 cubículos en desarrollo)
+  // 1. Cubículos iniciales (Q1: 3 cubículos en desarrollo: CUB-01, CUB-02, CUB-03)
   const cubiclesData = [
-    { number: 1, name: 'Cubículo 1', status: 'ACTIVE' as const },
-    { number: 2, name: 'Cubículo 2', status: 'ACTIVE' as const },
-    { number: 3, name: 'Cubículo 3', status: 'ACTIVE' as const },
+    { code: 'CUB-01', displayName: 'Cubículo 1', status: 'AVAILABLE' as const },
+    { code: 'CUB-02', displayName: 'Cubículo 2', status: 'AVAILABLE' as const },
+    { code: 'CUB-03', displayName: 'Cubículo 3', status: 'AVAILABLE' as const },
   ];
 
   for (const cubicle of cubiclesData) {
     await prisma.cubicle.upsert({
-      where: { number: cubicle.number },
-      update: { name: cubicle.name, status: cubicle.status },
+      where: { code: cubicle.code },
+      update: { displayName: cubicle.displayName, status: cubicle.status },
       create: cubicle,
     });
   }
-  console.log('✅ 3 Cubículos asegurados (Cubículo 1, 2 y 3)');
+  console.log('✅ 3 Cubículos asegurados (CUB-01, CUB-02, CUB-03)');
 
-  // 2. Usuarios de prueba para desarrollo local
+  // 2. Secuencia del sistema para numeración de turnos
+  await prisma.systemSequence.upsert({
+    where: { sequenceName: 'ticket_public_sequence' },
+    update: {},
+    create: { sequenceName: 'ticket_public_sequence', nextValue: 1n },
+  });
+  console.log('✅ Secuencia de turnos (ticket_public_sequence) inicializada');
+
+  // 3. Usuarios de prueba para desarrollo local (contraseñas obtenidas de variable de entorno o fallback seguro de dev)
+  const devPassword = process.env.DEV_SEED_USER_PASSWORD || 'DevPassword123!';
   const salt = await bcrypt.genSalt(10);
-  const defaultPasswordHash = await bcrypt.hash('cubiora123', salt);
+  const passwordHash = await bcrypt.hash(devPassword, salt);
 
   const testUsers = [
     {
       username: 'recepcion',
-      name: 'Recepcionista Turnos',
+      displayName: 'Recepcionista Turnos',
       role: 'RECEPTION' as const,
-      passwordHash: defaultPasswordHash,
+      passwordHash,
     },
     {
       username: 'cajero1',
-      name: 'Atención Cubículo 1',
+      displayName: 'Atención Cubículo 1',
       role: 'CASHIER' as const,
-      passwordHash: defaultPasswordHash,
+      passwordHash,
     },
     {
       username: 'admin',
-      name: 'Administrador Sistema',
+      displayName: 'Administrador Sistema',
       role: 'ADMIN' as const,
-      passwordHash: defaultPasswordHash,
+      passwordHash,
     },
   ];
 
   for (const user of testUsers) {
     await prisma.user.upsert({
       where: { username: user.username },
-      update: { role: user.role, name: user.name },
+      update: { displayName: user.displayName, role: user.role, passwordHash: user.passwordHash },
       create: user,
     });
   }
-  console.log('✅ Usuarios de prueba creados (recepcion, cajero1, admin)');
-
-  console.log('🌱 Seed completado exitosamente.');
+  console.log('✅ 3 Usuarios de prueba asegurados (recepcion, cajero1, admin)');
+  console.log('🌱 Seed de desarrollo completado exitosamente.');
 }
 
 main()
   .catch((e) => {
-    console.error('❌ Error en seed:', e);
+    console.error('❌ Error ejecutando seed:', e);
     process.exit(1);
   })
   .finally(async () => {

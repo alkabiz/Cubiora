@@ -1,79 +1,28 @@
-# SQL Fuera del Alcance de Prisma — Cubiora
+# Gestión de Migraciones y Objetos Avanzados de Base de Datos
 
-Este directorio contiene sentencias DDL y objetos de base de datos PostgreSQL que no son modelables de forma nativa a través de `schema.prisma` y deben ser aplicados por el DBA o mediante migraciones SQL directas (`prisma migrate dev --create-only`).
-
----
-
-## 1. Índice Parcial Único: Un Solo Ticket Activo por Cubículo
-
-Garantiza a nivel de base de datos que un cubículo nunca pueda tener más de un ticket en estado `ATTENDING` simultáneamente, evitando condiciones de carrera en la asignación:
-
-```sql
-CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_active_ticket_per_cubicle
-ON tickets (cubicle_id)
-WHERE status = 'ATTENDING' AND cubicle_id IS NOT NULL;
-```
+## 1. Naturaleza de las Migraciones en Prisma
+Las migraciones generadas por Prisma (`prisma/migrations/**/migration.sql`) **NO SON SCRIPTS IDEMPOTENTES**:
+- Son transiciones incrementales de estado DDL registradas en la tabla de control `_prisma_migrations`.
+- Ejecutar el SQL de una migración directamente contra una base de datos sin registrarla en `_prisma_migrations` generará conflictos de deriva de esquema (*schema drift*).
 
 ---
 
-## 2. Trigger de Inmutabilidad en Auditoría (`ticket_audits`)
-
-La tabla `ticket_audits` es un registro de auditoría estricto. Ninguna fila debe poder ser modificada ni eliminada por ningún usuario de aplicación:
-
-```sql
-CREATE OR REPLACE FUNCTION trg_prevent_audit_modification()
-RETURNS TRIGGER AS $$
-BEGIN
-  RAISE EXCEPTION 'Las entradas de auditoría en ticket_audits son inmutables y no se pueden modificar ni eliminar.';
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS trg_audit_immutable ON ticket_audits;
-CREATE TRIGGER trg_audit_immutable
-BEFORE UPDATE OR DELETE ON ticket_audits
-FOR EACH ROW EXECUTE FUNCTION trg_prevent_audit_modification();
-```
+## 2. Procedimiento de Aplicación
+En entornos controlados (Staging, Producción):
+1. **Usuario Requerido:** Únicamente el usuario con privilegios DDL `cubiora_migrator`. El usuario de aplicación (`cubiora_app`) carece de permisos para alterar el esquema.
+2. **Variable de Entorno:** Se debe proveer `DIRECT_URL` apuntando a la conexión directa con `cubiora_migrator`.
+3. **Comando Oficial:**
+   ```bash
+   pnpm --filter api exec prisma migrate deploy
+   ```
+4. **Verificación:** Consultar la tabla `_prisma_migrations` para confirmar que el registro finaliza con `finished_at IS NOT NULL` y `rolled_back_at IS NULL`.
 
 ---
 
-## 3. Función y Triggers para `updated_at` Automático
+## 3. Migraciones Manuales Pendientes (Sin Aplicar)
+El archivo [`prisma/manual_migrations/20261011000001_manual_triggers_and_indexes.sql`](file:///c:/Users/Juan%20Jos%C3%A9%20Henao%20G/Desktop/Cubiora/apps/api/prisma/manual_migrations/20261011000001_manual_triggers_and_indexes.sql) contiene objetos fuera de la capacidad declarativa de `schema.prisma`:
+1. **Índice Parcial Único:** `uq_active_ticket_per_cubicle` en `tickets (cubicle_id)` para estados `ASSIGNED, CALLED, IN_SERVICE`.
+2. **Triggers de Inmutabilidad:** Triggers PL/pgSQL que impiden `UPDATE` o `DELETE` sobre `ticket_status_history` y `ticket_calls`.
+3. **Triggers de `updated_at`:** Para actualización garantizada a nivel de motor en `users`, `cubicles`, `tickets` y `system_sequences`.
 
-Garantiza que la marca de tiempo `updated_at` se actualice de forma consistente ante cualquier `UPDATE`:
-
-```sql
-CREATE OR REPLACE FUNCTION trg_set_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-  NEW.updated_at = NOW();
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-DROP TRIGGER IF EXISTS trg_users_updated_at ON users;
-CREATE TRIGGER trg_users_updated_at
-BEFORE UPDATE ON users
-FOR EACH ROW EXECUTE FUNCTION trg_set_updated_at();
-
-DROP TRIGGER IF EXISTS trg_cubicles_updated_at ON cubicles;
-CREATE TRIGGER trg_cubicles_updated_at
-BEFORE UPDATE ON cubicles
-FOR EACH ROW EXECUTE FUNCTION trg_set_updated_at();
-
-DROP TRIGGER IF EXISTS trg_tickets_updated_at ON tickets;
-CREATE TRIGGER trg_tickets_updated_at
-BEFORE UPDATE ON tickets
-FOR EACH ROW EXECUTE FUNCTION trg_set_updated_at();
-```
-
----
-
-## 4. Permisos de Mínimo Privilegio (Coordinación con DBA Proxmox LXC 192.168.1.33)
-
-- **`cubiora_app`** (Runtime):
-  - `GRANT USAGE ON SCHEMA public TO cubiora_app;`
-  - `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO cubiora_app;`
-  - Excepción para `user_sessions`: permiso `DELETE` restringido a sesiones expiradas (`expires_at < NOW()`).
-  - `REVOKE UPDATE, DELETE ON TABLE ticket_audits FROM cubiora_app;`
-- **`cubiora_migrator`** (Migraciones / DDL):
-  - `GRANT ALL PRIVILEGES ON SCHEMA public TO cubiora_migrator;`
-  - `GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO cubiora_migrator;`
+> **ESTADO:** Este script se mantiene deliberadamente **sin aplicar** en el pipeline automático de Prisma, a la espera de revisión y ejecución directa por parte del DBA del entorno destino.
