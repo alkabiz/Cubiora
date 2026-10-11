@@ -1,0 +1,120 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+enum UserRole {
+  RECEPTION
+  CASHIER
+  ADMIN
+}
+
+enum CubicleStatus {
+  ACTIVE
+  INACTIVE
+  PAUSED
+}
+
+enum TicketStatus {
+  WAITING
+  ATTENDING
+  COMPLETED
+  NO_SHOW
+  CANCELLED
+}
+
+model User {
+  id           String        @id @default(uuid())
+  username     String        @unique
+  passwordHash String        @map("password_hash")
+  name         String
+  role         UserRole      @default(RECEPTION)
+  isActive     Boolean       @default(true) @map("is_active")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  sessions     UserSession[]
+
+  @@map("users")
+}
+
+model UserSession {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  ipAddress String?   @map("ip_address")
+  userAgent String?   @map("user_agent")
+  createdAt DateTime  @default(now()) @map("created_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@index([expiresAt])
+  @@map("user_sessions")
+}
+
+model Cubicle {
+  id              String        @id @default(uuid())
+  number          Int           @unique
+  name            String
+  status          CubicleStatus @default(ACTIVE)
+  currentTicketId String?       @map("current_ticket_id")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  tickets         Ticket[]
+  calls           Call[]
+
+  @@map("cubicles")
+}
+
+model Ticket {
+  id              String       @id @default(uuid())
+  ticketNumber    String       @unique @map("ticket_number")
+  patientName     String       @map("patient_name")
+  patientDocument String       @map("patient_document")
+  status          TicketStatus @default(WAITING)
+  cubicleId       String?      @map("cubicle_id")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  cubicle         Cubicle?     @relation(fields: [cubicleId], references: [id], onDelete: SetNull)
+  calls           Call[]
+
+  @@index([status])
+  @@index([createdAt])
+  @@map("tickets")
+}
+
+model Call {
+  id         String   @id @default(uuid())
+  ticketId   String   @map("ticket_id")
+  cubicleId  String   @map("cubicle_id")
+  callNumber Int      @default(1) @map("call_number")
+  calledAt   DateTime @default(now()) @map("called_at")
+  ticket     Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  cubicle    Cubicle  @relation(fields: [cubicleId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+  @@index([cubicleId])
+  @@index([calledAt])
+  @@map("calls")
+}
+
+model TicketAudit {
+  id             String   @id @default(uuid())
+  ticketId       String   @map("ticket_id")
+  action         String
+  previousStatus String?  @map("previous_status")
+  newStatus      String   @map("new_status")
+  userId         String?  @map("user_id")
+  metadata       Json?
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([ticketId])
+  @@index([createdAt])
+  @@map("ticket_audits")
+}

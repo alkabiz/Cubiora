@@ -1,0 +1,23 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cubiora-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cubiora_dev
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_dev_password
+    ports:
+      - '5432:5432'
+    volumes:
+      - ./docker/init-dev-db.sql:/docker-entrypoint-initdb.d/01-init-dev-db.sql:ro
+      - cubiora_dev_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d cubiora_dev']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  cubiora_dev_pgdata:
+    name: cubiora_dev_pgdata

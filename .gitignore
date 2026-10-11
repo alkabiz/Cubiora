@@ -426,3 +426,67 @@ FodyWeavers.xsd
 
 # Official VS Code C# Dev Kit Extension exclusion
 #*.lscache
+
+# ─── Node.js / pnpm / TypeScript ─────────────────────────────────────────────
+node_modules/
+dist/
+build/
+.turbo/
+.cache/
+
+# pnpm
+.pnpm-store/
+.pnpm-debug.log*
+
+# Variables de entorno (NUNCA versionar archivos .env reales)
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+.env.test
+# Solo el .env.example SÍ se versiona (sin datos reales)
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# TypeScript
+*.tsbuildinfo
+
+# Prisma – cliente generado (se regenera con prisma generate)
+apps/api/src/generated/
+
+# Cobertura de tests
+coverage/
+.nyc_output/
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.idea/
+*.swp
+*.swo
+
+# Docker
+.dockerignore
+# (el docker-compose.dev.yml SÍ se versiona, pero no los .env que usa)
+
+# Monorepo packages (desbloquea packages/ que estaba bloqueado por la regla de NuGet)
+!/packages/
+!/packages/**
+packages/**/node_modules/
+**/node_modules/
+*.tsbuildinfo
+**/*.tsbuildinfo
+
+# Build outputs (dist directorios en raíz, apps y packages)
+dist/
+**/dist/
