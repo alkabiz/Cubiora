@@ -52,7 +52,7 @@ Este documento consolida los aspectos arquitectónicos, de negocio e infraestruc
 - **Estado**: **[NO VERIFICADO EN MOTOR ACTIVO / ENTORNO REMOTO INTACTO]**
 - **Causa**:
   - No existe un servidor PostgreSQL local activo en el puerto 5432 ni Docker para iniciar el contenedor efímero.
-  - La base de datos de producción/staging en Proxmox LXC (`192.168.1.33`) permanece estrictamente intacta conforme a la restricción arquitectónica del proyecto.
+  - La base de datos de producción/staging remota permanece estrictamente intacta conforme a la restricción arquitectónica del proyecto.
 - **Verificación realizada**:
   - Validación estricta del esquema con `prisma validate` (exit code 0).
   - Generación del cliente Prisma 7 con `prisma generate` (exit code 0).

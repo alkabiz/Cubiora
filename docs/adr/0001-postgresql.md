@@ -1,15 +1,15 @@
-# ADR 0001: Adopción de PostgreSQL 16+ en Reemplazo de MySQL 8.4
+# ADR 0001: Adopción de PostgreSQL 18.6 en Reemplazo de MySQL 8.4
 
 ## Estado
 Aprobado
 
 ## Contexto
-El Documento Técnico PMV v1.0 original mencionaba MySQL 8.4 como motor de base de datos. Sin embargo, para la infraestructura de producción se ha provisto una instancia en Proxmox LXC (192.168.1.33:5432) configurada con PostgreSQL 16+.
+El Documento Técnico PMV v1.0 original mencionaba MySQL 8.4 como motor de base de datos. Sin embargo, para la infraestructura y el entorno de base de datos se ha estandarizado PostgreSQL 18.6.
 
-Adicionalmente, los requerimientos del dominio (índices parciales condicionales, triggers de inmutabilidad estricta para auditoría, y soporte avanzado de tipos JSONB para metadatos) se implementan con mayor robustez y estándar en PostgreSQL.
+Adicionalmente, los requerimientos del dominio (índices parciales condicionales, triggers de inmutabilidad estricta para auditoría WORM, y soporte avanzado de tipos JSONB para metadatos) se implementan con mayor robustez y estándar en PostgreSQL 18.6.
 
 ## Decisión
-Utilizar PostgreSQL 16+ como motor de base de datos relacional para todo el ciclo de vida del proyecto (desarrollo local y producción), configurando Prisma ORM con el driver adapter `@prisma/adapter-pg`.
+Utilizar PostgreSQL 18.6 como motor de base de datos relacional para todo el ciclo de vida del proyecto (desarrollo local en Windows nativo y servicios de CI, y servidor dedicado en producción), configurando Prisma ORM con el driver adapter `@prisma/adapter-pg`.
 
 Se implementa una separación estricta de usuarios:
 - `cubiora_app`: Usuario de runtime sin privilegios de DDL.

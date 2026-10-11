@@ -5,7 +5,7 @@
   "description": "Sistema web presencial de gestión de turnos para entrega de medicamentos",
   "packageManager": "pnpm@12.11.2",
   "engines": {
-    "node": ">=22.0.0",
+    "node": "22.x",
     "pnpm": ">=12.11.2"
   },
   "scripts": {

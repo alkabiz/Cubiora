@@ -1,31 +1,29 @@
-# ADR 0002: Gestión de Autenticación Mediante Sesiones de Servidor y Tabla `user_sessions`
+# ADR 0002: Gestión de Sesiones mediante Cookie HttpOnly Firmada sin Tabla user_sessions
 
 ## Estado
-Aprobado (Esqueleto inicial en schema, implementación de lógica pendiente)
+Aprobado (Decisión D-01)
 
 ## Contexto
-El Documento Técnico PMV v1.0 no detallaba el mecanismo específico de persistencia de sesión ni contemplaba la tabla correspondiente en el diagrama inicial. Para prevenir vulnerabilidades XSS asociadas al almacenamiento de JWTs en LocalStorage, se acordó utilizar cookies HTTP-only, `Secure` y `SameSite` respaldadas por una sesión de servidor.
+En el diseño original del PMV v1.0 existía la interrogante de si implementar una tabla relacional `user_sessions` para almacenar el estado de cada sesión activa en base de datos o utilizar un esquema sin estado basado en cookies seguras.
 
-Se descartó el uso de `connect-pg-simple` para mantener control absoluto sobre el esquema, tipado e índices en Prisma.
+Considerando que:
+1. Cubiora es un PMV enfocado en una operación presencial de farmacia hospitalaria con un número acotado de operadores concurrentes (recepción y cubículos).
+2. La arquitectura debe priorizar la simplicidad operativa, la minimización de consultas a base de datos en cada petición y una menor superficie de ataque.
+3. El esquema acordado de 7 tablas mínimas no incluye la tabla `user_sessions`.
 
 ## Decisión
-1. Incorporar la tabla propia `user_sessions` en el esquema de Prisma con los campos:
-   - `id`: Identificador único (UUID).
-   - `user_id`: Referencia foránea a la tabla `users`.
-   - `token_hash`: Hash criptográfico del token de sesión (único e indexado).
-   - `expires_at`: Timestamp de expiración.
-   - `revoked_at`: Timestamp de revocación manual (cierre de sesión explícito).
-   - `created_at`: Fecha y hora de creación.
-   - `ip_address`: Dirección IP minimizada.
-   - `user_agent`: Cabecera User-Agent truncada/minimizada.
-
-2. **Coordinación requerida con el DBA** (Proxmox LXC 192.168.1.33):
-   - Esta tabla **no estaba presente en el documento técnico v1.0 original**.
-   - El DBA debe otorgar los siguientes permisos específicos para el usuario `cubiora_app`:
-     - `SELECT`, `INSERT`, `UPDATE` sobre `user_sessions`.
-     - Permiso `DELETE` restringido exclusivamente a limpieza de sesiones expiradas (`expires_at < NOW()`) o manejado mediante job de mantenimiento periódico.
+Implementar la autenticación de operadores mediante **cookies HttpOnly firmadas criptográficamente** (`SameSite=Strict`, `Secure` en producción):
+- La cookie contiene el identificador del usuario, rol y una versión de credenciales (`tokenVersion`).
+- La validación se realiza contra la clave secreta `SESSION_SECRET` (mínimo 32 caracteres) configurada por entorno.
+- La revocación global o individual de sesiones se gestiona incrementando el contador de versión en el registro del usuario (`tokenVersion` en la tabla `users`), invalidando inmediatamente cualquier cookie emitida previamente sin requerir operaciones de inserción, actualización o borrado por cada login/logout en una tabla separada de sesiones.
+- No se crea ni se mantiene la tabla `user_sessions` en el esquema de base de datos durante la etapa de PMV.
 
 ## Consecuencias
-- Cero exposición de credenciales o tokens a scripts cliente (protección total contra robo de sesión por XSS).
-- Capacidad de revocación instantánea de sesiones en caso de sospecha de compromiso.
-- Requiere mantenimiento periódico de purga de sesiones expiradas.
+- **Positivas**:
+  - Cero overhead de I/O en base de datos para crear, mantener o purgar registros de sesiones efímeras.
+  - Simplificación del esquema Prisma y mantenimiento de solo 7 tablas esenciales del dominio.
+  - Cumplimiento de los estándares de seguridad web contra ataques XSS (cookies inaccesibles por JavaScript) y CSRF (`SameSite=Strict`).
+  - Capacidad de revocación inmediata de sesiones ante cambios de contraseña o desactivación de cuentas.
+- **Negativas / Mitigaciones**:
+  - No permite listado granular de sesiones concurrentes por dispositivo (aceptable para el alcance de PMV presencial).
+  - Si en versiones futuras se requiere trazabilidad de dispositivos o auditoría por sesión simultánea, se evaluará la introducción de un almacén dedicado (Redis o tabla de sesiones).

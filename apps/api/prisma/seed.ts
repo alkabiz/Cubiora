@@ -6,11 +6,11 @@ import { Pool } from 'pg';
 import * as bcrypt from 'bcryptjs';
 import { ulid } from 'ulid';
 
-// Carga prioritaria de variables de desarrollo local ignoradas por git
+// Carga prioritaria de variables de desarrollo local ignoradas por git (.env.development.local)
+// NUNCA cargar apps/api/.env ni llamar a dotenv.config() sin ruta específica.
 dotenv.config({ path: path.resolve(process.cwd(), '.env.development.local') });
 dotenv.config({ path: path.resolve(process.cwd(), 'apps/api/.env.development.local') });
-dotenv.config({ path: path.resolve(process.cwd(), '.env') });
-dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '../.env.development.local') });
 
 // 1. Salvaguarda crítica: jamás ejecutar seed en producción
 if (process.env.NODE_ENV === 'production') {

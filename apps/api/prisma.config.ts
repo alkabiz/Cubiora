@@ -2,11 +2,11 @@ import * as dotenv from 'dotenv';
 import * as path from 'path';
 import { defineConfig } from 'prisma/config';
 
-// Carga prioritaria de variables locales ignoradas por git
+// Carga prioritaria de variables locales ignoradas por git (.env.development.local).
+// NUNCA cargar apps/api/.env ni llamar a dotenv.config() sin ruta específica.
 dotenv.config({ path: path.resolve(process.cwd(), '.env.development.local') });
 dotenv.config({ path: path.resolve(process.cwd(), 'apps/api/.env.development.local') });
-dotenv.config({ path: path.resolve(process.cwd(), '.env') });
-dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '.env.development.local') });
 
 const connectionUrl = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
 

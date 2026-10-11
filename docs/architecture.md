@@ -44,12 +44,15 @@ flowchart TB
         end
     end
 
-    subgraph Database ["Base de Datos PostgreSQL 16+"]
+    subgraph Database ["Base de Datos PostgreSQL 18.6"]
         subgraph Dev ["Desarrollo Local"]
-            DockerPG["Contenedor Docker<br/>cubiora_dev:5432"]
+            LocalPG["PostgreSQL 18 Nativo (Windows localhost) / Docker efímero<br/>cubiora_dev:5432"]
         end
-        subgraph Prod ["Producción / Staging"]
-            ProxmoxPG["Proxmox LXC 192.168.1.33:5432<br/>Roles: cubiora_app / cubiora_migrator"]
+        subgraph CI ["Integración Continua"]
+            CIPG["Servicio postgres:18-alpine<br/>localhost:5432"]
+        end
+        subgraph Prod ["Producción"]
+            ProdPG["Servidor PostgreSQL 18.6 Dedicado<br/>Roles de mínimo privilegio: cubiora_app / cubiora_migrator"]
         end
     end
 

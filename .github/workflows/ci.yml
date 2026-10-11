@@ -11,6 +11,29 @@ jobs:
     name: Lint, Typecheck, Test & Build
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: cubiora_test
+          POSTGRES_USER: cubiora_test
+          POSTGRES_PASSWORD: cubiora_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://cubiora_test:cubiora_test_password@localhost:5432/cubiora_test
+      DIRECT_URL: postgresql://cubiora_test:cubiora_test_password@localhost:5432/cubiora_test
+      SESSION_SECRET: ci_test_session_secret_at_least_32_characters_long
+      DISPLAY_TOKEN: ci_test_display_token_at_least_32_characters_long
+      CORS_ORIGINS: http://localhost:5173
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
