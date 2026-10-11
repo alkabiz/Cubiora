@@ -1,9 +1,14 @@
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 
+// ─── Carga de Entorno Protegida ───────────────────────────────────────────────
+// Prioridad: archivo de desarrollo local ignorado por git (.env.development.local).
+// NUNCA cargar apps/api/.env directamente.
+dotenv.config({ path: path.resolve(process.cwd(), '.env.development.local') });
+dotenv.config({ path: path.resolve(process.cwd(), 'apps/api/.env.development.local') });
+dotenv.config({ path: path.resolve(__dirname, '../.env.development.local') });
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 dotenv.config();
-dotenv.config({ path: path.resolve(process.cwd(), 'apps/api/.env') });
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
