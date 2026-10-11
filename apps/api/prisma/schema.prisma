@@ -32,18 +32,17 @@ enum TicketStatus {
 }
 
 model User {
-  id              String                @id @default(uuid())
-  publicId        String                @unique @default(uuid()) @map("public_id")
-  username        String                @unique
-  passwordHash    String                @map("password_hash")
-  displayName     String                @map("display_name")
-  role            UserRole              @default(RECEPTION)
-  cubicleId       String?               @map("cubicle_id")
-  active          Boolean               @default(true)
-  createdAt       DateTime              @default(now()) @map("created_at")
-  updatedAt       DateTime              @updatedAt @map("updated_at")
+  id           String   @id @db.VarChar(26)
+  publicId     String   @unique @map("public_id") @db.VarChar(26)
+  username     String   @unique @db.VarChar(50)
+  passwordHash String   @map("password_hash") @db.VarChar(255)
+  displayName  String   @map("display_name") @db.VarChar(100)
+  role         UserRole @default(RECEPTION)
+  cubicleId    String?  @map("cubicle_id") @db.VarChar(26)
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  sessions        UserSession[]
   statusHistory   TicketStatusHistory[]
   callsMade       TicketCall[]
   ticketsCreated  Ticket[]
@@ -52,94 +51,74 @@ model User {
   @@map("users")
 }
 
-model UserSession {
-  id        String    @id @default(uuid())
-  userId    String    @map("user_id")
-  tokenHash String    @unique @map("token_hash")
-  expiresAt DateTime  @map("expires_at")
-  revokedAt DateTime? @map("revoked_at")
-  ipAddress String?   @map("ip_address")
-  userAgent String?   @map("user_agent")
-  createdAt DateTime  @default(now()) @map("created_at")
-
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([userId])
-  @@index([tokenHash])
-  @@index([expiresAt])
-  @@map("user_sessions")
-}
-
 model Cubicle {
-  id            String                @id @default(uuid())
-  code          String                @unique
-  displayName   String                @map("display_name")
-  status        CubicleStatus         @default(AVAILABLE)
-  active        Boolean               @default(true)
-  version       Int                   @default(1)
-  createdAt     DateTime              @default(now()) @map("created_at")
-  updatedAt     DateTime              @updatedAt @map("updated_at")
+  id          String        @id @db.VarChar(26)
+  code        String        @unique @db.VarChar(20)
+  displayName String        @map("display_name") @db.VarChar(50)
+  status      CubicleStatus @default(AVAILABLE)
+  active      Boolean       @default(true)
+  version     Int           @default(1)
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   tickets       Ticket[]
   calls         TicketCall[]
   statusHistory TicketStatusHistory[]
 
-  @@index([status, active, id])
   @@map("cubicles")
 }
 
 model SystemSequence {
-  sequenceName String   @id @map("sequence_name")
+  sequenceName String   @id @map("sequence_name") @db.VarChar(50)
   nextValue    BigInt   @default(1) @map("next_value")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   @@map("system_sequences")
 }
 
 model Ticket {
-  id               String                @id @default(uuid())
-  publicId         String                @unique @default(uuid()) @map("public_id")
-  sequenceNumber   BigInt                @unique @map("sequence_number")
-  publicCode       String                @unique @map("public_code")
-  patientName      String                @map("patient_name")
-  patientDocument  String?               @map("patient_document")
-  status           TicketStatus          @default(PENDING)
-  cubicleId        String?               @map("cubicle_id")
-  createdBy        String                @map("created_by")
-  assignedAt       DateTime?             @map("assigned_at")
-  calledAt         DateTime?             @map("called_at")
-  serviceStartedAt DateTime?             @map("service_started_at")
-  closedAt         DateTime?             @map("closed_at")
-  terminalReason   String?               @map("terminal_reason")
-  version          Int                   @default(1)
-  createdAt        DateTime              @default(now()) @map("created_at")
-  updatedAt        DateTime              @updatedAt @map("updated_at")
+  id               String       @id @db.VarChar(26)
+  publicId         String       @unique @map("public_id") @db.VarChar(26)
+  sequenceNumber   BigInt       @unique @map("sequence_number")
+  publicCode       String       @unique @map("public_code") @db.VarChar(20)
+  patientName      String       @map("patient_name") @db.VarChar(100)
+  patientDocument  String?      @map("patient_document") @db.VarChar(30)
+  status           TicketStatus @default(PENDING)
+  cubicleId        String?      @map("cubicle_id") @db.VarChar(26)
+  createdBy        String       @map("created_by") @db.VarChar(26)
+  assignedAt       DateTime?    @map("assigned_at") @db.Timestamptz(3)
+  calledAt         DateTime?    @map("called_at") @db.Timestamptz(3)
+  serviceStartedAt DateTime?    @map("service_started_at") @db.Timestamptz(3)
+  closedAt         DateTime?    @map("closed_at") @db.Timestamptz(3)
+  terminalReason   String?      @map("terminal_reason") @db.VarChar(255)
+  version          Int          @default(1)
+  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  cubicle          Cubicle?              @relation(fields: [cubicleId], references: [id], onDelete: SetNull)
-  creator          User                  @relation(fields: [createdBy], references: [id])
-  calls            TicketCall[]
-  statusHistory    TicketStatusHistory[]
+  cubicle       Cubicle?              @relation(fields: [cubicleId], references: [id], onDelete: SetNull)
+  creator       User                  @relation(fields: [createdBy], references: [id])
+  calls         TicketCall[]
+  statusHistory TicketStatusHistory[]
 
-  @@index([status, createdAt, sequenceNumber, id], name: "ix_tickets_queue")
   @@index([cubicleId, status], name: "ix_tickets_cubicle_status")
   @@index([patientDocument, status], name: "ix_tickets_document_status")
   @@map("tickets")
 }
 
 model TicketStatusHistory {
-  id            String   @id @default(uuid())
-  ticketId      String   @map("ticket_id")
-  fromStatus    String?  @map("from_status")
-  toStatus      String   @map("to_status")
-  cubicleId     String?  @map("cubicle_id")
-  actorUserId   String?  @map("actor_user_id")
-  reasonCode    String?  @map("reason_code")
-  correlationId String   @map("correlation_id")
-  createdAt     DateTime @default(now()) @map("created_at")
+  id            String   @id @db.VarChar(26)
+  ticketId      String   @map("ticket_id") @db.VarChar(26)
+  fromStatus    String?  @map("from_status") @db.VarChar(20)
+  toStatus      String   @map("to_status") @db.VarChar(20)
+  cubicleId     String?  @map("cubicle_id") @db.VarChar(26)
+  actorUserId   String?  @map("actor_user_id") @db.VarChar(26)
+  reasonCode    String?  @map("reason_code") @db.VarChar(50)
+  correlationId String   @map("correlation_id") @db.VarChar(36)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  ticket        Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  cubicle       Cubicle? @relation(fields: [cubicleId], references: [id], onDelete: SetNull)
-  actor         User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  ticket  Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  cubicle Cubicle? @relation(fields: [cubicleId], references: [id], onDelete: SetNull)
+  actor   User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
 
   @@index([ticketId, createdAt, id], name: "ix_history_ticket_time")
   @@index([createdAt, id], name: "ix_history_time")
@@ -147,38 +126,38 @@ model TicketStatusHistory {
 }
 
 model TicketCall {
-  id         String   @id @default(uuid())
-  ticketId   String   @map("ticket_id")
-  cubicleId  String   @map("cubicle_id")
-  calledBy   String   @map("called_by")
-  callNumber Int      @default(1) @map("call_number")
-  createdAt  DateTime @default(now()) @map("created_at")
+  id        String   @id @db.VarChar(26)
+  ticketId  String   @map("ticket_id") @db.VarChar(26)
+  cubicleId String   @map("cubicle_id") @db.VarChar(26)
+  calledBy  String   @map("called_by") @db.VarChar(26)
+  callNumber Int     @default(1) @map("call_number")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  ticket     Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  cubicle    Cubicle  @relation(fields: [cubicleId], references: [id], onDelete: Cascade)
-  caller     User     @relation(fields: [calledBy], references: [id], onDelete: Cascade)
+  ticket  Ticket  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  cubicle Cubicle @relation(fields: [cubicleId], references: [id], onDelete: Cascade)
+  caller  User    @relation(fields: [calledBy], references: [id], onDelete: Cascade)
 
-  @@unique([ticketId, callNumber], name: "uq_call_number")
+  @@unique([ticketId, callNumber], name: "uq_ticket_calls_call_number")
   @@index([createdAt, id], name: "ix_calls_recent")
   @@map("ticket_calls")
 }
 
 model IdempotencyKey {
-  id               String   @id @default(uuid())
-  actorUserId      String   @map("actor_user_id")
-  operation        String
-  idempotencyKey   String   @map("idempotency_key")
-  requestHash      String   @map("request_hash")
-  resourceType     String?  @map("resource_type")
-  resourcePublicId String?  @map("resource_public_id")
+  id               String   @id @db.VarChar(26)
+  actorUserId      String   @map("actor_user_id") @db.VarChar(26)
+  operation        String   @db.VarChar(50)
+  idempotencyKey   String   @map("idempotency_key") @db.VarChar(100)
+  requestHash      String   @map("request_hash") @db.VarChar(64)
+  resourceType     String?  @map("resource_type") @db.VarChar(50)
+  resourcePublicId String?  @map("resource_public_id") @db.VarChar(26)
   responseStatus   Int?     @map("response_status")
   responseBody     Json?    @map("response_body")
-  expiresAt        DateTime @map("expires_at")
-  createdAt        DateTime @default(now()) @map("created_at")
+  expiresAt        DateTime @map("expires_at") @db.Timestamptz(3)
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  actor            User     @relation(fields: [actorUserId], references: [id], onDelete: Cascade)
+  actor User @relation(fields: [actorUserId], references: [id], onDelete: Cascade)
 
-  @@unique([actorUserId, operation, idempotencyKey], name: "uq_idempotency")
+  @@unique([actorUserId, operation, idempotencyKey], name: "uq_idempotency_key")
   @@index([expiresAt], name: "ix_idempotency_expiry")
   @@map("idempotency_keys")
 }
