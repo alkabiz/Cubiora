@@ -1,9 +1,9 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { Layout } from './layout';
-import { ReceptionPage } from '../features/reception/reception-page';
-import { DisplayPage } from '../features/display/display-page';
-import { CashierPage } from '../features/cashier/cashier-page';
-import { LoginPage } from '../features/auth/login-page';
+import { ReceptionPage } from '../pages/reception-page';
+import { DisplayPage } from '../pages/display-page';
+import { CashierPage } from '../pages/cashier-page';
+import { LoginPage } from '../pages/login-page';
 
 export const router = createBrowserRouter([
   {

@@ -1,17 +1,23 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { ReceptionPage } from './reception/reception-page';
-import { CashierPage } from './cashier/cashier-page';
-import { DisplayPage } from './display/display-page';
+import { Theme } from '@radix-ui/themes';
+import React from 'react';
+import { ReceptionPage } from './reception-page';
+import { CashierPage } from './cashier-page';
+import { DisplayPage } from './display-page';
+
+const renderWithTheme = (ui: React.ReactElement) => {
+  return render(
+    <Theme accentColor="teal" grayColor="slate">
+      <MemoryRouter>{ui}</MemoryRouter>
+    </Theme>,
+  );
+};
 
 describe('Pantallas Web de Cubiora', () => {
   it('debe renderizar la pantalla de Recepción con su formulario de emisión', () => {
-    render(
-      <MemoryRouter>
-        <ReceptionPage />
-      </MemoryRouter>,
-    );
+    renderWithTheme(<ReceptionPage />);
 
     expect(screen.getByText('Registro de Turno Presencial')).toBeDefined();
     expect(screen.getByLabelText(/Nombre Completo del Paciente/i)).toBeDefined();
@@ -20,11 +26,7 @@ describe('Pantallas Web de Cubiora', () => {
   });
 
   it('debe renderizar la pantalla de Cajero / Atención con selección de cubículo', () => {
-    render(
-      <MemoryRouter>
-        <CashierPage />
-      </MemoryRouter>,
-    );
+    renderWithTheme(<CashierPage />);
 
     expect(screen.getByText('Atención en Cubículo')).toBeDefined();
     expect(screen.getByRole('button', { name: /Llamar Siguiente Turno/i })).toBeDefined();
@@ -32,11 +34,7 @@ describe('Pantallas Web de Cubiora', () => {
   });
 
   it('debe renderizar la pantalla pública de llamados sin exponer datos personales (PII)', () => {
-    const { container } = render(
-      <MemoryRouter>
-        <DisplayPage />
-      </MemoryRouter>,
-    );
+    const { container } = renderWithTheme(<DisplayPage />);
 
     // Debe mostrar encabezado y códigos de turnos
     expect(screen.getByText('Pantalla de Llamados')).toBeDefined();
