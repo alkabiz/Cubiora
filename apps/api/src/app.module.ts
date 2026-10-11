@@ -11,6 +11,8 @@ import { CallsModule } from './modules/calls/calls.module';
 import { PublicDisplayModule } from './modules/public-display/public-display.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
+import { AuthGuard } from './common/guards/auth.guard';
+import { RolesGuard } from './common/guards/roles.guard';
 
 @Module({
   imports: [
@@ -34,6 +36,14 @@ import { CorrelationIdMiddleware } from './common/middleware/correlation-id.midd
     {
       provide: APP_GUARD,
       useClass: ThrottlerGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: AuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: RolesGuard,
     },
   ],
 })

@@ -11,6 +11,7 @@ dotenv.config({ path: path.resolve(__dirname, '../.env.development.local') });
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import helmet from 'helmet';
+import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 import { initEnv, getEnv } from './config/env.validation';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
@@ -29,13 +30,16 @@ async function bootstrap() {
   // 3. Seguridad con cabeceras HTTP (Helmet)
   app.use(helmet());
 
-  // 4. Configurar CORS estricto
+  // 4. Parseo de Cookies seguras firmadas con SESSION_SECRET
+  app.use(cookieParser(env.SESSION_SECRET));
+
+  // 5. Configurar CORS estricto
   const allowedOrigins = env.CORS_ORIGINS.split(',').map((origin) => origin.trim());
   app.enableCors({
     origin: allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Correlation-ID'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Correlation-ID', 'Idempotency-Key'],
   });
 
   // 5. Prefijo global de API

@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
+import { AuthController } from './auth.controller';
+import { AuthService } from './auth.service';
 
-/**
- * AuthModule — Esqueleto inicial.
- * Lógica de autenticación con sesiones y cookies HTTP-only pendiente para siguiente fase.
- */
-@Module({})
+@Module({
+  controllers: [AuthController],
+  providers: [AuthService],
+  exports: [AuthService],
+})
 export class AuthModule {}
