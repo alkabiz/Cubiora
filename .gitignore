@@ -490,3 +490,6 @@ packages/**/node_modules/
 # Build outputs (dist directorios en raíz, apps y packages)
 dist/
 **/dist/
+
+# Graphify tool outputs
+graphify-out/
