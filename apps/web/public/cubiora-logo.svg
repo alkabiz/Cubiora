@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,600&amp;display=swap');
+      .brand-text {
+        font-family: 'Playfair Display', 'Cormorant Garamond', 'Baskerville', 'Georgia', serif;
+        font-weight: 600;
+        font-size: 104px;
+        fill: #ffffff;
+        letter-spacing: -0.5px;
+      }
+    </style>
+  </defs>
+  <!-- Background Solid Deep Blue (#0B5394) matching brand asset -->
+  <rect width="512" height="512" rx="64" fill="#0B5394" />
+  
+  <!-- Centered Serif Wordmark -->
+  <text x="50%" y="54%" text-anchor="middle" dominant-baseline="middle" class="brand-text">Cubiora</text>
+</svg>
