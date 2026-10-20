@@ -1,124 +1,363 @@
-import React, { useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { Card, Heading, Text, TextField, Button, Callout, Flex, Box } from '@radix-ui/themes';
-import { CheckCircledIcon } from '@radix-ui/react-icons';
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  Card,
+  Heading,
+  Text,
+  TextField,
+  Button,
+  Badge,
+  Flex,
+  Box,
+  Table,
+} from '@radix-ui/themes';
+import { CheckCircledIcon, CopyIcon, PersonIcon, ExitIcon } from '@radix-ui/react-icons';
 
-const receptionSchema = z.object({
-  patientName: z
-    .string()
-    .trim()
-    .min(2, 'El nombre debe tener al menos 2 caracteres'),
-  patientDocument: z
-    .string()
-    .trim()
-    .min(3, 'El documento debe tener al menos 3 caracteres'),
-});
-
-type ReceptionFormData = z.infer<typeof receptionSchema>;
+export interface IssuedTicket {
+  code: string;
+  timeStr: string;
+  assignedCubicle?: string;
+  state: 'PENDING' | 'ASSIGNED' | 'CALLED';
+  patientName: string;
+  idDocument?: string;
+}
 
 export const ReceptionPage: React.FC = () => {
-  const [lastCreatedTicket, setLastCreatedTicket] = useState<string | null>(null);
+  const [patientName, setPatientName] = useState('');
+  const [idDocument, setIdDocument] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [lastTicket, setLastTicket] = useState<IssuedTicket | null>(null);
+  const [recentTickets, setRecentTickets] = useState<IssuedTicket[]>([]);
+  const [copiedCode, setCopiedCode] = useState(false);
 
-  const {
-    register,
-    handleSubmit,
-    reset,
-    formState: { errors, isSubmitting },
-  } = useForm<ReceptionFormData>({
-    resolver: zodResolver(receptionSchema),
-    defaultValues: {
-      patientName: '',
-      patientDocument: '',
-    },
-  });
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
-  const onSubmit = (_data: ReceptionFormData) => {
-    // Generación de turno en entorno PMV
-    const generatedTicket = `T-${Math.floor(100 + Math.random() * 900)}`;
-    setLastCreatedTicket(generatedTicket);
-    reset();
+  useEffect(() => {
+    nameInputRef.current?.focus();
+  }, []);
+
+  const isNameValid = patientName.trim().length >= 2;
+
+  const generateTicketCode = () => {
+    const num = Math.floor(100000 + Math.random() * 900000);
+    const letters = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    const l1 = letters[Math.floor(Math.random() * letters.length)];
+    const d1 = Math.floor(1 + Math.random() * 9);
+    return `TUR-000${num.toString().slice(-3)}-${l1}${d1}`;
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isNameValid || isSubmitting) return;
+
+    setIsSubmitting(true);
+
+    const now = new Date();
+    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+    // Determinar estado de demostración (ASSIGNED por defecto, con cubículo asignado)
+    const code = generateTicketCode();
+    const newTicket: IssuedTicket = {
+      code,
+      timeStr,
+      state: 'ASSIGNED',
+      assignedCubicle: 'Cubículo 03',
+      patientName: patientName.trim(),
+      idDocument: idDocument.trim() || undefined,
+    };
+
+    setTimeout(() => {
+      setLastTicket(newTicket);
+      setRecentTickets((prev) => [newTicket, ...prev].slice(0, 3));
+      setPatientName('');
+      setIdDocument('');
+      setIsSubmitting(false);
+      nameInputRef.current?.focus();
+    }, 250);
+  };
+
+  const handleCopyCode = () => {
+    if (!lastTicket) return;
+    navigator.clipboard?.writeText(lastTicket.code);
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2000);
+  };
+
+  const handleClear = () => {
+    if (isSubmitting) return;
+    setPatientName('');
+    setIdDocument('');
+    nameInputRef.current?.focus();
   };
 
   return (
-    <Box className="max-w-xl mx-auto">
-      <Card size="3" className="p-6">
-        <Heading size="5" weight="bold" className="mb-2">
-          Registro de Turno Presencial
-        </Heading>
-        <Text size="2" color="gray" className="mb-6 block">
-          Ingrese los datos del usuario para asignar un turno en la cola de entrega de medicamentos.
-        </Text>
+    <Box className="w-full max-w-6xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
+      {/* ─── Encabezado institucional de Recepción ─────────────────────── */}
+      <header className="border-b border-[var(--gray-a4)] pb-4 mb-6">
+        <Flex justify="between" align="center" wrap="wrap" gap="3">
+          <Flex align="center" gap="3">
+            <Badge size="2" variant="solid" color="teal" className="w-8 h-8 flex items-center justify-center font-bold">
+              C
+            </Badge>
+            <Heading size="4" weight="bold">
+              Cubiora
+            </Heading>
+            <Badge size="1" variant="surface" color="teal">
+              Recepción
+            </Badge>
+          </Flex>
 
-        {lastCreatedTicket && (
-          <Callout.Root color="teal" variant="surface" className="mb-6 text-center">
-            <Callout.Icon>
-              <CheckCircledIcon />
-            </Callout.Icon>
-            <Callout.Text>
-              <Text size="2" weight="medium" className="block">
-                Turno Generado Exitosamente
+          <Flex align="center" gap="3">
+            <Flex align="center" gap="1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" />
+              <Text size="1" color="gray" weight="medium">
+                En línea
               </Text>
-              <Text size="7" weight="bold" className="font-mono-ticket block mt-1">
-                {lastCreatedTicket}
+            </Flex>
+
+            <Flex align="center" gap="1.5" className="px-2.5 py-1 rounded-md bg-[var(--gray-a3)]">
+              <PersonIcon width={14} height={14} />
+              <Text size="1" weight="medium">
+                recepcion
               </Text>
-            </Callout.Text>
-          </Callout.Root>
-        )}
+            </Flex>
 
-        <form onSubmit={handleSubmit(onSubmit)} noValidate>
-          <Flex direction="column" gap="4">
-            <Box>
-              <label htmlFor="patientName" className="block text-sm font-medium mb-1.5 text-[var(--gray-12)]">
-                Nombre Completo del Paciente
-              </label>
-              <TextField.Root
-                id="patientName"
-                placeholder="Ej. María Pérez"
-                size="3"
-                {...register('patientName')}
-                aria-invalid={!!errors.patientName}
-              />
-              {errors.patientName && (
-                <Text size="1" color="ruby" className="mt-1 block">
-                  {errors.patientName.message}
-                </Text>
-              )}
-            </Box>
-
-            <Box>
-              <label htmlFor="patientDocument" className="block text-sm font-medium mb-1.5 text-[var(--gray-12)]">
-                Documento de Identidad
-              </label>
-              <TextField.Root
-                id="patientDocument"
-                placeholder="Ej. 1020304050"
-                size="3"
-                {...register('patientDocument')}
-                aria-invalid={!!errors.patientDocument}
-              />
-              {errors.patientDocument && (
-                <Text size="1" color="ruby" className="mt-1 block">
-                  {errors.patientDocument.message}
-                </Text>
-              )}
-            </Box>
-
-            <Button
-              type="submit"
-              id="btn-generar-turno"
-              size="3"
-              color="teal"
-              variant="solid"
-              disabled={isSubmitting}
-              className="mt-2 w-full cursor-pointer"
-            >
-              Generar Turno
+            <Button size="1" variant="ghost" color="gray" style={{ cursor: 'pointer' }}>
+              <ExitIcon width={14} height={14} />
+              Cerrar sesión
             </Button>
           </Flex>
-        </form>
-      </Card>
+        </Flex>
+      </header>
+
+      {/* ─── Contenido Principal: Dos Columnas ──────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        {/* Columna Izquierda: Formulario (5 columnas) */}
+        <div className="lg:col-span-5">
+          <Card size="3" className="p-6">
+            <Heading size="4" weight="bold" className="mb-4">
+              Generar turno
+            </Heading>
+
+            <form onSubmit={handleSubmit} noValidate>
+              <Flex direction="column" gap="4">
+                {/* Nombre del paciente */}
+                <Box>
+                  <label htmlFor="patientName" className="block text-sm font-semibold mb-1.5 text-[var(--gray-12)]">
+                    Nombre del paciente <span className="text-red-500">*</span>
+                  </label>
+                  <TextField.Root
+                    ref={nameInputRef}
+                    id="patientName"
+                    placeholder="Ingrese nombre y apellido"
+                    size="3"
+                    value={patientName}
+                    disabled={isSubmitting}
+                    onChange={(e) => setPatientName(e.target.value)}
+                  />
+                </Box>
+
+                {/* Documento (Opcional) */}
+                <Box>
+                  <Flex justify="between" align="center" className="mb-1.5">
+                    <label htmlFor="patientDocument" className="text-sm font-semibold text-[var(--gray-12)]">
+                      Documento
+                    </label>
+                    <Text size="1" color="gray">
+                      (Opcional)
+                    </Text>
+                  </Flex>
+                  <TextField.Root
+                    id="patientDocument"
+                    placeholder="Ej. 1023456789"
+                    size="3"
+                    value={idDocument}
+                    disabled={isSubmitting}
+                    onChange={(e) => setIdDocument(e.target.value)}
+                  />
+                </Box>
+
+                {/* Botón de envío principal */}
+                <Button
+                  id="btn-generar-turno"
+                  type="submit"
+                  size="3"
+                  color="teal"
+                  variant="solid"
+                  disabled={!isNameValid || isSubmitting}
+                  className="mt-2 w-full cursor-pointer"
+                >
+                  {isSubmitting ? 'Generando turno…' : 'Generar turno'}
+                </Button>
+
+                {/* Limpiar formulario */}
+                {(patientName || idDocument) && !isSubmitting && (
+                  <Button
+                    type="button"
+                    size="1"
+                    variant="ghost"
+                    color="gray"
+                    onClick={handleClear}
+                    className="self-center cursor-pointer text-xs"
+                  >
+                    Limpiar
+                  </Button>
+                )}
+              </Flex>
+            </form>
+          </Card>
+        </div>
+
+        {/* Columna Derecha: Último Turno y Tabla (7 columnas) */}
+        <div className="lg:col-span-7 flex flex-col gap-6">
+          {/* Panel Último Turno Generado */}
+          <Card size="3" className="p-6" role="status" aria-live="polite">
+            <Flex justify="between" align="center" className="pb-3 mb-4 border-b border-[var(--gray-a4)]">
+              <Text size="1" weight="bold" color="teal" className="uppercase tracking-wider">
+                Último turno generado
+              </Text>
+              {lastTicket && (
+                <Badge
+                  size="1"
+                  variant="surface"
+                  color={
+                    lastTicket.state === 'PENDING'
+                      ? 'gray'
+                      : lastTicket.state === 'ASSIGNED'
+                      ? 'teal'
+                      : 'green'
+                  }
+                >
+                  {lastTicket.state === 'PENDING'
+                    ? 'En espera'
+                    : lastTicket.state === 'ASSIGNED'
+                    ? 'Asignado'
+                    : 'Llamado'}
+                </Badge>
+              )}
+            </Flex>
+
+            {!lastTicket ? (
+              <Box className="py-8 text-center flex flex-col items-center justify-center gap-2">
+                <Text size="2" color="gray">
+                  Aún no has generado ningún turno en esta sesión.
+                </Text>
+              </Box>
+            ) : (
+              <Flex direction="column" gap="4">
+                <Box className="p-4 rounded-lg bg-[var(--gray-a2)] border border-[var(--gray-a4)]">
+                  <Flex justify="between" align="center" wrap="wrap" gap="2">
+                    <Box>
+                      <Text size="1" color="gray" className="uppercase tracking-wider font-semibold block">
+                        Número de turno
+                      </Text>
+                      <Text
+                        size="8"
+                        weight="bold"
+                        className="font-mono mt-1 block"
+                        style={{ letterSpacing: '-0.02em', lineHeight: 1 }}
+                      >
+                        {lastTicket.code}
+                      </Text>
+                    </Box>
+
+                    <Button
+                      size="2"
+                      variant="ghost"
+                      color="teal"
+                      onClick={handleCopyCode}
+                      style={{ cursor: 'pointer' }}
+                      aria-label="Copiar número de turno"
+                    >
+                      {copiedCode ? <CheckCircledIcon width={16} height={16} /> : <CopyIcon width={16} height={16} />}
+                      {copiedCode ? 'Copiado' : 'Copiar código'}
+                    </Button>
+                  </Flex>
+                </Box>
+
+                {/* Mensaje contextual por estado */}
+                {lastTicket.state === 'PENDING' && (
+                  <Box className="p-3 rounded-md bg-[var(--gray-a3)]">
+                    <Text size="2" weight="bold" className="block text-[var(--gray-12)]">
+                      No hay un cubículo disponible
+                    </Text>
+                    <Text size="1" color="gray">
+                      Observe la pantalla de llamados
+                    </Text>
+                  </Box>
+                )}
+
+                {lastTicket.state === 'ASSIGNED' && (
+                  <Box className="p-3 rounded-md bg-[var(--teal-a3)]">
+                    <Text size="2" weight="bold" color="teal" className="block">
+                      Cubículo asignado
+                    </Text>
+                    <Text size="1" color="gray">
+                      Observe la pantalla de llamados
+                    </Text>
+                  </Box>
+                )}
+
+                {lastTicket.state === 'CALLED' && (
+                  <Box className="p-3 rounded-md bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800">
+                    <Text size="2" weight="bold" className="text-emerald-800 dark:text-emerald-200 block">
+                      Diríjase al {lastTicket.assignedCubicle || 'Cubículo 03'}
+                    </Text>
+                  </Box>
+                )}
+              </Flex>
+            )}
+          </Card>
+
+          {/* Tabla de Últimos Turnos Generados (Máximo 3) */}
+          {recentTickets.length > 0 && (
+            <Card size="2" className="p-4">
+              <Heading size="2" weight="bold" className="mb-3 uppercase tracking-wider text-[var(--gray-11)]">
+                Últimos turnos generados (máximo 3)
+              </Heading>
+              <Table.Root size="1">
+                <Table.Header>
+                  <Table.Row>
+                    <Table.ColumnHeaderCell>Turno</Table.ColumnHeaderCell>
+                    <Table.ColumnHeaderCell>Hora</Table.ColumnHeaderCell>
+                    <Table.ColumnHeaderCell>Cubículo</Table.ColumnHeaderCell>
+                    <Table.ColumnHeaderCell>Estado</Table.ColumnHeaderCell>
+                  </Table.Row>
+                </Table.Header>
+                <Table.Body>
+                  {recentTickets.slice(0, 3).map((t, idx) => (
+                    <Table.Row key={t.code + idx}>
+                      <Table.RowHeaderCell className="font-mono font-bold">
+                        {t.code}
+                      </Table.RowHeaderCell>
+                      <Table.Cell>{t.timeStr}</Table.Cell>
+                      <Table.Cell>{t.assignedCubicle || 'Sin asignar'}</Table.Cell>
+                      <Table.Cell>
+                        <Badge
+                          size="1"
+                          variant="surface"
+                          color={
+                            t.state === 'PENDING'
+                              ? 'gray'
+                              : t.state === 'ASSIGNED'
+                              ? 'teal'
+                              : 'green'
+                          }
+                        >
+                          {t.state === 'PENDING'
+                            ? 'En espera'
+                            : t.state === 'ASSIGNED'
+                            ? 'Asignado'
+                            : 'Llamado'}
+                        </Badge>
+                      </Table.Cell>
+                    </Table.Row>
+                  ))}
+                </Table.Body>
+              </Table.Root>
+            </Card>
+          )}
+        </div>
+      </div>
     </Box>
   );
 };

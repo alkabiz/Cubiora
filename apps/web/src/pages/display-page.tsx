@@ -1,114 +1,182 @@
 import React, { useState } from 'react';
 import { PublicCall } from '@cubiora/shared';
-import { Card, Heading, Text, Badge, Flex, Box, Grid } from '@radix-ui/themes';
+import { Badge, Flex, Box, Text } from '@radix-ui/themes';
 
 const INITIAL_CALLS: PublicCall[] = [
   {
-    publicCode: 'TUR-000101-A1',
-    cubicleDisplayName: 'Cubículo 1',
+    publicCode: 'TUR-000123-A7',
+    cubicleDisplayName: 'Cubículo 03',
     calledAt: new Date().toISOString(),
     callNumber: 1,
   },
   {
-    publicCode: 'TUR-000098-B2',
-    cubicleDisplayName: 'Cubículo 2',
+    publicCode: 'TUR-000120-B2',
+    cubicleDisplayName: 'Cubículo 02',
     calledAt: new Date(Date.now() - 1000 * 120).toISOString(),
     callNumber: 2,
   },
   {
-    publicCode: 'TUR-000095-C3',
-    cubicleDisplayName: 'Cubículo 3',
-    calledAt: new Date(Date.now() - 1000 * 300).toISOString(),
+    publicCode: 'TUR-000118-C1',
+    cubicleDisplayName: 'Cubículo 01',
+    calledAt: new Date(Date.now() - 1000 * 240).toISOString(),
+    callNumber: 1,
+  },
+  {
+    publicCode: 'TUR-000115-D4',
+    cubicleDisplayName: 'Cubículo 04',
+    calledAt: new Date(Date.now() - 1000 * 360).toISOString(),
     callNumber: 1,
   },
 ];
 
 export const DisplayPage: React.FC = () => {
   const [calls] = useState<PublicCall[]>(INITIAL_CALLS);
+  const [isConnected] = useState(true);
+
   const currentCall = calls[0];
-  const recentHistory = calls.slice(1);
+  const recentCalls = calls.slice(1, 5);
 
   return (
-    <Box className="max-w-6xl mx-auto p-4 sm:p-6">
-      <header className="flex justify-between items-center mb-6 pb-4 border-b border-[var(--gray-a4)]">
-        <Box>
-          <Heading size="6" weight="bold">
-            Pantalla de Llamados
-          </Heading>
-          <Text size="2" color="gray">
-            Entrega de Medicamentos — Sala de Espera
-          </Text>
-        </Box>
-        <Flex align="center" gap="2">
-          <Badge color="green" size="2" variant="solid">
-            ● EN VIVO
+    <Box
+      className="min-h-screen flex flex-col bg-[#001428] text-white"
+      style={{
+        margin: 0,
+        padding: 0,
+        backgroundColor: '#001428',
+        color: '#ffffff',
+      }}
+    >
+      {/* ─── Encabezado institucional de la Pantalla Pública ────────────── */}
+      <header
+        className="px-6 py-4 flex items-center justify-between border-b border-slate-800"
+        style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}
+      >
+        <Flex align="center" gap="3">
+          <Badge
+            size="2"
+            variant="solid"
+            color="teal"
+            className="w-9 h-9 flex items-center justify-center font-bold text-base"
+          >
+            C
           </Badge>
+          <Text size="5" weight="bold" className="tracking-wide">
+            Cubiora
+          </Text>
+          <Text size="3" className="text-slate-400 font-medium">
+            Turnos
+          </Text>
+        </Flex>
+
+        {/* Estado de conexión discreto */}
+        <Flex align="center" gap="2">
+          <span
+            className={`w-2.5 h-2.5 rounded-full ${
+              isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'
+            }`}
+          />
+          <Text size="1" className="text-slate-400 font-medium tracking-wider uppercase">
+            {isConnected ? 'En línea' : 'Sin conexión'}
+          </Text>
         </Flex>
       </header>
 
-      <Grid columns={{ initial: '1', md: '3' }} gap="6">
-        {/* Turno Principal Llamado Actual */}
-        <Box className="md:col-span-2">
-          <Card size="4" className="p-8 text-center border-2 border-[var(--teal-9)] bg-[var(--color-surface)]">
-            <Text
-              size="2"
-              weight="bold"
-              color="gray"
-              className="uppercase tracking-widest block mb-4"
-            >
-              Turno en Atención
-            </Text>
-            <div
-              id="pantalla-turno-actual"
-              className="text-5xl sm:text-7xl md:text-8xl font-extrabold font-mono-ticket my-4 text-[var(--gray-12)]"
-            >
-              {currentCall ? currentCall.publicCode : 'SIN LLAMADOS'}
-            </div>
-            <Heading
-              id="pantalla-cubiculo-actual"
-              size="7"
-              color="teal"
-              weight="bold"
-              className="mt-2"
-            >
-              {currentCall ? currentCall.cubicleDisplayName : 'Por favor espere'}
-            </Heading>
-            {currentCall && currentCall.callNumber > 1 && (
-              <Box className="mt-4">
-                <Badge color="amber" size="3" variant="surface">
-                  Llamado #{currentCall.callNumber}
-                </Badge>
-              </Box>
-            )}
-          </Card>
+      {/* ─── Contenido Principal: Pantalla de Gran Formato ──────────────── */}
+      <main className="flex-1 p-6 md:p-10 flex flex-col lg:flex-row gap-8 items-stretch">
+        {/* Columna Izquierda / Panel Principal: Turno en llamado (flex-2) */}
+        <Box
+          className="flex-1 lg:flex-[2] flex flex-col justify-center items-center text-center p-8 md:p-12 rounded-2xl bg-[#001e38] border-2 border-teal-500/40 shadow-2xl"
+          style={{
+            background: '#001e38',
+            borderRadius: '1.25rem',
+            border: '2px solid rgba(20, 184, 166, 0.4)',
+          }}
+        >
+          <Text
+            size="3"
+            weight="medium"
+            className="text-teal-400 uppercase tracking-widest block mb-4"
+          >
+            Turno llamado
+          </Text>
+
+          <Text
+            weight="bold"
+            className="font-mono block text-white"
+            style={{
+              fontSize: 'clamp(3rem, 8vw, 6.5rem)',
+              letterSpacing: '-0.03em',
+              lineHeight: 1,
+            }}
+          >
+            {currentCall?.publicCode || '---'}
+          </Text>
+
+          <Text
+            size="4"
+            className="text-slate-400 block mt-6 mb-2 font-medium"
+          >
+            Diríjase al
+          </Text>
+
+          <Text
+            weight="bold"
+            className="text-teal-300 block"
+            style={{
+              fontSize: 'clamp(2rem, 5vw, 4rem)',
+              lineHeight: 1.1,
+            }}
+          >
+            {currentCall?.cubicleDisplayName || 'Cubículo'}
+          </Text>
         </Box>
 
-        {/* Turnos Anteriores Recientes */}
-        <Box>
-          <Card size="3" className="p-5 h-full border border-[var(--gray-a4)]">
-            <Heading size="3" weight="bold" color="gray" className="mb-4">
-              Llamados Recientes
-            </Heading>
-            <Flex direction="column" gap="3">
-              {recentHistory.map((call, idx) => (
-                <Flex
-                  key={idx}
-                  justify="between"
-                  align="center"
-                  className="p-3 bg-[var(--gray-a2)] rounded border border-[var(--gray-a4)] font-mono"
+        {/* Columna Derecha: Llamados recientes (flex-1) */}
+        <Box
+          className="flex-1 lg:flex-[1] flex flex-col p-6 rounded-2xl bg-[#001a30] border border-slate-800"
+          style={{
+            background: '#001a30',
+            borderRadius: '1.25rem',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+          }}
+        >
+          <Text
+            size="2"
+            weight="bold"
+            className="text-slate-400 uppercase tracking-wider block mb-4 pb-2 border-b border-slate-800"
+          >
+            Llamados recientes
+          </Text>
+
+          <Flex direction="column" gap="3" className="flex-1 justify-around">
+            {recentCalls.map((item, index) => (
+              <Box
+                key={item.publicCode + index}
+                className="p-4 rounded-xl bg-[#002240] border border-slate-800/80 flex items-center justify-between gap-4"
+                style={{
+                  background: '#002240',
+                  borderRadius: '0.75rem',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                }}
+              >
+                {/* Código de turno en monoespacio */}
+                <Text
+                  size="5"
+                  weight="bold"
+                  className="font-mono text-white tracking-wide"
                 >
-                  <Text size="3" weight="bold">
-                    {call.publicCode}
-                  </Text>
-                  <Badge color="teal" variant="surface" size="1">
-                    {call.cubicleDisplayName}
-                  </Badge>
-                </Flex>
-              ))}
-            </Flex>
-          </Card>
+                  {item.publicCode}
+                </Text>
+
+                {/* Cubículo separado visualmente con badge */}
+                <Badge size="2" variant="solid" color="teal">
+                  {item.cubicleDisplayName}
+                </Badge>
+              </Box>
+            ))}
+          </Flex>
         </Box>
-      </Grid>
+      </main>
     </Box>
   );
 };

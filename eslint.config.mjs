@@ -16,7 +16,7 @@ export default [
       '**/coverage/**',
       '**/*.tsbuildinfo',
       'apps/api/src/generated/**',
-      'apps/web/src/docs/**',
+      'docs/**',
     ],
   },
 
