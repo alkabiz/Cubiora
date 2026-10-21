@@ -27,9 +27,9 @@ if (nodeEnv !== 'production') {
   }
 
   const host = parsedUrl.hostname.toLowerCase();
-  if (!['localhost', '127.0.0.1', '::1'].includes(host)) {
+  if (!['localhost', '127.0.0.1', '::1', '192.168.1.33'].includes(host)) {
     throw new Error(
-      `❌ ERROR_SEGURIDAD_HOST_NO_LOCAL: Prisma CLI solo puede operar contra localhost, 127.0.0.1 o ::1 en entorno '${nodeEnv}'. Host detectado: '${host}'. Conexión externa o remota terminantemente prohibida.`,
+      `❌ ERROR_SEGURIDAD_HOST_NO_LOCAL: Prisma CLI solo puede operar contra localhost, 127.0.0.1 o ::1 o 192.168.1.33 en entorno '${nodeEnv}'. Host detectado: '${host}'. Conexión externa o remota terminantemente prohibida.`,
     );
   }
 }

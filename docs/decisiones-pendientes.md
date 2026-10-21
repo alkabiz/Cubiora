@@ -28,7 +28,7 @@ Este documento consolida los aspectos arquitectónicos, de negocio e infraestruc
 ---
 
 ## 4. Cantidad y Configuración Dinámica de Cubículos (Q1)
-- **Estado en PMV**: Seed inicial configurado con **3 cubículos activos** (`CUB-01`, `CUB-02`, `CUB-03`) para desarrollo local.
+- **Estado en PMV**: Códigos internos fijados en `CUB-01`, `CUB-02`, `CUB-03` y nombres legibles estandarizados a `Cubículo 01`, `Cubículo 02`, `Cubículo 03` mediante la migración versionada `20261021120000_fix_cubicle_display_names` y `seed.ts`.
 - **Acción requerida**:
   - Validar la cantidad real de cubículos disponibles en la sede piloto física para ajustar el seed o interfaz administrativa de cubículos.
 

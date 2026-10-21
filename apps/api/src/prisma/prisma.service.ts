@@ -1,4 +1,6 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
+import * as fs from 'fs';
+import * as path from 'path';
 import { PrismaClient } from '../generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
@@ -27,11 +29,52 @@ export class PrismaService
   constructor() {
     const env = getEnv();
 
+    // ─── Configuración de CA Interna y TLS Estricto ─────────────────────────
+    let caCert: string | undefined;
+    const caCertPath = process.env['DATABASE_CA_CERT_PATH'] || path.resolve(process.cwd(), 'ca-cert.crt');
+    const caCertPathAlt = path.resolve(process.cwd(), 'apps/api/ca-cert.crt');
+
+    if (fs.existsSync(caCertPath)) {
+      caCert = fs.readFileSync(caCertPath, 'utf8');
+    } else if (fs.existsSync(caCertPathAlt)) {
+      caCert = fs.readFileSync(caCertPathAlt, 'utf8');
+    } else if (process.env['DATABASE_CA_CERT']) {
+      caCert = process.env['DATABASE_CA_CERT'];
+    }
+
+    const requiresSsl =
+      env.DATABASE_URL.includes('sslmode=require') ||
+      env.DATABASE_URL.includes('sslmode=verify-ca') ||
+      env.DATABASE_URL.includes('sslmode=verify-full') ||
+      env.NODE_ENV === 'production';
+
+    // Validación de inicio obligatoria:
+    // Si NODE_ENV=production y TLS no verifica el certificado, la API debe negarse a iniciar.
+    if (env.NODE_ENV === 'production') {
+      if (!requiresSsl || !caCert) {
+        throw new Error(
+          'FATAL_TLS_VERIFICATION_FAILED: En producción es obligatorio el uso de TLS con CA interna verificada (rejectUnauthorized: true, verify-full). La API se niega a iniciar.',
+        );
+      }
+    }
+
+    const sslConfig = requiresSsl
+      ? {
+          rejectUnauthorized: true,
+          ca: caCert,
+        }
+      : undefined;
+
+    const sanitizedConnectionString = env.DATABASE_URL
+      .replace(/([?&])sslmode=[^&]+(&|$)/, '$1')
+      .replace(/[?&]$/, '');
+
     const pool = new Pool({
-      connectionString: env.DATABASE_URL,
+      connectionString: sanitizedConnectionString,
       max: 10,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,
+      ssl: sslConfig,
     });
 
     const adapter = new PrismaPg(pool);
@@ -69,6 +112,30 @@ export class PrismaService
       return true;
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * Consulta pg_stat_ssl de la conexión activa y reporta parámetros TLS
+   * garantizando cero exposición de secretos o credenciales.
+   */
+  async getSslStatus(): Promise<{
+    ssl: boolean;
+    version: string | null;
+    cipher: string | null;
+    bits: number | null;
+  }> {
+    try {
+      const rows = await this.$queryRaw<
+        Array<{ ssl: boolean; version: string | null; cipher: string | null; bits: number | null }>
+      >`SELECT ssl, version, cipher, bits FROM pg_stat_ssl WHERE pid = pg_backend_pid()`;
+      const firstRow = rows && rows.length > 0 ? rows[0] : null;
+      if (firstRow) {
+        return firstRow;
+      }
+      return { ssl: false, version: null, cipher: null, bits: null };
+    } catch {
+      return { ssl: false, version: null, cipher: null, bits: null };
     }
   }
 }

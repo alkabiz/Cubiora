@@ -57,17 +57,16 @@ async function main() {
   console.log('🌱 Iniciando seed de desarrollo para Cubiora...');
 
   // 1. Cubículos iniciales (Q1: 3 cubículos en desarrollo: CUB-01, CUB-02, CUB-03)
-  // ON CONFLICT DO NOTHING: no sobrescribir el estado operativo de cubículos existentes
   const cubiclesData = [
-    { id: ulid(), code: 'CUB-01', displayName: 'Cubículo 1', status: 'AVAILABLE' as const },
-    { id: ulid(), code: 'CUB-02', displayName: 'Cubículo 2', status: 'AVAILABLE' as const },
-    { id: ulid(), code: 'CUB-03', displayName: 'Cubículo 3', status: 'AVAILABLE' as const },
+    { id: ulid(), code: 'CUB-01', displayName: 'Cubículo 01', status: 'AVAILABLE' as const },
+    { id: ulid(), code: 'CUB-02', displayName: 'Cubículo 02', status: 'AVAILABLE' as const },
+    { id: ulid(), code: 'CUB-03', displayName: 'Cubículo 03', status: 'AVAILABLE' as const },
   ];
 
   for (const cubicle of cubiclesData) {
     await prisma.cubicle.upsert({
       where: { code: cubicle.code },
-      update: {}, // No sobrescribir estado si el cubículo ya existe
+      update: { displayName: cubicle.displayName },
       create: cubicle,
     });
   }
@@ -86,6 +85,22 @@ async function main() {
   const passwordHash = await bcrypt.hash(devPassword, salt);
 
   const testUsers = [
+    {
+      id: ulid(),
+      publicId: ulid(),
+      username: 'receptor',
+      displayName: 'Recepción de Farmacia',
+      role: 'RECEPTION' as const,
+      passwordHash,
+    },
+    {
+      id: ulid(),
+      publicId: ulid(),
+      username: 'cajero',
+      displayName: 'Atención Cubículo 01',
+      role: 'CASHIER' as const,
+      passwordHash,
+    },
     {
       id: ulid(),
       publicId: ulid(),
@@ -119,7 +134,7 @@ async function main() {
       create: user,
     });
   }
-  console.log('✅ 3 Usuarios de prueba asegurados (recepcion, cajero1, admin)');
+  console.log('✅ Usuarios de prueba asegurados (receptor, cajero, recepcion, cajero1, admin)');
   console.log('🌱 Seed de desarrollo completado exitosamente.');
 }
 

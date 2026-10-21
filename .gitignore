@@ -478,6 +478,11 @@ desktop.ini
 # Docker
 .dockerignore
 # (el docker-compose.dev.yml SÍ se versiona, pero no los .env que usa)
+.env
+.env.*
+*.env
+*.env.*
+*.local
 
 # Monorepo packages (desbloquea packages/ que estaba bloqueado por la regla de NuGet)
 !/packages/

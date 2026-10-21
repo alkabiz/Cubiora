@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
+import { PublicDisplayController } from './public-display.controller';
+import { PublicDisplayService } from './public-display.service';
 
-/**
- * PublicDisplayModule — Esqueleto inicial.
- * Streaming SSE y datos públicos de pantalla (sin PII / datos de pacientes).
- */
-@Module({})
+@Module({
+  controllers: [PublicDisplayController],
+  providers: [PublicDisplayService],
+  exports: [PublicDisplayService],
+})
 export class PublicDisplayModule {}

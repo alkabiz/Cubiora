@@ -30,6 +30,8 @@ export class AuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<Request>();
     const token = this.extractToken(request);
 
+    const env = getEnv();
+
     if (!token) {
       throw new UnauthorizedException({
         code: ApiErrorCode.AUTH_REQUIRED,
@@ -37,13 +39,20 @@ export class AuthGuard implements CanActivate {
       });
     }
 
-    const env = getEnv();
     const payload = SessionTokenUtil.verify(token, env.SESSION_SECRET);
 
     if (!payload) {
       throw new UnauthorizedException({
         code: ApiErrorCode.AUTH_REQUIRED,
         message: 'Sesión inválida o expirada. Por favor inicie sesión nuevamente.',
+      });
+    }
+
+    // Validación de usuario inactivo
+    if ((payload as unknown as { status?: string }).status === 'INACTIVE') {
+      throw new UnauthorizedException({
+        code: ApiErrorCode.AUTH_REQUIRED,
+        message: 'Acceso denegado: el usuario se encuentra inactivo.',
       });
     }
 

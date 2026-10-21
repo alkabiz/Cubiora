@@ -1,8 +1,11 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Card, Heading, Text, TextField, Button, Flex, Box, Badge } from '@radix-ui/themes';
+import { useNavigate } from 'react-router-dom';
+import { Card, Heading, Text, TextField, Button, Flex, Box, Badge, Callout } from '@radix-ui/themes';
+import { ExclamationTriangleIcon } from '@radix-ui/react-icons';
+import { useAuth } from '../context/auth-context';
 
 const loginSchema = z.object({
   username: z.string().trim().min(3, 'El usuario es obligatorio (mínimo 3 caracteres)'),
@@ -12,6 +15,10 @@ const loginSchema = z.object({
 type LoginFormData = z.infer<typeof loginSchema>;
 
 export const LoginPage: React.FC = () => {
+  const { login, user } = useAuth();
+  const navigate = useNavigate();
+  const [serverError, setServerError] = useState<string | null>(null);
+
   const {
     register,
     handleSubmit,
@@ -24,8 +31,29 @@ export const LoginPage: React.FC = () => {
     },
   });
 
-  const onSubmit = (_data: LoginFormData) => {
-    // Scaffold PMV: flujo de login a conectar con backend en siguiente fase
+  useEffect(() => {
+    if (user) {
+      if (user.role === 'CASHIER') {
+        navigate('/cajero', { replace: true });
+      } else {
+        navigate('/recepcion', { replace: true });
+      }
+    }
+  }, [user, navigate]);
+
+  const onSubmit = async (data: LoginFormData) => {
+    setServerError(null);
+    try {
+      const loggedUser = await login(data.username, data.password);
+      if (loggedUser.role === 'CASHIER') {
+        navigate('/cajero', { replace: true });
+      } else {
+        navigate('/recepcion', { replace: true });
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Credenciales inválidas o usuario inactivo';
+      setServerError(message);
+    }
   };
 
   return (
@@ -43,6 +71,15 @@ export const LoginPage: React.FC = () => {
           </Text>
         </Flex>
 
+        {serverError && (
+          <Callout.Root color="ruby" size="1" className="mb-4">
+            <Callout.Icon>
+              <ExclamationTriangleIcon />
+            </Callout.Icon>
+            <Callout.Text>{serverError}</Callout.Text>
+          </Callout.Root>
+        )}
+
         <form onSubmit={handleSubmit(onSubmit)} noValidate>
           <Flex direction="column" gap="4">
             <Box>
@@ -51,7 +88,7 @@ export const LoginPage: React.FC = () => {
               </label>
               <TextField.Root
                 id="username"
-                placeholder="recepcion / cajero1"
+                placeholder="receptor / cajero"
                 size="3"
                 {...register('username')}
                 aria-invalid={!!errors.username}
@@ -91,7 +128,7 @@ export const LoginPage: React.FC = () => {
               disabled={isSubmitting}
               className="mt-2 w-full cursor-pointer"
             >
-              Ingresar al Sistema
+              {isSubmitting ? 'Ingresando…' : 'Ingresar al Sistema'}
             </Button>
           </Flex>
         </form>

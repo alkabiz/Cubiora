@@ -3,6 +3,12 @@
 ## 1. Visión General
 Cubiora es un sistema web presencial de gestión de turnos para entrega de medicamentos en farmacias hospitalarias y dispensarios. Su arquitectura sigue un diseño de **Monolito Modular** enfocado en mantenibilidad, bajo acoplamiento y estricta seguridad en datos de pacientes.
 
+### Flujo Tecnológico Oficial
+La implementación oficial y única del flujo del sistema es:
+**`React → NestJS → PrismaPg (@prisma/adapter-pg) → PostgreSQL 18.6 → SSE (Server-Sent Events)`**
+
+Queda estrictamente prohibida cualquier referencia o asunción de "API MySQL". Toda la capa de persistencia está construida y estandarizada sobre PostgreSQL 18.6 con TLS obligatorio (`rejectUnauthorized: true`, verificación de CA interna y hostname), pooling PgBouncer compatible (`pg_isready`), y segregación de roles de mínimo privilegio (`cubiora_app` para DML sin DDL; `cubiora_migrator` exclusivo para migraciones).
+
 ---
 
 ## 2. Diagrama de Arquitectura

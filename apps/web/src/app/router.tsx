@@ -1,9 +1,33 @@
+import React, { lazy, Suspense } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { Layout } from './layout';
-import { ReceptionPage } from '../pages/reception-page';
-import { DisplayPage } from '../pages/display-page';
-import { CashierPage } from '../pages/cashier-page';
-import { LoginPage } from '../pages/login-page';
+
+import { ProtectedRoute } from '../components/protected-route';
+
+const ReceptionPage = lazy(() =>
+  import('../pages/reception-page').then((m) => ({ default: m.ReceptionPage })),
+);
+const CashierPage = lazy(() =>
+  import('../pages/cashier-page').then((m) => ({ default: m.CashierPage })),
+);
+const DisplayPage = lazy(() =>
+  import('../pages/display-page').then((m) => ({ default: m.DisplayPage })),
+);
+const LoginPage = lazy(() =>
+  import('../pages/login-page').then((m) => ({ default: m.LoginPage })),
+);
+
+const RouteWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <Suspense
+    fallback={
+      <div className="flex items-center justify-center min-h-[50vh] text-sm text-slate-400">
+        Cargando interfaz...
+      </div>
+    }
+  >
+    {children}
+  </Suspense>
+);
 
 export const router = createBrowserRouter([
   {
@@ -12,23 +36,43 @@ export const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: <Navigate to="/recepcion" replace />,
+        element: <Navigate to="/login" replace />,
       },
       {
         path: 'recepcion',
-        element: <ReceptionPage />,
+        element: (
+          <RouteWrapper>
+            <ProtectedRoute allowedRoles={['RECEPTION', 'ADMIN']}>
+              <ReceptionPage />
+            </ProtectedRoute>
+          </RouteWrapper>
+        ),
       },
       {
         path: 'cajero',
-        element: <CashierPage />,
+        element: (
+          <RouteWrapper>
+            <ProtectedRoute allowedRoles={['CASHIER', 'ADMIN']}>
+              <CashierPage />
+            </ProtectedRoute>
+          </RouteWrapper>
+        ),
       },
       {
         path: 'pantalla',
-        element: <DisplayPage />,
+        element: (
+          <RouteWrapper>
+            <DisplayPage />
+          </RouteWrapper>
+        ),
       },
       {
         path: 'login',
-        element: <LoginPage />,
+        element: (
+          <RouteWrapper>
+            <LoginPage />
+          </RouteWrapper>
+        ),
       },
     ],
   },
