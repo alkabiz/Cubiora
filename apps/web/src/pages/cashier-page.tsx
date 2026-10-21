@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Card,
   Heading,
@@ -8,6 +8,7 @@ import {
   Flex,
   Box,
   Callout,
+  Dialog,
 } from '@radix-ui/themes';
 import {
   PersonIcon,
@@ -18,30 +19,79 @@ import {
   Cross2Icon,
   ExclamationTriangleIcon,
 } from '@radix-ui/react-icons';
+import { apiClient, ApiClientError } from '../lib/api';
+import { CubicleSnapshot, TicketStatus } from '@cubiora/shared';
 
 export type CubicleState = 'AVAILABLE' | 'ASSIGNED' | 'CALLED' | 'IN_SERVICE';
 
-export interface TicketDetail {
+export interface ActiveTicketModel {
+  id: string;
+  publicId: string;
   code: string;
   patientName: string;
-  documentId: string;
   assignedTime: string;
+  status: TicketStatus;
+  version: number;
+  callNumber: number;
 }
 
-const INITIAL_TICKET: TicketDetail = {
-  code: 'TUR-000124-C3',
-  patientName: 'Carlos Pérez',
-  documentId: 'C.C. 79.438.212',
-  assignedTime: '10:24',
-};
-
 export const CashierPage: React.FC = () => {
-  const [cubicleState, setCubicleState] = useState<CubicleState>('ASSIGNED');
-  const [currentTicket, setCurrentTicket] = useState<TicketDetail | null>(INITIAL_TICKET);
+  const [cubicleCode] = useState('CUB-03');
+  const [cubicleDisplayName, setCubicleDisplayName] = useState('Cubículo 03');
+  const [cubicleState, setCubicleState] = useState<CubicleState>('AVAILABLE');
+  const [currentTicket, setCurrentTicket] = useState<ActiveTicketModel | null>(null);
   const [callTimer, setCallTimer] = useState(0);
   const [serviceTimer, setServiceTimer] = useState(0);
-  const [isOnline] = useState(true);
-  const [logoutWarning, setLogoutWarning] = useState<string | null>(null);
+  const [isOnline, setIsOnline] = useState(true);
+  const [isActionPending, setIsActionPending] = useState(false);
+  const [conflictMessage, setConflictMessage] = useState<string | null>(null);
+  const [logoutModalOpen, setLogoutModalOpen] = useState(false);
+
+  // Función para sincronizar con la API real el snapshot de cubículo
+  const fetchSnapshot = useCallback(async () => {
+    try {
+      const res = await apiClient<{ success: boolean; data: CubicleSnapshot }>(
+        `/cubicles/${cubicleCode}/current`,
+      );
+      const snapshot = res.data;
+      setCubicleDisplayName(snapshot.cubicle.displayName || 'Cubículo 03');
+      setIsOnline(true);
+
+      if (snapshot.activeTicket) {
+        const ticket = snapshot.activeTicket;
+        const assignedDate = ticket.assignedAt ? new Date(ticket.assignedAt) : new Date();
+        const timeStr = `${String(assignedDate.getHours()).padStart(2, '0')}:${String(assignedDate.getMinutes()).padStart(2, '0')}`;
+
+        setCurrentTicket({
+          id: ticket.id,
+          publicId: ticket.publicId,
+          code: ticket.publicCode,
+          patientName: ticket.patientName,
+          assignedTime: timeStr,
+          status: ticket.status,
+          version: ticket.version,
+          callNumber: ticket.callNumber,
+        });
+
+        if (ticket.status === TicketStatus.ASSIGNED) {
+          setCubicleState('ASSIGNED');
+        } else if (ticket.status === TicketStatus.CALLED) {
+          setCubicleState('CALLED');
+        } else if (ticket.status === TicketStatus.IN_SERVICE) {
+          setCubicleState('IN_SERVICE');
+        }
+      } else {
+        setCurrentTicket(null);
+        setCubicleState('AVAILABLE');
+      }
+    } catch {
+      setIsOnline(false);
+    }
+  }, [cubicleCode]);
+
+  useEffect(() => {
+    fetchSnapshot();
+  }, [fetchSnapshot]);
 
   // Cronómetro durante llamado
   useEffect(() => {
@@ -65,40 +115,100 @@ export const CashierPage: React.FC = () => {
     return () => clearInterval(interval);
   }, [cubicleState]);
 
-  const handleCallTurn = () => {
-    setCallTimer(0);
-    setCubicleState('CALLED');
-    setLogoutWarning(null);
-  };
+  const applySnapshotData = (snapshot: CubicleSnapshot) => {
+    if (snapshot.activeTicket) {
+      const ticket = snapshot.activeTicket;
+      const assignedDate = ticket.assignedAt ? new Date(ticket.assignedAt) : new Date();
+      const timeStr = `${String(assignedDate.getHours()).padStart(2, '0')}:${String(assignedDate.getMinutes()).padStart(2, '0')}`;
 
-  const handleRepeatCall = () => {
-    setCallTimer(0);
-  };
+      setCurrentTicket({
+        id: ticket.id,
+        publicId: ticket.publicId,
+        code: ticket.publicCode,
+        patientName: ticket.patientName,
+        assignedTime: timeStr,
+        status: ticket.status,
+        version: ticket.version,
+        callNumber: ticket.callNumber,
+      });
 
-  const handleStartService = () => {
-    setServiceTimer(0);
-    setCubicleState('IN_SERVICE');
-    setLogoutWarning(null);
-  };
-
-  const handleCloseTurn = () => {
-    setCurrentTicket(null);
-    setCubicleState('AVAILABLE');
-    setLogoutWarning(null);
-  };
-
-  const handleNoShow = () => {
-    setCurrentTicket(null);
-    setCubicleState('AVAILABLE');
-    setLogoutWarning(null);
-  };
-
-  const handleLogoutAttempt = () => {
-    if (cubicleState === 'IN_SERVICE' || cubicleState === 'CALLED') {
-      setLogoutWarning('Cierre de sesión bloqueado: debe finalizar o cancelar la atención activa antes de salir.');
+      if (ticket.status === TicketStatus.ASSIGNED) {
+        setCubicleState('ASSIGNED');
+      } else if (ticket.status === TicketStatus.CALLED) {
+        setCubicleState('CALLED');
+      } else if (ticket.status === TicketStatus.IN_SERVICE) {
+        setCubicleState('IN_SERVICE');
+      }
     } else {
-      setLogoutWarning('Sesión cerrada correctamente.');
+      setCurrentTicket(null);
+      setCubicleState('AVAILABLE');
     }
+  };
+
+  const handleCommand = async (command: 'call' | 'start-service' | 'close' | 'no-show') => {
+    if (!currentTicket || isActionPending) return;
+
+    setIsActionPending(true);
+    setConflictMessage(null);
+
+    const idempotencyKey = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `idem-cmd-${Date.now()}`;
+    const correlationId = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `corr-cmd-${Date.now()}`;
+
+    try {
+      const res = await apiClient<{ success: boolean; data: CubicleSnapshot }>(
+        `/tickets/${currentTicket.id}/${command}`,
+        {
+          method: 'POST',
+          headers: {
+            'Idempotency-Key': idempotencyKey,
+            'expected-version': String(currentTicket.version),
+            'X-Correlation-ID': correlationId,
+          },
+          body: JSON.stringify({
+            expectedVersion: currentTicket.version,
+          }),
+        },
+      );
+
+      // Renderizar el resultado confirmado del servidor
+      applySnapshotData(res.data);
+      if (command === 'call') {
+        setCallTimer(0);
+      } else if (command === 'start-service') {
+        setServiceTimer(0);
+      }
+    } catch (err: unknown) {
+      if (err instanceof ApiClientError && err.statusCode === 409) {
+        setConflictMessage(
+          'El estado del turno fue actualizado por otro operador o proceso concurrente. Se ha sincronizado el cubículo con el estado vigente.',
+        );
+        await fetchSnapshot();
+      } else if (err instanceof Error) {
+        setConflictMessage(err.message);
+      } else {
+        setConflictMessage('Error al ejecutar el comando en el servidor.');
+      }
+    } finally {
+      setIsActionPending(false);
+    }
+  };
+
+  const handleLogoutClick = () => {
+    // Bloquear cierre de sesión en ASSIGNED, CALLED, IN_SERVICE
+    if (
+      currentTicket !== null &&
+      (cubicleState === 'ASSIGNED' || cubicleState === 'CALLED' || cubicleState === 'IN_SERVICE')
+    ) {
+      setLogoutModalOpen(true);
+      return;
+    }
+
+    // Permitido únicamente en AVAILABLE o sin turno activo
+    window.location.href = '/login';
   };
 
   const formatSecs = (total: number) => {
@@ -144,10 +254,11 @@ export const CashierPage: React.FC = () => {
             </Flex>
 
             <Button
+              id="btn-logout-cashier"
               size="1"
               variant="ghost"
               color="gray"
-              onClick={handleLogoutAttempt}
+              onClick={handleLogoutClick}
               style={{ cursor: 'pointer' }}
             >
               <ExitIcon width={14} height={14} />
@@ -156,15 +267,37 @@ export const CashierPage: React.FC = () => {
           </Flex>
         </Flex>
 
-        {logoutWarning && (
+        {conflictMessage && (
           <Callout.Root color="amber" size="1" className="mt-3">
             <Callout.Icon>
               <ExclamationTriangleIcon />
             </Callout.Icon>
-            <Callout.Text>{logoutWarning}</Callout.Text>
+            <Callout.Text>{conflictMessage}</Callout.Text>
           </Callout.Root>
         )}
       </header>
+
+      {/* ─── Modal Bloqueo de Cierre de Sesión en Turno Activo ──────────── */}
+      <Dialog.Root open={logoutModalOpen} onOpenChange={setLogoutModalOpen}>
+        <Dialog.Content size="2" style={{ maxWidth: 450 }}>
+          <Dialog.Title>Turno activo en progreso</Dialog.Title>
+          <Dialog.Description size="2" className="my-3 text-[var(--gray-11)]">
+            No puedes cerrar sesión durante un turno activo. Finaliza la atención antes de salir.
+          </Dialog.Description>
+
+          <Flex justify="end" mt="4">
+            <Button
+              size="2"
+              color="teal"
+              variant="solid"
+              onClick={() => setLogoutModalOpen(false)}
+              style={{ cursor: 'pointer' }}
+            >
+              Volver al turno
+            </Button>
+          </Flex>
+        </Dialog.Content>
+      </Dialog.Root>
 
       {/* ─── Tarjeta Principal de Mi Cubículo ──────────────────────────── */}
       <Card size="3" className="p-6">
@@ -174,7 +307,7 @@ export const CashierPage: React.FC = () => {
               Mi cubículo
             </Text>
             <Heading size="6" weight="bold">
-              Cubículo 03
+              {cubicleDisplayName}
             </Heading>
           </Box>
 
@@ -201,171 +334,183 @@ export const CashierPage: React.FC = () => {
           </Badge>
         </Flex>
 
-        {/* ─── Estado: AVAILABLE (Disponible sin acción principal) ──────── */}
+        {/* Estado 1: AVAILABLE */}
         {cubicleState === 'AVAILABLE' && (
-          <Box className="py-12 text-center flex flex-col items-center justify-center gap-3">
-            <Badge size="3" variant="surface" color="gray" className="px-4 py-2">
-              Esperando asignación automática de paciente...
-            </Badge>
-            <Text size="2" color="gray">
-              El sistema asignará el siguiente turno de la cola FIFO a este cubículo.
+          <Box className="py-12 text-center flex flex-col items-center justify-center gap-2">
+            <Text size="3" color="gray" weight="medium">
+              Cubículo disponible. Esperando asignación de turno...
             </Text>
-            {/* Opción para simular siguiente turno en entorno PMV */}
-            <Button
-              size="2"
-              variant="soft"
-              color="teal"
-              className="mt-4 cursor-pointer"
-              onClick={() => {
-                setCurrentTicket({
-                  code: 'TUR-000125-D4',
-                  patientName: 'María Ortiz',
-                  documentId: 'C.C. 52.891.442',
-                  assignedTime: '10:29',
-                });
-                setCubicleState('ASSIGNED');
-              }}
-            >
-              Simular asignación de turno
-            </Button>
           </Box>
         )}
 
-        {/* ─── Estado: ASSIGNED, CALLED o IN_SERVICE ────────────────────── */}
-        {currentTicket && cubicleState !== 'AVAILABLE' && (
+        {/* Estado 2: ASSIGNED */}
+        {cubicleState === 'ASSIGNED' && currentTicket && (
           <Flex direction="column" gap="5">
-            {/* Panel de datos del turno y paciente */}
-            <Box className="p-5 rounded-xl bg-[var(--gray-a2)] border border-[var(--gray-a4)]">
-              <Flex justify="between" align="start" wrap="wrap" gap="4">
+            <Box className="p-4 rounded-lg bg-[var(--gray-a2)] border border-[var(--gray-a4)]">
+              <Text size="1" color="gray" className="uppercase tracking-wider font-semibold block mb-1">
+                Turno asignado
+              </Text>
+              <Text
+                size="8"
+                weight="bold"
+                className="font-mono"
+                style={{ letterSpacing: '-0.02em', lineHeight: 1 }}
+              >
+                {currentTicket.code}
+              </Text>
+
+              <Flex gap="4" mt="3" wrap="wrap" align="center">
+                <Text size="2" weight="medium" className="text-[var(--gray-12)]">
+                  Paciente: <span className="font-semibold">{currentTicket.patientName}</span>
+                </Text>
+                <Text size="2" color="gray">
+                  Hora: {currentTicket.assignedTime}
+                </Text>
+              </Flex>
+            </Box>
+
+            <Flex justify="end">
+              <Button
+                id="btn-llamar-turno"
+                size="3"
+                color="teal"
+                variant="solid"
+                disabled={isActionPending}
+                onClick={() => handleCommand('call')}
+                className="cursor-pointer px-6"
+              >
+                <PlayIcon width={16} height={16} />
+                Llamar turno
+              </Button>
+            </Flex>
+          </Flex>
+        )}
+
+        {/* Estado 3: CALLED */}
+        {cubicleState === 'CALLED' && currentTicket && (
+          <Flex direction="column" gap="5">
+            <Box className="p-4 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800">
+              <Flex justify="between" align="start" wrap="wrap" gap="2">
                 <Box>
-                  <Text size="1" color="gray" className="uppercase tracking-wider font-semibold block">
-                    Número de turno
+                  <Text size="1" color="amber" className="uppercase tracking-wider font-semibold block mb-1">
+                    Turno en llamado {currentTicket.callNumber > 1 && `(Llamado #${currentTicket.callNumber})`}
                   </Text>
                   <Text
                     size="8"
                     weight="bold"
-                    className="font-mono mt-1 block"
+                    className="font-mono text-amber-900 dark:text-amber-200"
                     style={{ letterSpacing: '-0.02em', lineHeight: 1 }}
                   >
                     {currentTicket.code}
                   </Text>
-                  <Text size="1" color="gray" className="mt-2 block">
-                    Asignado a las {currentTicket.assignedTime}
+                  <Text size="2" className="mt-2 text-amber-800 dark:text-amber-300 font-medium">
+                    Paciente: {currentTicket.patientName}
                   </Text>
                 </Box>
 
-                <Box className="text-right sm:text-left">
-                  <Text size="1" color="gray" className="uppercase tracking-wider font-semibold block">
-                    Paciente actual
+                <Box className="text-right">
+                  <Text size="1" color="gray" className="block">
+                    Tiempo de espera
                   </Text>
-                  <Text size="4" weight="bold" className="mt-1 block">
-                    {currentTicket.patientName}
-                  </Text>
-                  <Text size="2" color="gray" className="block">
-                    {currentTicket.documentId}
+                  <Text size="5" weight="bold" className="font-mono text-amber-900 dark:text-amber-200">
+                    {formatSecs(callTimer)}
                   </Text>
                 </Box>
               </Flex>
-
-              {/* Cronómetros visuales */}
-              {cubicleState === 'CALLED' && (
-                <Box className="mt-4 pt-3 border-t border-[var(--gray-a4)]">
-                  <Flex align="center" gap="2">
-                    <ReloadIcon className="animate-spin text-amber-600" />
-                    <Text size="2" weight="bold" color="amber">
-                      Llamando al paciente · Tiempo en espera: {formatSecs(callTimer)}
-                    </Text>
-                  </Flex>
-                </Box>
-              )}
-
-              {cubicleState === 'IN_SERVICE' && (
-                <Box className="mt-4 pt-3 border-t border-[var(--gray-a4)]">
-                  <Flex align="center" gap="2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                    <Text size="2" weight="bold" color="green">
-                      Atención en curso · Tiempo transcurrido: {formatSecs(serviceTimer)}
-                    </Text>
-                  </Flex>
-                </Box>
-              )}
             </Box>
 
-            {/* ─── Barra de Acciones según el estado del turno ───────────── */}
-            <Box className="pt-2">
-              {cubicleState === 'ASSIGNED' && (
+            <Flex justify="between" align="center" wrap="wrap" gap="3">
+              <Flex gap="2">
                 <Button
-                  id="btn-llamar-turno"
-                  size="3"
-                  color="teal"
-                  variant="solid"
-                  onClick={handleCallTurn}
-                  disabled={!isOnline}
-                  className="w-full cursor-pointer font-bold"
+                  id="btn-repetir-llamado"
+                  size="2"
+                  variant="surface"
+                  color="amber"
+                  disabled={isActionPending}
+                  onClick={() => handleCommand('call')}
+                  className="cursor-pointer"
                 >
-                  <PlayIcon width={16} height={16} />
-                  Llamar turno
+                  <ReloadIcon width={14} height={14} />
+                  Repetir llamado
                 </Button>
-              )}
 
-              {cubicleState === 'CALLED' && (
-                <Flex direction={{ initial: 'column', sm: 'row' }} gap="3">
-                  <Button
-                    id="btn-iniciar-atencion"
-                    size="3"
-                    color="teal"
-                    variant="solid"
-                    onClick={handleStartService}
-                    disabled={!isOnline}
-                    className="flex-1 cursor-pointer font-bold"
-                  >
-                    <PlayIcon width={16} height={16} />
-                    Iniciar atención
-                  </Button>
-
-                  <Button
-                    id="btn-repetir-llamado"
-                    size="3"
-                    color="teal"
-                    variant="surface"
-                    onClick={handleRepeatCall}
-                    disabled={!isOnline}
-                    className="cursor-pointer"
-                  >
-                    <ReloadIcon width={16} height={16} />
-                    Repetir llamado
-                  </Button>
-
-                  <Button
-                    id="btn-no-presentado"
-                    size="3"
-                    color="ruby"
-                    variant="soft"
-                    onClick={handleNoShow}
-                    disabled={!isOnline}
-                    className="cursor-pointer"
-                  >
-                    <Cross2Icon width={16} height={16} />
-                    Paciente no presentado
-                  </Button>
-                </Flex>
-              )}
-
-              {cubicleState === 'IN_SERVICE' && (
                 <Button
-                  id="btn-cerrar-turno"
-                  size="3"
-                  color="green"
-                  variant="solid"
-                  onClick={handleCloseTurn}
-                  disabled={!isOnline}
-                  className="w-full cursor-pointer font-bold"
+                  id="btn-no-show"
+                  size="2"
+                  variant="soft"
+                  color="red"
+                  disabled={isActionPending}
+                  onClick={() => handleCommand('no-show')}
+                  className="cursor-pointer"
                 >
-                  <CheckIcon width={16} height={16} />
-                  Cerrar turno
+                  <Cross2Icon width={14} height={14} />
+                  Paciente no presentado
                 </Button>
-              )}
+              </Flex>
+
+              <Button
+                id="btn-iniciar-atencion"
+                size="3"
+                color="teal"
+                variant="solid"
+                disabled={isActionPending}
+                onClick={() => handleCommand('start-service')}
+                className="cursor-pointer px-6"
+              >
+                <CheckIcon width={16} height={16} />
+                Iniciar atención
+              </Button>
+            </Flex>
+          </Flex>
+        )}
+
+        {/* Estado 4: IN_SERVICE */}
+        {cubicleState === 'IN_SERVICE' && currentTicket && (
+          <Flex direction="column" gap="5">
+            <Box className="p-4 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800">
+              <Flex justify="between" align="start" wrap="wrap" gap="2">
+                <Box>
+                  <Text size="1" color="green" className="uppercase tracking-wider font-semibold block mb-1">
+                    Atención en curso
+                  </Text>
+                  <Text
+                    size="8"
+                    weight="bold"
+                    className="font-mono text-emerald-900 dark:text-emerald-200"
+                    style={{ letterSpacing: '-0.02em', lineHeight: 1 }}
+                  >
+                    {currentTicket.code}
+                  </Text>
+                  <Text size="2" className="mt-2 text-emerald-800 dark:text-emerald-300 font-medium">
+                    Paciente: {currentTicket.patientName}
+                  </Text>
+                </Box>
+
+                <Box className="text-right">
+                  <Text size="1" color="gray" className="block">
+                    Tiempo de atención
+                  </Text>
+                  <Text size="5" weight="bold" className="font-mono text-emerald-900 dark:text-emerald-200">
+                    {formatSecs(serviceTimer)}
+                  </Text>
+                </Box>
+              </Flex>
             </Box>
+
+            <Flex justify="end">
+              <Button
+                id="btn-cerrar-turno"
+                size="3"
+                color="green"
+                variant="solid"
+                disabled={isActionPending}
+                onClick={() => handleCommand('close')}
+                className="cursor-pointer px-6"
+              >
+                <CheckIcon width={16} height={16} />
+                Cerrar turno
+              </Button>
+            </Flex>
           </Flex>
         )}
       </Card>

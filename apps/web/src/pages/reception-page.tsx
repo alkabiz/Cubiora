@@ -11,12 +11,14 @@ import {
   Table,
 } from '@radix-ui/themes';
 import { CheckCircledIcon, CopyIcon, PersonIcon, ExitIcon } from '@radix-ui/react-icons';
+import { apiClient } from '../lib/api';
+import { TicketStatus } from '@cubiora/shared';
 
 export interface IssuedTicket {
   code: string;
   timeStr: string;
   assignedCubicle?: string;
-  state: 'PENDING' | 'ASSIGNED' | 'CALLED';
+  state: TicketStatus | 'PENDING' | 'ASSIGNED' | 'CALLED';
   patientName: string;
   idDocument?: string;
 }
@@ -28,6 +30,7 @@ export const ReceptionPage: React.FC = () => {
   const [lastTicket, setLastTicket] = useState<IssuedTicket | null>(null);
   const [recentTickets, setRecentTickets] = useState<IssuedTicket[]>([]);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const nameInputRef = useRef<HTMLInputElement>(null);
 
@@ -37,42 +40,69 @@ export const ReceptionPage: React.FC = () => {
 
   const isNameValid = patientName.trim().length >= 2;
 
-  const generateTicketCode = () => {
-    const num = Math.floor(100000 + Math.random() * 900000);
-    const letters = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
-    const l1 = letters[Math.floor(Math.random() * letters.length)];
-    const d1 = Math.floor(1 + Math.random() * 9);
-    return `TUR-000${num.toString().slice(-3)}-${l1}${d1}`;
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isNameValid || isSubmitting) return;
 
     setIsSubmitting(true);
+    setErrorMessage(null);
 
-    const now = new Date();
-    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const idempotencyKey = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `idem-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
-    // Determinar estado de demostración (ASSIGNED por defecto, con cubículo asignado)
-    const code = generateTicketCode();
-    const newTicket: IssuedTicket = {
-      code,
-      timeStr,
-      state: 'ASSIGNED',
-      assignedCubicle: 'Cubículo 03',
-      patientName: patientName.trim(),
-      idDocument: idDocument.trim() || undefined,
-    };
+    const correlationId = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `corr-${Date.now()}`;
 
-    setTimeout(() => {
+    try {
+      // POST real a la API sin calcular códigos ni secuencias localmente
+      const response = await apiClient<{
+        success: boolean;
+        data: {
+          publicId: string;
+          publicCode: string;
+          sequenceNumber: number;
+          patientName: string;
+          status: TicketStatus;
+          createdAt: string | Date;
+        };
+      }>('/tickets', {
+        method: 'POST',
+        headers: {
+          'Idempotency-Key': idempotencyKey,
+          'X-Correlation-ID': correlationId,
+        },
+        body: JSON.stringify({
+          patientName: patientName.trim(),
+          patientDocument: idDocument.trim() || undefined,
+        }),
+      });
+
+      const serverTicket = response.data;
+      const createdAt = new Date(serverTicket.createdAt || Date.now());
+      const timeStr = `${String(createdAt.getHours()).padStart(2, '0')}:${String(createdAt.getMinutes()).padStart(2, '0')}`;
+
+      const newTicket: IssuedTicket = {
+        code: serverTicket.publicCode,
+        timeStr,
+        state: serverTicket.status,
+        assignedCubicle: undefined, // El backend asigna el cubículo, no inventar
+        patientName: serverTicket.patientName,
+      };
+
       setLastTicket(newTicket);
       setRecentTickets((prev) => [newTicket, ...prev].slice(0, 3));
       setPatientName('');
       setIdDocument('');
+    } catch (err: unknown) {
+      setErrorMessage(
+        err instanceof Error ? err.message : 'Error de conexión con el servidor al emitir el turno.',
+      );
+    } finally {
       setIsSubmitting(false);
       nameInputRef.current?.focus();
-    }, 250);
+    }
   };
 
   const handleCopyCode = () => {
@@ -86,6 +116,7 @@ export const ReceptionPage: React.FC = () => {
     if (isSubmitting) return;
     setPatientName('');
     setIdDocument('');
+    setErrorMessage(null);
     nameInputRef.current?.focus();
   };
 
@@ -137,6 +168,14 @@ export const ReceptionPage: React.FC = () => {
             <Heading size="4" weight="bold" className="mb-4">
               Generar turno
             </Heading>
+
+            {errorMessage && (
+              <Box className="p-3 mb-4 rounded-md bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800">
+                <Text size="2" color="red" weight="medium">
+                  {errorMessage}
+                </Text>
+              </Box>
+            )}
 
             <form onSubmit={handleSubmit} noValidate>
               <Flex direction="column" gap="4">
@@ -269,7 +308,7 @@ export const ReceptionPage: React.FC = () => {
                       aria-label="Copiar número de turno"
                     >
                       {copiedCode ? <CheckCircledIcon width={16} height={16} /> : <CopyIcon width={16} height={16} />}
-                      {copiedCode ? 'Copiado' : 'Copiar código'}
+                      {copiedCode ? 'Número de turno copiado' : 'Copiar número de turno'}
                     </Button>
                   </Flex>
                 </Box>
@@ -278,7 +317,7 @@ export const ReceptionPage: React.FC = () => {
                 {lastTicket.state === 'PENDING' && (
                   <Box className="p-3 rounded-md bg-[var(--gray-a3)]">
                     <Text size="2" weight="bold" className="block text-[var(--gray-12)]">
-                      No hay un cubículo disponible
+                      En espera de asignación
                     </Text>
                     <Text size="1" color="gray">
                       Observe la pantalla de llamados
@@ -308,7 +347,7 @@ export const ReceptionPage: React.FC = () => {
             )}
           </Card>
 
-          {/* Tabla de Últimos Turnos Generados (Máximo 3) */}
+          {/* Tabla de Últimos Turnos Generados (Máximo 3, SIN Columna Paciente) */}
           {recentTickets.length > 0 && (
             <Card size="2" className="p-4">
               <Heading size="2" weight="bold" className="mb-3 uppercase tracking-wider text-[var(--gray-11)]">

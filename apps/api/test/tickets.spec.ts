@@ -3,6 +3,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException } from '@nestjs/common';
 import { TicketsService } from '../src/modules/tickets/tickets.service';
 import { PrismaService } from '../src/prisma/prisma.service';
+import { PublicDisplayService } from '../src/modules/public-display/public-display.service';
+import { CubiclesService } from '../src/modules/cubicles/cubicles.service';
 import { TicketStatus } from '@cubiora/shared';
 
 describe('Fase 3a — Creación de Turnos (CP-01, CP-02, CP-03)', () => {
@@ -89,12 +91,31 @@ describe('Fase 3a — Creación de Turnos (CP-01, CP-02, CP-03)', () => {
     statusHistory = [];
     idempotencyStore = new Map();
 
+    const mockPublicDisplay = {
+      emitEvent: vi.fn(),
+      getSnapshot: vi.fn(),
+      getEventStream: vi.fn(),
+    };
+
+    const mockCubiclesService = {
+      getOrCreateCubicleByCode: vi.fn(),
+      buildCubicleSnapshot: vi.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         TicketsService,
         {
           provide: PrismaService,
           useValue: mockPrisma,
+        },
+        {
+          provide: PublicDisplayService,
+          useValue: mockPublicDisplay,
+        },
+        {
+          provide: CubiclesService,
+          useValue: mockCubiclesService,
         },
       ],
     }).compile();

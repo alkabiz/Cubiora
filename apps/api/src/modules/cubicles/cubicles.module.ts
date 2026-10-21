@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
+import { CubiclesController } from './cubicles.controller';
+import { CubiclesService } from './cubicles.service';
 
-/**
- * CubiclesModule — Esqueleto inicial.
- * Gestión y estado de cubículos de atención.
- */
-@Module({})
+@Module({
+  controllers: [CubiclesController],
+  providers: [CubiclesService],
+  exports: [CubiclesService],
+})
 export class CubiclesModule {}

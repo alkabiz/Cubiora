@@ -1,11 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { Theme } from '@radix-ui/themes';
 import React from 'react';
 import { ReceptionPage } from './reception-page';
 import { CashierPage } from './cashier-page';
 import { DisplayPage } from './display-page';
+import { TicketStatus, CubicleStatus } from '@cubiora/shared';
 
 const renderWithTheme = (ui: React.ReactElement) => {
   return render(
@@ -15,9 +16,25 @@ const renderWithTheme = (ui: React.ReactElement) => {
   );
 };
 
-describe('Contrato Aprobado de Cubiora — Suite de Pantallas', () => {
+describe('Contrato Aprobado de Cubiora — Suite de Pantallas e Integración', () => {
+  let originalFetch: typeof window.fetch;
+
   beforeEach(() => {
-    vi.useRealTimers();
+    originalFetch = window.fetch;
+
+    // Mock global de EventSource
+    (globalThis as unknown as { EventSource: unknown }).EventSource = vi.fn().mockImplementation(() => ({
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      close: vi.fn(),
+      onopen: null,
+      onerror: null,
+    }));
+  });
+
+  afterEach(() => {
+    window.fetch = originalFetch;
+    vi.restoreAllMocks();
   });
 
   describe('SCR-REC-001: Recepción', () => {
@@ -51,8 +68,24 @@ describe('Contrato Aprobado de Cubiora — Suite de Pantallas', () => {
       expect((submitButton as HTMLButtonElement).disabled).toBe(false);
     });
 
-    it('debe generar un turno en formato TUR-XXXXXX-YY y reflejar estados PENDING, ASSIGNED o CALLED', async () => {
-      vi.useFakeTimers();
+    it('debe generar un turno vía POST /api/v1/tickets con Idempotency-Key y mostrar textos y estados aprobados', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 201,
+        json: async () => ({
+          success: true,
+          data: {
+            publicId: '01JREC000000001',
+            publicCode: 'TUR-000001-GE',
+            sequenceNumber: 1,
+            patientName: 'Ana Gómez',
+            status: TicketStatus.PENDING,
+            createdAt: new Date().toISOString(),
+          },
+        }),
+      });
+      window.fetch = mockFetch;
+
       renderWithTheme(<ReceptionPage />);
 
       const nameInput = screen.getByPlaceholderText(/Ingrese nombre y apellido/i);
@@ -61,176 +94,490 @@ describe('Contrato Aprobado de Cubiora — Suite de Pantallas', () => {
       fireEvent.change(nameInput, { target: { value: 'Ana Gómez' } });
       fireEvent.click(submitButton);
 
-      // Bloqueo de doble envío durante submit
-      expect((submitButton as HTMLButtonElement).disabled).toBe(true);
-
-      act(() => {
-        vi.advanceTimersByTime(300);
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringContaining('/api/v1/tickets'),
+          expect.objectContaining({
+            method: 'POST',
+            headers: expect.objectContaining({
+              'Idempotency-Key': expect.any(String),
+            }),
+          }),
+        );
       });
 
-      // El código emitido debe cumplir con el formato TUR-
-      const ticketCodes = screen.getAllByText(/TUR-\d{6}-[A-Z0-9]{2}/);
-      expect(ticketCodes.length).toBeGreaterThanOrEqual(1);
+      // El código emitido debe renderizarse en pantalla
+      expect(screen.getAllByText('TUR-000001-GE').length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText('En espera de asignación')).toBeDefined();
+      expect(screen.getByText('Observe la pantalla de llamados')).toBeDefined();
 
-      // El badge de estado debe ser visible
-      expect(screen.getAllByText(/Asignado|En espera|Llamado/).length).toBeGreaterThanOrEqual(1);
-
-      vi.useRealTimers();
+      // Textos aprobados para copiado
+      const copyBtn = screen.getByRole('button', { name: /Copiar número de turno/i });
+      expect(copyBtn).toBeDefined();
     });
 
-    it('debe mantener un límite máximo de tres turnos en la tabla reciente', async () => {
-      vi.useFakeTimers();
-      renderWithTheme(<ReceptionPage />);
+    it('debe renderizar la tabla de últimos turnos sin columna ni dato de Paciente y con máx 3 registros', async () => {
+      let seq = 1;
+      window.fetch = vi.fn().mockImplementation(async () => ({
+        ok: true,
+        status: 201,
+        json: async () => ({
+          success: true,
+          data: {
+            publicId: `01JREC00000000${seq}`,
+            publicCode: `TUR-00000${seq}-GE`,
+            sequenceNumber: seq++,
+            patientName: `Paciente Oculto ${seq}`,
+            status: TicketStatus.PENDING,
+            createdAt: new Date().toISOString(),
+          },
+        }),
+      }));
 
+      renderWithTheme(<ReceptionPage />);
       const nameInput = screen.getByPlaceholderText(/Ingrese nombre y apellido/i);
       const submitButton = screen.getByRole('button', { name: /Generar turno/i });
 
-      // Generar 4 turnos sucesivos
-      for (let i = 1; i <= 4; i++) {
+      // Generar 3 turnos sucesivos esperando confirmación de cada uno
+      for (let i = 1; i <= 3; i++) {
         fireEvent.change(nameInput, { target: { value: `Paciente ${i}` } });
         fireEvent.click(submitButton);
-        act(() => {
-          vi.advanceTimersByTime(300);
-        });
+        await waitFor(() =>
+          expect(screen.getAllByText(`TUR-00000${i}-GE`).length).toBeGreaterThanOrEqual(1),
+        );
+        await waitFor(() => expect((nameInput as HTMLInputElement).value).toBe(''));
       }
 
-      // La tabla solo debe contener hasta 3 filas en el cuerpo
-      const tableRows = screen.getAllByRole('row');
-      // 1 encabezado + máx 3 filas de datos = máx 4 filas en total
-      expect(tableRows.length).toBeLessThanOrEqual(4);
+      // La tabla no debe contener el texto "Paciente" en encabezados
+      const tableHeaders = screen.getAllByRole('columnheader').map((th) => th.textContent);
+      expect(tableHeaders).toEqual(['Turno', 'Hora', 'Cubículo', 'Estado']);
+      expect(tableHeaders).not.toContain('Paciente');
 
-      vi.useRealTimers();
+      // Máximo 3 filas de datos en el cuerpo de la tabla
+      const rows = screen.getAllByRole('row');
+      // 1 encabezado + 3 registros = 4
+      expect(rows.length).toBeLessThanOrEqual(4);
     });
 
-    it('no debe incluir textos ni controles obsoletos (FarmaTurnos PMV, Registro de Turno Presencial, T-XXX, QR)', () => {
-      const { container } = renderWithTheme(<ReceptionPage />);
-      const html = container.innerHTML;
+    it('en ASSIGNED debe mostrar badge Asignado, Cubículo asignado y Observe la pantalla de llamados sin número de cubículo', async () => {
+      window.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 201,
+        json: async () => ({
+          success: true,
+          data: {
+            publicId: '01JREC_ASSIGNED',
+            publicCode: 'TUR-000100-GE',
+            sequenceNumber: 100,
+            patientName: 'Pedro Asignado',
+            status: TicketStatus.ASSIGNED,
+            createdAt: new Date().toISOString(),
+          },
+        }),
+      });
 
-      expect(html).not.toContain('FarmaTurnos');
-      expect(html).not.toContain('Registro de Turno Presencial');
-      expect(html).not.toMatch(/T-\d{3}/);
-      expect(html).not.toContain('Código QR');
-      expect(html).not.toContain('Imprimir');
+      renderWithTheme(<ReceptionPage />);
+      const nameInput = screen.getByPlaceholderText(/Ingrese nombre y apellido/i);
+      fireEvent.change(nameInput, { target: { value: 'Pedro Asignado' } });
+      fireEvent.click(screen.getByRole('button', { name: /Generar turno/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText('Cubículo asignado')).toBeDefined();
+        expect(screen.getByText('Observe la pantalla de llamados')).toBeDefined();
+        expect(screen.getAllByText('Asignado').length).toBeGreaterThanOrEqual(1);
+      });
+      // No debe mostrar número específico de cubículo
+      expect(screen.queryByText(/Cubículo 03/)).toBeNull();
+    });
+
+    it('en CALLED debe mostrar badge Llamado y Diríjase al Cubículo 03', async () => {
+      window.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 201,
+        json: async () => ({
+          success: true,
+          data: {
+            publicId: '01JREC_CALLED',
+            publicCode: 'TUR-000101-GE',
+            sequenceNumber: 101,
+            patientName: 'Lucía Llamada',
+            status: TicketStatus.CALLED,
+            createdAt: new Date().toISOString(),
+          },
+        }),
+      });
+
+      renderWithTheme(<ReceptionPage />);
+      const nameInput = screen.getByPlaceholderText(/Ingrese nombre y apellido/i);
+      fireEvent.change(nameInput, { target: { value: 'Lucía Llamada' } });
+      fireEvent.click(screen.getByRole('button', { name: /Generar turno/i }));
+
+      await waitFor(() => {
+        expect(screen.getAllByText('Llamado').length).toBeGreaterThanOrEqual(1);
+        expect(screen.getByText(/Diríjase al Cubículo 03/i)).toBeDefined();
+      });
     });
   });
 
   describe('SCR-CAJ-001: Mi Cubículo (Caja)', () => {
-    it('debe iniciar en ASSIGNED con número TUR-, paciente, hora y acción "Llamar turno"', () => {
+    it('debe cargar snapshot inicial desde la API y mostrar turno asignado', async () => {
+      window.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: {
+            cubicle: {
+              id: 'cub_03',
+              code: 'CUB-03',
+              displayName: 'Cubículo 03',
+              status: CubicleStatus.RESERVED,
+              version: 1,
+            },
+            activeTicket: {
+              id: 'ticket_124',
+              publicId: '01JTICK124',
+              publicCode: 'TUR-000124-C3',
+              patientName: 'Carlos Pérez',
+              status: TicketStatus.ASSIGNED,
+              assignedAt: new Date().toISOString(),
+              version: 1,
+              callNumber: 0,
+            },
+          },
+        }),
+      });
+
       renderWithTheme(<CashierPage />);
 
-      expect(screen.getByText('Cubiora')).toBeDefined();
-      expect(screen.getAllByText('Mi cubículo').length).toBeGreaterThanOrEqual(1);
-      expect(screen.getByText('Cubículo 03')).toBeDefined();
-      expect(screen.getByText('TUR-000124-C3')).toBeDefined();
-      expect(screen.getByText(/Carlos Pérez/)).toBeDefined();
-      expect(screen.getByText(/Asignado a las 10:24/)).toBeDefined();
+      await waitFor(() => {
+        expect(screen.getByText('Cubículo 03')).toBeDefined();
+        expect(screen.getByText('TUR-000124-C3')).toBeDefined();
+        expect(screen.getByText(/Carlos Pérez/)).toBeDefined();
+      });
 
-      const callButton = screen.getByRole('button', { name: /Llamar turno/i });
-      expect(callButton).toBeDefined();
+      expect(screen.getByRole('button', { name: /Llamar turno/i })).toBeDefined();
     });
 
-    it('debe transicionar a CALLED al presionar "Llamar turno", mostrando "Iniciar atención", "Repetir llamado" y "Paciente no presentado"', () => {
+    it('debe bloquear cierre de sesión en ASSIGNED, CALLED e IN_SERVICE con mensaje y acción "Volver al turno"', async () => {
+      window.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: {
+            cubicle: {
+              id: 'cub_03',
+              code: 'CUB-03',
+              displayName: 'Cubículo 03',
+              status: CubicleStatus.RESERVED,
+              version: 1,
+            },
+            activeTicket: {
+              id: 'ticket_124',
+              publicId: '01JTICK124',
+              publicCode: 'TUR-000124-C3',
+              patientName: 'Carlos Pérez',
+              status: TicketStatus.ASSIGNED,
+              version: 1,
+              callNumber: 0,
+            },
+          },
+        }),
+      });
+
       renderWithTheme(<CashierPage />);
+      await waitFor(() => expect(screen.getByText('TUR-000124-C3')).toBeDefined());
 
-      const callButton = screen.getByRole('button', { name: /Llamar turno/i });
-      fireEvent.click(callButton);
-
-      expect(screen.getByRole('button', { name: /Iniciar atención/i })).toBeDefined();
-      expect(screen.getByRole('button', { name: /Repetir llamado/i })).toBeDefined();
-      expect(screen.getByRole('button', { name: /Paciente no presentado/i })).toBeDefined();
-    });
-
-    it('debe transicionar a IN_SERVICE al presionar "Iniciar atención" con acción "Cerrar turno"', () => {
-      renderWithTheme(<CashierPage />);
-
-      // Llamar turno -> Iniciar atención
-      fireEvent.click(screen.getByRole('button', { name: /Llamar turno/i }));
-      fireEvent.click(screen.getByRole('button', { name: /Iniciar atención/i }));
-
-      expect(screen.getByText('En atención')).toBeDefined();
-      expect(screen.getByRole('button', { name: /Cerrar turno/i })).toBeDefined();
-    });
-
-    it('debe quedar en AVAILABLE tras cerrar turno o marcar no presentado, sin acción principal', () => {
-      renderWithTheme(<CashierPage />);
-
-      // Llamar y marcar como no presentado
-      fireEvent.click(screen.getByRole('button', { name: /Llamar turno/i }));
-      fireEvent.click(screen.getByRole('button', { name: /Paciente no presentado/i }));
-
-      expect(screen.getByText('Disponible')).toBeDefined();
-      expect(screen.getByText(/Esperando asignación automática de paciente/i)).toBeDefined();
-      expect(screen.queryByRole('button', { name: /Llamar turno/i })).toBeNull();
-      expect(screen.queryByRole('button', { name: /Iniciar atención/i })).toBeNull();
-    });
-
-    it('debe bloquear el cierre de sesión si hay atención activa', () => {
-      renderWithTheme(<CashierPage />);
-
-      // Poner en atención
-      fireEvent.click(screen.getByRole('button', { name: /Llamar turno/i }));
-      fireEvent.click(screen.getByRole('button', { name: /Iniciar atención/i }));
-
-      // Intentar cerrar sesión
+      // Intentar cerrar sesión estando en ASSIGNED
       const logoutBtn = screen.getByRole('button', { name: /Cerrar sesión/i });
       fireEvent.click(logoutBtn);
 
-      expect(screen.getByText(/Cierre de sesión bloqueado/i)).toBeDefined();
+      // Mensaje bloqueante normativo
+      expect(
+        screen.getByText(/No puedes cerrar sesión durante un turno activo\. Finaliza la atención antes de salir\./i),
+      ).toBeDefined();
+
+      // Acción única: Volver al turno
+      const backBtn = screen.getByRole('button', { name: /Volver al turno/i });
+      expect(backBtn).toBeDefined();
+      fireEvent.click(backBtn);
     });
 
-    it('no debe incluir controles obsoletos (Completar Entrega, Re-Llamar 1/3, cola editable)', () => {
-      const { container } = renderWithTheme(<CashierPage />);
-      const html = container.innerHTML;
+    it('debe ejecutar comandos reales con expected-version e idempotency-key', async () => {
+      const mockFetch = vi
+        .fn()
+        // 1. Snapshot inicial (ASSIGNED)
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            data: {
+              cubicle: { id: 'cub_03', code: 'CUB-03', displayName: 'Cubículo 03', status: CubicleStatus.RESERVED, version: 1 },
+              activeTicket: {
+                id: 't1',
+                publicId: '01JT1',
+                publicCode: 'TUR-000124-C3',
+                patientName: 'Carlos Pérez',
+                status: TicketStatus.ASSIGNED,
+                version: 1,
+                callNumber: 0,
+              },
+            },
+          }),
+        })
+        // 2. Respuesta a callTicket (CALLED)
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            data: {
+              cubicle: { id: 'cub_03', code: 'CUB-03', displayName: 'Cubículo 03', status: CubicleStatus.CALLING, version: 2 },
+              activeTicket: {
+                id: 't1',
+                publicId: '01JT1',
+                publicCode: 'TUR-000124-C3',
+                patientName: 'Carlos Pérez',
+                status: TicketStatus.CALLED,
+                version: 2,
+                callNumber: 1,
+              },
+            },
+          }),
+        });
 
-      expect(html).not.toContain('Completar Entrega');
-      expect(html).not.toContain('1/3');
-      expect(html).not.toContain('FarmaTurnos');
+      window.fetch = mockFetch;
+      renderWithTheme(<CashierPage />);
+
+      await waitFor(() => expect(screen.getByRole('button', { name: /Llamar turno/i })).toBeDefined());
+      fireEvent.click(screen.getByRole('button', { name: /Llamar turno/i }));
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringContaining('/api/v1/tickets/t1/call'),
+          expect.objectContaining({
+            method: 'POST',
+            headers: expect.objectContaining({
+              'expected-version': '1',
+              'Idempotency-Key': expect.any(String),
+            }),
+          }),
+        );
+      });
+
+      // Ahora debe mostrar las acciones de CALLED
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /Iniciar atención/i })).toBeDefined();
+        expect(screen.getByRole('button', { name: /Repetir llamado/i })).toBeDefined();
+        expect(screen.getByRole('button', { name: /Paciente no presentado/i })).toBeDefined();
+      });
+    });
+
+    it('en conflicto 409 debe solicitar snapshot vigente y sincronizar el estado', async () => {
+      const mockFetch = vi
+        .fn()
+        // 1. Snapshot inicial
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            data: {
+              cubicle: { id: 'cub_03', code: 'CUB-03', displayName: 'Cubículo 03', status: CubicleStatus.RESERVED, version: 1 },
+              activeTicket: {
+                id: 't1',
+                publicId: '01JT1',
+                publicCode: 'TUR-000124-C3',
+                patientName: 'Carlos Pérez',
+                status: TicketStatus.ASSIGNED,
+                version: 1,
+                callNumber: 0,
+              },
+            },
+          }),
+        })
+        // 2. Intento de call retorna 409 Conflict
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 409,
+          json: async () => ({
+            code: 'STATE_CONFLICT',
+            message: 'Conflicto de versión optimista.',
+          }),
+        })
+        // 3. Refresco de snapshot tras 409
+        .mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            data: {
+              cubicle: { id: 'cub_03', code: 'CUB-03', displayName: 'Cubículo 03', status: CubicleStatus.CALLING, version: 2 },
+              activeTicket: {
+                id: 't1',
+                publicId: '01JT1',
+                publicCode: 'TUR-000124-C3',
+                patientName: 'Carlos Pérez',
+                status: TicketStatus.CALLED,
+                version: 2,
+                callNumber: 1,
+              },
+            },
+          }),
+        });
+
+      window.fetch = mockFetch;
+      renderWithTheme(<CashierPage />);
+
+      await waitFor(() => expect(screen.getByRole('button', { name: /Llamar turno/i })).toBeDefined());
+      fireEvent.click(screen.getByRole('button', { name: /Llamar turno/i }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/El estado del turno fue actualizado por otro operador/i)).toBeDefined();
+      });
+    });
+
+    it('debe permitir cerrar sesión en AVAILABLE sin advertencias ni bloqueos', async () => {
+      window.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: {
+            cubicle: {
+              id: 'cub_03',
+              code: 'CUB-03',
+              displayName: 'Cubículo 03',
+              status: CubicleStatus.AVAILABLE,
+              version: 1,
+            },
+            activeTicket: null,
+          },
+        }),
+      });
+
+      renderWithTheme(<CashierPage />);
+      await waitFor(() => expect(screen.getByText('Disponible')).toBeDefined());
+
+      const logoutBtn = screen.getByRole('button', { name: /Cerrar sesión/i });
+      fireEvent.click(logoutBtn);
+
+      // No debe abrirse el diálogo de bloqueo
+      expect(screen.queryByText(/No puedes cerrar sesión durante un turno activo/i)).toBeNull();
     });
   });
 
   describe('SCR-PUB-001: Pantalla Pública', () => {
-    it('debe mostrar branding "Cubiora Turnos", turno llamado y cubículo con formato TUR-', () => {
+    it('debe cargar snapshot inicial vía API y mostrar turno llamado principal', async () => {
+      window.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: {
+            currentCall: {
+              publicCode: 'TUR-000123-A7',
+              cubicleDisplayName: 'Cubículo 03',
+              calledAt: new Date().toISOString(),
+              callNumber: 1,
+            },
+            recentCalls: [
+              {
+                publicCode: 'TUR-000120-B2',
+                cubicleDisplayName: 'Cubículo 02',
+                calledAt: new Date().toISOString(),
+                callNumber: 1,
+              },
+            ],
+          },
+        }),
+      });
+
       renderWithTheme(<DisplayPage />);
 
-      expect(screen.getByText('Cubiora')).toBeDefined();
-      expect(screen.getByText('Turnos')).toBeDefined();
-      expect(screen.getByText('Turno llamado')).toBeDefined();
-      expect(screen.getByText('Diríjase al')).toBeDefined();
-      expect(screen.getByText('TUR-000123-A7')).toBeDefined();
-      expect(screen.getByText('Cubículo 03')).toBeDefined();
+      await waitFor(() => {
+        expect(screen.getByText('Cubiora')).toBeDefined();
+        expect(screen.getByText('Turnos')).toBeDefined();
+        expect(screen.getByText('TUR-000123-A7')).toBeDefined();
+        expect(screen.getByText('Cubículo 03')).toBeDefined();
+      });
     });
 
-    it('debe listar entre 3 y 5 llamados recientes con número y cubículo separados visualmente', () => {
+    it('en llamados recientes no debe mostrar badge, mostrando solamente número de turno y cubículo', async () => {
+      window.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: {
+            currentCall: null,
+            recentCalls: [
+              {
+                publicCode: 'TUR-000120-B2',
+                cubicleDisplayName: 'Cubículo 02',
+                calledAt: new Date().toISOString(),
+                callNumber: 1,
+              },
+            ],
+          },
+        }),
+      });
+
+      const { container } = renderWithTheme(<DisplayPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('TUR-000120-B2')).toBeDefined();
+        expect(screen.getByText('Cubículo 02')).toBeDefined();
+      });
+
+      // No debe contener el texto obsoleto "Esperando en cubículo"
+      expect(container.innerHTML).not.toContain('Esperando en cubículo');
+    });
+
+    it('debe garantizar Cero PII en pantalla pública', async () => {
+      window.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          success: true,
+          data: {
+            currentCall: {
+              publicCode: 'TUR-000123-A7',
+              cubicleDisplayName: 'Cubículo 03',
+              calledAt: new Date().toISOString(),
+              callNumber: 1,
+            },
+            recentCalls: [],
+          },
+        }),
+      });
+
+      const { container } = renderWithTheme(<DisplayPage />);
+      await waitFor(() => expect(screen.getByText('TUR-000123-A7')).toBeDefined());
+
+      const html = container.innerHTML;
+      expect(html).not.toMatch(/paciente/i);
+      expect(html).not.toMatch(/cédula/i);
+      expect(html).not.toMatch(/documento/i);
+      expect(html).not.toMatch(/identificación/i);
+    });
+
+    it('debe ofrecer control de audio opcional y accesible', async () => {
+      window.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, data: { currentCall: null, recentCalls: [] } }),
+      });
+
       renderWithTheme(<DisplayPage />);
 
-      expect(screen.getByText('Llamados recientes')).toBeDefined();
-      expect(screen.getByText('TUR-000120-B2')).toBeDefined();
-      expect(screen.getByText('Cubículo 02')).toBeDefined();
-      expect(screen.getByText('TUR-000118-C1')).toBeDefined();
-      expect(screen.getByText('Cubículo 01')).toBeDefined();
-      expect(screen.getByText('TUR-000115-D4')).toBeDefined();
-      expect(screen.getByText('Cubículo 04')).toBeDefined();
-    });
+      const soundBtn = screen.getByRole('button', { name: /Sonido desactivado/i });
+      expect(soundBtn).toBeDefined();
 
-    it('debe garantizar privacidad total: cero nombres de pacientes y cero documentos (PII)', () => {
-      const { container } = renderWithTheme(<DisplayPage />);
-      const fullHtml = container.innerHTML;
-
-      expect(fullHtml).not.toMatch(/patientName/i);
-      expect(fullHtml).not.toMatch(/patientDocument/i);
-      expect(fullHtml).not.toMatch(/cédula/i);
-      expect(fullHtml).not.toMatch(/identificación/i);
-      expect(fullHtml).not.toMatch(/documento/i);
-      expect(fullHtml).not.toMatch(/Pérez/i);
-      expect(fullHtml).not.toMatch(/Gómez/i);
-    });
-
-    it('no debe incluir barra de navegación ni texto FarmaTurnos', () => {
-      const { container } = renderWithTheme(<DisplayPage />);
-      const fullHtml = container.innerHTML;
-
-      expect(fullHtml).not.toContain('FarmaTurnos');
-      expect(container.querySelector('nav')).toBeNull();
+      fireEvent.click(soundBtn);
+      expect(screen.getByText(/Sonido activo/i)).toBeDefined();
     });
   });
 });
