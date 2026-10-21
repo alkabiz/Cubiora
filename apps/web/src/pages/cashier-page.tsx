@@ -161,8 +161,9 @@ export const CashierPage: React.FC = () => {
         : `${Date.now()}-3333-4000-8000-${Date.now().toString(16).padStart(12, '0')}`;
 
     try {
+      const ticketIdentifier = currentTicket.publicId || currentTicket.id;
       const res = await apiClient<{ success: boolean; data: CubicleSnapshot }>(
-        `/tickets/${currentTicket.id}/${command}`,
+        `/tickets/${ticketIdentifier}/${command}`,
         {
           method: 'POST',
           headers: {

@@ -142,7 +142,7 @@ export class TicketsService {
         },
       });
 
-      // Historial inmutable en la misma transacción (WORM)
+      // Historial append-only a nivel de aplicación en la misma transacción
       await tx.ticketStatusHistory.create({
         data: {
           id: ulid(),
@@ -272,15 +272,15 @@ export class TicketsService {
   }
 
   /**
-   * Resuelve un ticket por id interno o publicId
+   * Resuelve un ticket estrictamente por publicId (o id interno).
+   * Los comandos de modificación de estado tienen prohibido resolver por publicCode.
    */
-  private async findTicket(ticketIdOrPublicId: string) {
+  private async findTicket(ticketPublicId: string) {
     const ticket = await this.prisma.ticket.findFirst({
       where: {
         OR: [
-          { id: ticketIdOrPublicId },
-          { publicId: ticketIdOrPublicId },
-          { publicCode: ticketIdOrPublicId },
+          { publicId: ticketPublicId },
+          { id: ticketPublicId },
         ],
       },
       include: {
@@ -291,7 +291,7 @@ export class TicketsService {
     if (!ticket) {
       throw new NotFoundException({
         code: ApiErrorCode.RESOURCE_NOT_FOUND,
-        message: `Turno no encontrado: ${ticketIdOrPublicId}`,
+        message: `Turno no encontrado con el identificador provisto: ${ticketPublicId}`,
       });
     }
 
@@ -984,18 +984,35 @@ export class TicketsService {
   }
 
   /**
-   * Obtiene los últimos turnos creados para la pantalla de recepción (máximo 3).
+   * Obtiene los últimos turnos creados para la pantalla de recepción.
+   * Reglas de contrato:
+   * 1. Alcance: Usuario autenticado actual.
+   * 2. Jornada actual (a partir de las 00:00:00 del día en curso).
+   * 3. Máximo tres (3).
+   * 4. CERO PII: Sin patientName ni patientDocument.
+   * 5. Sin IDs internos (id primario de BD omitido).
    */
-  async getRecentTickets(): Promise<
+  async getRecentTickets(actorUserId?: string): Promise<
     Array<{
       publicCode: string;
       status: TicketStatus;
       cubicleDisplayName?: string | undefined;
       createdAt: string;
-      patientName: string;
     }>
   > {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    const whereClause: Prisma.TicketWhereInput = {
+      createdAt: { gte: startOfToday },
+    };
+
+    if (actorUserId) {
+      whereClause.createdBy = actorUserId;
+    }
+
     const tickets = await this.prisma.ticket.findMany({
+      where: whereClause,
       take: 3,
       orderBy: { createdAt: 'desc' },
       include: {
@@ -1010,7 +1027,6 @@ export class TicketsService {
       status: t.status as TicketStatus,
       cubicleDisplayName: t.cubicle?.displayName,
       createdAt: t.createdAt.toISOString(),
-      patientName: t.patientName,
     }));
   }
 }

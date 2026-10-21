@@ -8,7 +8,7 @@ import { Reflector } from '@nestjs/core';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { SessionTokenUtil } from '../../modules/auth/session-token.util';
 import { getEnv } from '../../config/env.validation';
-import { ApiErrorCode, UserRole } from '@cubiora/shared';
+import { ApiErrorCode } from '@cubiora/shared';
 
 import { AuthenticatedUser } from '../decorators/current-user.decorator';
 import type { Request } from 'express';
@@ -33,29 +33,26 @@ export class AuthGuard implements CanActivate {
     const env = getEnv();
 
     if (!token) {
-      if (env.NODE_ENV !== 'production') {
-        (request as unknown as { user: AuthenticatedUser }).user = {
-          id: '01J9X1K4M5N6P7Q8R9S0T1V2W3',
-          publicId: '01J9X1K4M5N6P7Q8R9S0T1V2W3',
-          username: 'admin_cubiora',
-          displayName: 'Administrador del Sistema',
-          role: UserRole.ADMIN,
-          cubicleId: null,
-        };
-        return true;
-      }
-
       throw new UnauthorizedException({
         code: ApiErrorCode.AUTH_REQUIRED,
         message: 'Sesión no iniciada. Autenticación requerida.',
       });
     }
+
     const payload = SessionTokenUtil.verify(token, env.SESSION_SECRET);
 
     if (!payload) {
       throw new UnauthorizedException({
         code: ApiErrorCode.AUTH_REQUIRED,
         message: 'Sesión inválida o expirada. Por favor inicie sesión nuevamente.',
+      });
+    }
+
+    // Validación de usuario inactivo
+    if ((payload as unknown as { status?: string }).status === 'INACTIVE') {
+      throw new UnauthorizedException({
+        code: ApiErrorCode.AUTH_REQUIRED,
+        message: 'Acceso denegado: el usuario se encuentra inactivo.',
       });
     }
 

@@ -19,7 +19,7 @@ export interface IssuedTicket {
   timeStr: string;
   assignedCubicle?: string;
   state: TicketStatus | 'PENDING' | 'ASSIGNED' | 'CALLED';
-  patientName: string;
+  patientName?: string;
   idDocument?: string;
 }
 
@@ -46,7 +46,6 @@ export const ReceptionPage: React.FC = () => {
             status: TicketStatus;
             cubicleDisplayName?: string;
             createdAt: string;
-            patientName: string;
           }>;
         }>('/tickets/recent');
 
@@ -59,7 +58,6 @@ export const ReceptionPage: React.FC = () => {
               timeStr,
               state: t.status,
               assignedCubicle: t.cubicleDisplayName,
-              patientName: t.patientName,
             };
           });
           setRecentTickets(mapped);

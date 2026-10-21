@@ -39,7 +39,14 @@ export function assertDatabaseUrlSecurity(
     }
   }
 
-  // 2. Blindaje en producción: rol exclusivo cubiora_app y sslmode=require (o superior)
+  // 2. Blindaje de TLS: Prohibición absoluta de NODE_TLS_REJECT_UNAUTHORIZED=0
+  if (process.env['NODE_TLS_REJECT_UNAUTHORIZED'] === '0') {
+    throw new Error(
+      `[Seguridad] ERROR_SEGURIDAD_TLS_INSEGURO: NODE_TLS_REJECT_UNAUTHORIZED=0 detectado. Se prohíbe el bypass global de TLS en cualquier entorno.`,
+    );
+  }
+
+  // 3. Blindaje en producción: rol exclusivo cubiora_app y sslmode estricto (verify-full o verify-ca o require)
   if (nodeEnv === 'production') {
     if (varName === 'DATABASE_URL') {
       const username = decodeURIComponent(parsedUrl.username);
@@ -51,10 +58,10 @@ export function assertDatabaseUrlSecurity(
     }
 
     const sslmode = parsedUrl.searchParams.get('sslmode')?.toLowerCase();
-    const validSslModes = ['require', 'verify-ca', 'verify-full'];
+    const validSslModes = ['verify-full', 'verify-ca', 'require'];
     if (!sslmode || !validSslModes.includes(sslmode)) {
       throw new Error(
-        `[Seguridad] ERROR_SEGURIDAD_SSL_REQUERIDO: En producción, ${varName} debe incluir el parámetro 'sslmode=require' (o superior) en la cadena de conexión.`,
+        `[Seguridad] ERROR_SEGURIDAD_SSL_REQUERIDO: En producción, ${varName} debe incluir el parámetro 'sslmode=verify-full' o 'verify-ca' con verificación de certificado activo.`,
       );
     }
   }

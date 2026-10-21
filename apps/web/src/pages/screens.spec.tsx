@@ -365,7 +365,7 @@ describe('Contrato Aprobado de Cubiora — Suite de Pantallas e Integración', (
 
       await waitFor(() => {
         expect(mockFetch).toHaveBeenCalledWith(
-          expect.stringContaining('/api/v1/tickets/t1/call'),
+          expect.stringContaining('/api/v1/tickets/01JT1/call'),
           expect.objectContaining({
             method: 'POST',
             headers: expect.objectContaining({

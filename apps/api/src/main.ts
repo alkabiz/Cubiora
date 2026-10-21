@@ -8,8 +8,11 @@ dotenv.config({ path: path.resolve(process.cwd(), '.env.development.local') });
 dotenv.config({ path: path.resolve(process.cwd(), 'apps/api/.env.development.local') });
 dotenv.config({ path: path.resolve(__dirname, '../.env.development.local') });
 
-if (process.env['NODE_ENV'] !== 'production') {
-  process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
+// ─── Verificación Estricta de TLS ───────────────────────────────────────────
+// Prohibición absoluta de desactivación global de TLS.
+if (process.env['NODE_TLS_REJECT_UNAUTHORIZED'] === '0') {
+  console.error('❌ FATAL_SEGURIDAD_TLS: NODE_TLS_REJECT_UNAUTHORIZED=0 está estrictamente prohibido en Cubiora.');
+  process.exit(1);
 }
 
 import { NestFactory } from '@nestjs/core';

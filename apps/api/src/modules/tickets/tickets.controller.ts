@@ -15,6 +15,7 @@ import { CreateTicketDto } from './dto/create-ticket.dto';
 import { TicketCommandDto } from './dto/ticket-command.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { ParsePublicIdPipe } from '../../common/pipes/parse-public-id.pipe';
 import { UserRole } from '@cubiora/shared';
 
 @Controller('tickets')
@@ -23,8 +24,8 @@ export class TicketsController {
 
   @Roles(UserRole.RECEPTION, UserRole.ADMIN)
   @Get('recent')
-  async getRecentTickets() {
-    const data = await this.ticketsService.getRecentTickets();
+  async getRecentTickets(@CurrentUser() user: AuthenticatedUser) {
+    const data = await this.ticketsService.getRecentTickets(user.id);
     return {
       success: true,
       data,
@@ -56,9 +57,9 @@ export class TicketsController {
   }
 
   @Roles(UserRole.CASHIER, UserRole.ADMIN)
-  @Post(':id/call')
+  @Post(':publicId/call')
   async callTicket(
-    @Param('id') id: string,
+    @Param('publicId', ParsePublicIdPipe) publicId: string,
     @Body() dto: TicketCommandDto,
     @CurrentUser() user: AuthenticatedUser,
     @Headers('idempotency-key') idempotencyKey: string | undefined,
@@ -74,7 +75,7 @@ export class TicketsController {
       (ifMatchHeader ? parseInt(ifMatchHeader.replace(/"/g, ''), 10) : undefined);
 
     const { statusCode, data } = await this.ticketsService.callTicket(
-      id,
+      publicId,
       user.id,
       correlationId,
       idempotencyKey,
@@ -88,9 +89,9 @@ export class TicketsController {
   }
 
   @Roles(UserRole.CASHIER, UserRole.ADMIN)
-  @Post(':id/start-service')
+  @Post(':publicId/start-service')
   async startService(
-    @Param('id') id: string,
+    @Param('publicId', ParsePublicIdPipe) publicId: string,
     @Body() dto: TicketCommandDto,
     @CurrentUser() user: AuthenticatedUser,
     @Headers('idempotency-key') idempotencyKey: string | undefined,
@@ -106,7 +107,7 @@ export class TicketsController {
       (ifMatchHeader ? parseInt(ifMatchHeader.replace(/"/g, ''), 10) : undefined);
 
     const { statusCode, data } = await this.ticketsService.startService(
-      id,
+      publicId,
       user.id,
       correlationId,
       idempotencyKey,
@@ -120,9 +121,9 @@ export class TicketsController {
   }
 
   @Roles(UserRole.CASHIER, UserRole.ADMIN)
-  @Post(':id/close')
+  @Post(':publicId/close')
   async closeTicket(
-    @Param('id') id: string,
+    @Param('publicId', ParsePublicIdPipe) publicId: string,
     @Body() dto: TicketCommandDto,
     @CurrentUser() user: AuthenticatedUser,
     @Headers('idempotency-key') idempotencyKey: string | undefined,
@@ -138,7 +139,7 @@ export class TicketsController {
       (ifMatchHeader ? parseInt(ifMatchHeader.replace(/"/g, ''), 10) : undefined);
 
     const { statusCode, data } = await this.ticketsService.closeTicket(
-      id,
+      publicId,
       user.id,
       correlationId,
       idempotencyKey,
@@ -152,9 +153,9 @@ export class TicketsController {
   }
 
   @Roles(UserRole.CASHIER, UserRole.ADMIN)
-  @Post(':id/no-show')
+  @Post(':publicId/no-show')
   async noShowTicket(
-    @Param('id') id: string,
+    @Param('publicId', ParsePublicIdPipe) publicId: string,
     @Body() dto: TicketCommandDto,
     @CurrentUser() user: AuthenticatedUser,
     @Headers('idempotency-key') idempotencyKey: string | undefined,
@@ -170,7 +171,7 @@ export class TicketsController {
       (ifMatchHeader ? parseInt(ifMatchHeader.replace(/"/g, ''), 10) : undefined);
 
     const { statusCode, data } = await this.ticketsService.noShowTicket(
-      id,
+      publicId,
       user.id,
       correlationId,
       idempotencyKey,
