@@ -1,6 +1,6 @@
 # Prototipos Rechazados (Archivo Histórico)
 
-Estos componentes fueron rechazados. No forman parte del PMV y no deben importarse desde aplicaciones productivas.
+Contenido rechazado. No forma parte del PMV. No debe importarse en aplicaciones productivas.
 
 ## Contexto
 Durante las fases tempranas de diseño y prototipado se exploraron diversas interfaces que asumían modelos clínicos o flujos genéricos no aprobados (códigos tipo `T-XXX`, selectores manuales de cubículos, audio clínico sintético, telemetría pesada en cliente y dependencias de librerías externas).
