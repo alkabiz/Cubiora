@@ -110,4 +110,28 @@ export class PrismaService
       return false;
     }
   }
+
+  /**
+   * Consulta pg_stat_ssl de la conexión activa y reporta parámetros TLS
+   * garantizando cero exposición de secretos o credenciales.
+   */
+  async getSslStatus(): Promise<{
+    ssl: boolean;
+    version: string | null;
+    cipher: string | null;
+    bits: number | null;
+  }> {
+    try {
+      const rows = await this.$queryRaw<
+        Array<{ ssl: boolean; version: string | null; cipher: string | null; bits: number | null }>
+      >`SELECT ssl, version, cipher, bits FROM pg_stat_ssl WHERE pid = pg_backend_pid()`;
+      const firstRow = rows && rows.length > 0 ? rows[0] : null;
+      if (firstRow) {
+        return firstRow;
+      }
+      return { ssl: false, version: null, cipher: null, bits: null };
+    } catch {
+      return { ssl: false, version: null, cipher: null, bits: null };
+    }
+  }
 }

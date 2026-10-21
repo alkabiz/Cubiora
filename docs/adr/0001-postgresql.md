@@ -1,7 +1,15 @@
 # ADR 0001: Adopción Propuesta de PostgreSQL 18.6 para Cubiora
 
 ## 1. Estado
-**Proposed** (Propuesto para revisión formal de Dirección Técnica; no se asume aprobación definitiva ni equivalencia aprobada automática).
+**Proposed** (Propuesto para revisión formal de Dirección Técnica y aprobación humana; no se asume aprobación definitiva ni equivalencia aprobada automática).
+
+### Matriz de Estado de Adopción
+| Dimensión | Estado | Observación |
+| :--- | :--- | :--- |
+| **PostgreSQL documentado** | **Completado** | ADR 0001 formulado con alternativas, consecuencias, backup, restore, PITR, TLS y operación. |
+| **PostgreSQL probado técnicamente** | **Completado** | Pruebas de integración, concurrencia FOR UPDATE, resiliencia a reinicio y driver adapter @prisma/adapter-pg superadas. |
+| **PostgreSQL aprobado arquitectónicamente** | **Pendiente** | Requiere firma y aprobación humana de Dirección Técnica en comité formal. |
+| **Migración definitiva desde MySQL** | **Pendiente** | Supeditada a la ratificación del ADR y firma del comité. |
 
 ## 2. Fecha
 2026-10-21

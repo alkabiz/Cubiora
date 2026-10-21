@@ -5,6 +5,8 @@
  *
  * Usa Zod 4 para parsing y validación.
  */
+import * as fs from 'fs';
+import * as path from 'path';
 import { z } from 'zod/v4';
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '192.168.1.33']);
@@ -46,7 +48,7 @@ export function assertDatabaseUrlSecurity(
     );
   }
 
-  // 3. Blindaje en producción: rol exclusivo cubiora_app y sslmode estricto (verify-full o verify-ca o require)
+  // 3. Blindaje en producción: rol exclusivo cubiora_app y sslmode estricto verify-full
   if (nodeEnv === 'production') {
     if (varName === 'DATABASE_URL') {
       const username = decodeURIComponent(parsedUrl.username);
@@ -58,10 +60,60 @@ export function assertDatabaseUrlSecurity(
     }
 
     const sslmode = parsedUrl.searchParams.get('sslmode')?.toLowerCase();
-    const validSslModes = ['verify-full', 'verify-ca', 'require'];
-    if (!sslmode || !validSslModes.includes(sslmode)) {
+
+    // - require falla categóricamente en producción
+    if (sslmode === 'require') {
       throw new Error(
-        `[Seguridad] ERROR_SEGURIDAD_SSL_REQUERIDO: En producción, ${varName} debe incluir el parámetro 'sslmode=verify-full' o 'verify-ca' con verificación de certificado activo.`,
+        `[Seguridad] ERROR_SEGURIDAD_SSL_REQUIRE_RECHAZADO: 'sslmode=require' es insuficiente en producción. Se exige verificación completa con 'sslmode=verify-full'.`,
+      );
+    }
+
+    // - verify-ca falla salvo excepción aprobada explícita
+    if (sslmode === 'verify-ca') {
+      const allowVerifyCa = process.env['ALLOW_VERIFY_CA_EXCEPTION'] === 'true';
+      if (!allowVerifyCa) {
+        throw new Error(
+          `[Seguridad] ERROR_SEGURIDAD_SSL_VERIFY_CA_DENEGADO: 'sslmode=verify-ca' no es aceptado en producción salvo excepción explícita aprobada (ALLOW_VERIFY_CA_EXCEPTION=true). Se exige 'sslmode=verify-full'.`,
+        );
+      }
+    }
+
+    // - Solo se acepta verify-full (o verify-ca bajo excepción aprobada)
+    if (sslmode !== 'verify-full' && process.env['ALLOW_VERIFY_CA_EXCEPTION'] !== 'true') {
+      throw new Error(
+        `[Seguridad] ERROR_SEGURIDAD_SSL_REQUERIDO: En producción, ${varName} debe incluir exclusivamente 'sslmode=verify-full'. Modo detectado: '${sslmode ?? 'ninguno'}'.`,
+      );
+    }
+
+    // - Exigir ruta o contenido de CA institucional
+    const caCertContent = process.env['DATABASE_CA_CERT'] || process.env['CA_CERT'];
+    const caCertPath = process.env['DATABASE_CA_CERT_PATH'] || process.env['CA_CERT_PATH'];
+
+    let hasCa = false;
+    if (caCertContent && caCertContent.trim().length > 0) {
+      hasCa = true;
+    } else if (caCertPath) {
+      hasCa = fs.existsSync(caCertPath);
+    } else {
+      const defaultCaFile = path.resolve(process.cwd(), 'ca-cert.crt');
+      const defaultCaFileApi = path.resolve(process.cwd(), 'apps/api/ca-cert.crt');
+      hasCa = fs.existsSync(defaultCaFile) || fs.existsSync(defaultCaFileApi);
+    }
+
+    if (!hasCa) {
+      throw new Error(
+        `[Seguridad] ERROR_SEGURIDAD_CA_REQUERIDA: En producción con verify-full se exige la ruta o contenido del certificado CA institucional (DATABASE_CA_CERT, DATABASE_CA_CERT_PATH o ca-cert.crt).`,
+      );
+    }
+
+    // - Exigir hostname verificable (no IP numérica plana, no localhost, debe ser FQDN)
+    const host = parsedUrl.hostname.toLowerCase();
+    const isNumericIp = /^(\d{1,3}\.){3}\d{1,3}$/.test(host) || host === 'localhost' || host === '127.0.0.1' || host === '::1';
+    const allowNumericIp = process.env['ALLOW_NUMERIC_IP_EXCEPTION'] === 'true';
+
+    if (!host || (isNumericIp && !allowNumericIp)) {
+      throw new Error(
+        `[Seguridad] ERROR_SEGURIDAD_HOSTNAME_NO_VERIFICABLE: En producción, el host de la base de datos debe ser un FQDN verificable contra el certificado TLS (ej. postgres.internal). Host detectado: '${host}'.`,
       );
     }
   }
@@ -72,9 +124,9 @@ const envSchema = z
     NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
     PORT: z.coerce.number().int().min(1).max(65535).default(3000),
 
-    // Base de datos
+    // Base de datos (DIRECT_URL es opcional para runtime de la API; la API productiva no debe requerir credenciales de migrador)
     DATABASE_URL: z.string().min(1, 'DATABASE_URL es obligatorio'),
-    DIRECT_URL: z.string().min(1, 'DIRECT_URL es obligatorio'),
+    DIRECT_URL: z.string().optional(),
 
     // Seguridad
     SESSION_SECRET: z
@@ -105,14 +157,16 @@ const envSchema = z
       });
     }
 
-    try {
-      assertDatabaseUrlSecurity(data.DIRECT_URL, 'DIRECT_URL', data.NODE_ENV);
-    } catch (err) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: err instanceof Error ? err.message : String(err),
-        path: ['DIRECT_URL'],
-      });
+    if (data.DIRECT_URL) {
+      try {
+        assertDatabaseUrlSecurity(data.DIRECT_URL, 'DIRECT_URL', data.NODE_ENV);
+      } catch (err) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: err instanceof Error ? err.message : String(err),
+          path: ['DIRECT_URL'],
+        });
+      }
     }
   });
 
