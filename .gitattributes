@@ -1,0 +1,26 @@
+# Normalizar finales de línea a LF en el repositorio
+* text=auto eol=lf
+
+# Archivos binarios explícitos
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.otf binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.tar binary
+
+# Forzar LF en scripts de shell
+*.sh text eol=lf
+
+# Windows scripts (CRLF)
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
