@@ -151,6 +151,13 @@ describe('Punto 7 — Integración y Concurrencia de Cubículos y Pantalla', () 
         idempotencyDb.set(key, data);
         return data;
       }),
+      update: vi.fn(async ({ where, data }) => {
+        const key = `${where.uq_idempotency_key.actorUserId}:${where.uq_idempotency_key.operation}:${where.uq_idempotency_key.idempotencyKey}`;
+        const existing = idempotencyDb.get(key) || {};
+        const updated = { ...existing, ...data };
+        idempotencyDb.set(key, updated);
+        return updated;
+      }),
     },
     $transaction: vi.fn(async (callback) => {
       const release = await acquireLock();
@@ -160,6 +167,7 @@ describe('Punto 7 — Integración y Concurrencia de Cubículos y Pantalla', () 
           cubicle: mockPrisma.cubicle,
           ticketCall: mockPrisma.ticketCall,
           ticketStatusHistory: mockPrisma.ticketStatusHistory,
+          idempotencyKey: mockPrisma.idempotencyKey,
           $queryRaw: vi.fn(async () => {
             // Emular selección de siguiente PENDING
             const pendings = Array.from(ticketsDb.values())

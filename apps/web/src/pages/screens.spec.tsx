@@ -118,21 +118,30 @@ describe('Contrato Aprobado de Cubiora — Suite de Pantallas e Integración', (
 
     it('debe renderizar la tabla de últimos turnos sin columna ni dato de Paciente y con máx 3 registros', async () => {
       let seq = 1;
-      window.fetch = vi.fn().mockImplementation(async () => ({
-        ok: true,
-        status: 201,
-        json: async () => ({
-          success: true,
-          data: {
-            publicId: `01JREC00000000${seq}`,
-            publicCode: `TUR-00000${seq}-GE`,
-            sequenceNumber: seq++,
-            patientName: `Paciente Oculto ${seq}`,
-            status: TicketStatus.PENDING,
-            createdAt: new Date().toISOString(),
-          },
-        }),
-      }));
+      window.fetch = vi.fn().mockImplementation(async (url: any) => {
+        if (typeof url === 'string' && url.includes('/tickets/recent')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ success: true, data: [] }),
+          };
+        }
+        return {
+          ok: true,
+          status: 201,
+          json: async () => ({
+            success: true,
+            data: {
+              publicId: `01JREC00000000${seq}`,
+              publicCode: `TUR-00000${seq}-GE`,
+              sequenceNumber: seq++,
+              patientName: `Paciente Oculto ${seq}`,
+              status: TicketStatus.PENDING,
+              createdAt: new Date().toISOString(),
+            },
+          }),
+        };
+      });
 
       renderWithTheme(<ReceptionPage />);
       const nameInput = screen.getByPlaceholderText(/Ingrese nombre y apellido/i);

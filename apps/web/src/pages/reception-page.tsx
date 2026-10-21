@@ -36,6 +36,41 @@ export const ReceptionPage: React.FC = () => {
 
   useEffect(() => {
     nameInputRef.current?.focus();
+
+    const fetchRecentTickets = async () => {
+      try {
+        const res = await apiClient<{
+          success: boolean;
+          data: Array<{
+            publicCode: string;
+            status: TicketStatus;
+            cubicleDisplayName?: string;
+            createdAt: string;
+            patientName: string;
+          }>;
+        }>('/tickets/recent');
+
+        if (res.data && res.data.length > 0) {
+          const mapped: IssuedTicket[] = res.data.map((t) => {
+            const createdAt = new Date(t.createdAt);
+            const timeStr = `${String(createdAt.getHours()).padStart(2, '0')}:${String(createdAt.getMinutes()).padStart(2, '0')}`;
+            return {
+              code: t.publicCode,
+              timeStr,
+              state: t.status,
+              assignedCubicle: t.cubicleDisplayName,
+              patientName: t.patientName,
+            };
+          });
+          setRecentTickets(mapped);
+          setLastTicket((prev) => prev || mapped[0]);
+        }
+      } catch {
+        // Silencioso ante arranque inicial sin datos
+      }
+    };
+
+    fetchRecentTickets();
   }, []);
 
   const isNameValid = patientName.trim().length >= 2;
@@ -47,13 +82,15 @@ export const ReceptionPage: React.FC = () => {
     setIsSubmitting(true);
     setErrorMessage(null);
 
-    const idempotencyKey = typeof crypto !== 'undefined' && crypto.randomUUID
-      ? crypto.randomUUID()
-      : `idem-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    const idempotencyKey =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${Date.now()}-0000-4000-8000-${Date.now().toString(16).padStart(12, '0')}`;
 
-    const correlationId = typeof crypto !== 'undefined' && crypto.randomUUID
-      ? crypto.randomUUID()
-      : `corr-${Date.now()}`;
+    const correlationId =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${Date.now()}-1111-4000-8000-${Date.now().toString(16).padStart(12, '0')}`;
 
     try {
       // POST real a la API sin calcular códigos ni secuencias localmente

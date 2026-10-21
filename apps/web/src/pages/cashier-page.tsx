@@ -151,12 +151,14 @@ export const CashierPage: React.FC = () => {
     setIsActionPending(true);
     setConflictMessage(null);
 
-    const idempotencyKey = typeof crypto !== 'undefined' && crypto.randomUUID
-      ? crypto.randomUUID()
-      : `idem-cmd-${Date.now()}`;
-    const correlationId = typeof crypto !== 'undefined' && crypto.randomUUID
-      ? crypto.randomUUID()
-      : `corr-cmd-${Date.now()}`;
+    const idempotencyKey =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${Date.now()}-2222-4000-8000-${Date.now().toString(16).padStart(12, '0')}`;
+    const correlationId =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `${Date.now()}-3333-4000-8000-${Date.now().toString(16).padStart(12, '0')}`;
 
     try {
       const res = await apiClient<{ success: boolean; data: CubicleSnapshot }>(

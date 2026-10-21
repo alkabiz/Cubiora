@@ -25,6 +25,7 @@ export interface CreatedTicketResult {
   patientName: string;
   status: TicketStatus;
   createdAt: Date;
+  assignedCubicle?: string;
 }
 
 @Injectable()
@@ -163,6 +164,86 @@ export class TicketsService {
         createdAt: ticket.createdAt,
       };
 
+      // Intentar asignar un cubículo disponible en la misma transacción
+      try {
+        let availableCubicle: any = null;
+        try {
+          const cubicleRows = await tx.$queryRaw<Array<{ id: string; display_name: string }>>`
+            SELECT c.id, c.display_name 
+            FROM cubicles c
+            LEFT JOIN tickets t ON t.cubicle_id = c.id AND t.status IN ('ASSIGNED', 'CALLED', 'IN_SERVICE')
+            WHERE c.status = 'AVAILABLE' AND c.active = true AND t.id IS NULL
+            ORDER BY c.code ASC 
+            LIMIT 1 
+            FOR UPDATE OF c SKIP LOCKED
+          `;
+          if (cubicleRows && cubicleRows.length > 0) {
+            availableCubicle = cubicleRows[0];
+          }
+        } catch {
+          // Fallback para entornos en memoria o pruebas
+          availableCubicle = await tx.cubicle.findFirst({
+            where: {
+              status: CubicleStatus.AVAILABLE,
+              active: true,
+              tickets: {
+                none: {
+                  status: {
+                    in: [
+                      TicketStatus.ASSIGNED,
+                      TicketStatus.CALLED,
+                      TicketStatus.IN_SERVICE,
+                    ],
+                  },
+                },
+              },
+            },
+            orderBy: { code: 'asc' },
+          });
+        }
+
+        if (availableCubicle) {
+          await tx.cubicle.update({
+            where: { id: availableCubicle.id },
+            data: {
+              status: CubicleStatus.RESERVED,
+              version: { increment: 1 },
+            },
+          });
+
+          await tx.ticket.update({
+            where: { id: ticket.id },
+            data: {
+              status: TicketStatus.ASSIGNED,
+              cubicleId: availableCubicle.id,
+              assignedAt: new Date(),
+              version: { increment: 1 },
+            },
+          });
+
+          await tx.ticketStatusHistory.create({
+            data: {
+              id: ulid(),
+              ticketId: ticket.id,
+              fromStatus: TicketStatus.PENDING,
+              toStatus: TicketStatus.ASSIGNED,
+              cubicleId: availableCubicle.id,
+              actorUserId,
+              reasonCode: 'AUTO_ASSIGNED_ON_CREATION',
+              correlationId: correlationId || ulid(),
+            },
+          });
+
+          responsePayload.status = TicketStatus.ASSIGNED;
+          responsePayload.assignedCubicle =
+            availableCubicle.display_name || availableCubicle.displayName;
+        }
+      } catch (assignErr) {
+        this.logger.warn(
+          `No se pudo autoasignar cubículo en creación: ${(assignErr as Error).message}`,
+        );
+      }
+
       // Si se proporcionó Idempotency-Key, persistir la clave
       if (idempotencyKey) {
         await tx.idempotencyKey.create({
@@ -196,7 +277,11 @@ export class TicketsService {
   private async findTicket(ticketIdOrPublicId: string) {
     const ticket = await this.prisma.ticket.findFirst({
       where: {
-        OR: [{ id: ticketIdOrPublicId }, { publicId: ticketIdOrPublicId }],
+        OR: [
+          { id: ticketIdOrPublicId },
+          { publicId: ticketIdOrPublicId },
+          { publicCode: ticketIdOrPublicId },
+        ],
       },
       include: {
         cubicle: true,
@@ -276,95 +361,158 @@ export class TicketsService {
     const isFirstCall = ticket.status === TicketStatus.ASSIGNED;
     const now = new Date();
 
-    const { updatedCubicleId, callNumber, publicCode, cubicleDisplayName } =
-      await this.prisma.$transaction(async (tx) => {
-        // Contar llamadas previas para calcular número de llamada
-        const callCount = await tx.ticketCall.count({
-          where: { ticketId: ticket.id },
-        });
-        const nextCallNumber = callCount + 1;
+    const txResult = await this.prisma.$transaction(async (tx) => {
+      try {
+        await tx.$executeRaw`SELECT id FROM tickets WHERE id = ${ticket.id} FOR UPDATE`;
+      } catch {
+        // Fallback para entornos donde executeRaw no soporte FOR UPDATE
+      }
 
-        // Crear registro de llamada
-        await tx.ticketCall.create({
-          data: {
-            id: ulid(),
-            ticketId: ticket.id,
-            cubicleId,
-            calledBy: actorUserId,
-            callNumber: nextCallNumber,
-            createdAt: now,
+      if (idempotencyKey && tx.idempotencyKey) {
+        const existingInTx = await tx.idempotencyKey.findUnique({
+          where: {
+            uq_idempotency_key: {
+              actorUserId,
+              operation: `CALL_TICKET:${ticket.id}`,
+              idempotencyKey,
+            },
           },
         });
+        if (existingInTx) {
+          return {
+            isDuplicate: true,
+            updatedCubicleId: cubicleId,
+            callNumber: 0,
+            publicCode: ticket.publicCode,
+            cubicleDisplayName: '',
+          };
+        }
+      }
 
-        // Actualizar ticket
-        await tx.ticket.update({
-          where: { id: ticket.id },
-          data: {
-            status: TicketStatus.CALLED,
-            calledAt: now,
-            version: { increment: 1 },
-          },
+      const freshTicket = await tx.ticket.findUnique({ where: { id: ticket.id } });
+      if (
+        !freshTicket ||
+        (freshTicket.status !== TicketStatus.ASSIGNED &&
+          freshTicket.status !== TicketStatus.CALLED)
+      ) {
+        throw new ConflictException({
+          code: ApiErrorCode.STATE_CONFLICT,
+          message: `El turno en estado ${freshTicket?.status} no puede ser llamado. Debe estar en ASSIGNED o CALLED.`,
         });
+      }
 
-        // Actualizar estado del cubículo a CALLING
-        const cubicle = await tx.cubicle.update({
-          where: { id: cubicleId },
-          data: {
-            status: CubicleStatus.CALLING,
-            version: { increment: 1 },
-          },
-        });
-
-        // Registrar historial inmutable
-        await tx.ticketStatusHistory.create({
-          data: {
-            id: ulid(),
-            ticketId: ticket.id,
-            fromStatus: ticket.status,
-            toStatus: TicketStatus.CALLED,
-            cubicleId,
-            actorUserId,
-            reasonCode: isFirstCall ? 'TICKET_CALLED' : 'TICKET_RECALLED',
-            correlationId: correlationId || ulid(),
-          },
-        });
-
-        return {
-          updatedCubicleId: cubicle.id,
-          callNumber: nextCallNumber,
-          publicCode: ticket.publicCode,
-          cubicleDisplayName: cubicle.displayName,
-        };
+      // Contar llamadas previas para calcular número de llamada
+      const callCount = await tx.ticketCall.count({
+        where: { ticketId: ticket.id },
       });
+      const nextCallNumber = callCount + 1;
+
+      // Crear registro de llamada
+      await tx.ticketCall.create({
+        data: {
+          id: ulid(),
+          ticketId: ticket.id,
+          cubicleId,
+          calledBy: actorUserId,
+          callNumber: nextCallNumber,
+          createdAt: now,
+        },
+      });
+
+      // Actualizar ticket
+      await tx.ticket.update({
+        where: { id: ticket.id },
+        data: {
+          status: TicketStatus.CALLED,
+          calledAt: now,
+          version: { increment: 1 },
+        },
+      });
+
+      // Actualizar estado del cubículo a CALLING
+      const cubicle = await tx.cubicle.update({
+        where: { id: cubicleId },
+        data: {
+          status: CubicleStatus.CALLING,
+          version: { increment: 1 },
+        },
+      });
+
+      // Registrar historial inmutable
+      await tx.ticketStatusHistory.create({
+        data: {
+          id: ulid(),
+          ticketId: ticket.id,
+          fromStatus: ticket.status,
+          toStatus: TicketStatus.CALLED,
+          cubicleId,
+          actorUserId,
+          reasonCode: isFirstCall ? 'TICKET_CALLED' : 'TICKET_RECALLED',
+          correlationId: correlationId || ulid(),
+        },
+      });
+
+      if (idempotencyKey && tx.idempotencyKey) {
+        await tx.idempotencyKey.create({
+          data: {
+            id: ulid(),
+            actorUserId,
+            operation: `CALL_TICKET:${ticket.id}`,
+            idempotencyKey,
+            requestHash: idempotencyKey,
+            resourceType: 'Cubicle',
+            resourcePublicId: cubicle.id,
+            responseStatus: 200,
+            responseBody: {} as any,
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          },
+        });
+      }
+
+      return {
+        isDuplicate: false,
+        updatedCubicleId: cubicle.id,
+        callNumber: nextCallNumber,
+        publicCode: ticket.publicCode,
+        cubicleDisplayName: cubicle.displayName,
+      };
+    });
+
+    if (txResult.isDuplicate) {
+      const snapshot = await this.cubiclesService.buildCubicleSnapshot(txResult.updatedCubicleId);
+      return { statusCode: 200, data: snapshot };
+    }
 
     // Emisión SSE a pantalla pública en sala (CERO PII)
     this.publicDisplayService.emitEvent({
       type: isFirstCall ? 'ticket.called' : 'ticket.recalled',
       data: {
-        publicCode,
-        cubicleDisplayName,
+        publicCode: txResult.publicCode,
+        cubicleDisplayName: txResult.cubicleDisplayName,
         calledAt: now.toISOString(),
-        callNumber,
+        callNumber: txResult.callNumber,
       },
     });
 
-    const snapshot = await this.cubiclesService.buildCubicleSnapshot(updatedCubicleId);
+    const snapshot = await this.cubiclesService.buildCubicleSnapshot(txResult.updatedCubicleId);
 
     if (idempotencyKey) {
-      await this.prisma.idempotencyKey.create({
-        data: {
-          id: ulid(),
-          actorUserId,
-          operation: `CALL_TICKET:${ticket.id}`,
-          idempotencyKey,
-          requestHash: idempotencyKey,
-          resourceType: 'Cubicle',
-          resourcePublicId: updatedCubicleId,
-          responseStatus: 200,
-          responseBody: snapshot as unknown as Prisma.InputJsonValue,
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        },
-      });
+      try {
+        await this.prisma.idempotencyKey.update({
+          where: {
+            uq_idempotency_key: {
+              actorUserId,
+              operation: `CALL_TICKET:${ticket.id}`,
+              idempotencyKey,
+            },
+          },
+          data: {
+            responseBody: snapshot as unknown as Prisma.InputJsonValue,
+          },
+        });
+      } catch {
+        // En caso de que se haya limpiado
+      }
     }
 
     return { statusCode: 200, data: snapshot };
@@ -414,6 +562,20 @@ export class TicketsService {
     const cubicleId = ticket.cubicleId!;
 
     await this.prisma.$transaction(async (tx) => {
+      try {
+        await tx.$executeRaw`SELECT id FROM tickets WHERE id = ${ticket.id} FOR UPDATE`;
+      } catch {
+        // Fallback para entornos donde executeRaw no soporte FOR UPDATE
+      }
+
+      const freshTicket = await tx.ticket.findUnique({ where: { id: ticket.id } });
+      if (!freshTicket || freshTicket.status !== TicketStatus.CALLED) {
+        throw new ConflictException({
+          code: ApiErrorCode.STATE_CONFLICT,
+          message: `Solo se puede iniciar atención de un turno en estado CALLED. Estado actual: ${freshTicket?.status || ticket.status}.`,
+        });
+      }
+
       await tx.ticket.update({
         where: { id: ticket.id },
         data: {
@@ -517,6 +679,20 @@ export class TicketsService {
     const now = new Date();
 
     await this.prisma.$transaction(async (tx) => {
+      try {
+        await tx.$executeRaw`SELECT id FROM tickets WHERE id = ${ticket.id} FOR UPDATE`;
+      } catch {
+        // Fallback para entornos donde executeRaw no soporte FOR UPDATE
+      }
+
+      const freshTicket = await tx.ticket.findUnique({ where: { id: ticket.id } });
+      if (!freshTicket || freshTicket.status !== TicketStatus.IN_SERVICE) {
+        throw new ConflictException({
+          code: ApiErrorCode.STATE_CONFLICT,
+          message: `Solo se puede cerrar un turno que esté en estado IN_SERVICE. Estado actual: ${freshTicket?.status || ticket.status}.`,
+        });
+      }
+
       // 1. Cerrar el turno actual
       await tx.ticket.update({
         where: { id: ticket.id },
@@ -679,6 +855,20 @@ export class TicketsService {
     const now = new Date();
 
     await this.prisma.$transaction(async (tx) => {
+      try {
+        await tx.$executeRaw`SELECT id FROM tickets WHERE id = ${ticket.id} FOR UPDATE`;
+      } catch {
+        // Fallback para entornos donde executeRaw no soporte FOR UPDATE
+      }
+
+      const freshTicket = await tx.ticket.findUnique({ where: { id: ticket.id } });
+      if (!freshTicket || freshTicket.status !== TicketStatus.CALLED) {
+        throw new ConflictException({
+          code: ApiErrorCode.STATE_CONFLICT,
+          message: `Solo se puede marcar no presentado un turno en estado CALLED. Estado actual: ${freshTicket?.status || ticket.status}.`,
+        });
+      }
+
       // 1. Marcar NO_SHOW
       await tx.ticket.update({
         where: { id: ticket.id },
@@ -791,5 +981,36 @@ export class TicketsService {
     }
 
     return { statusCode: 200, data: snapshot };
+  }
+
+  /**
+   * Obtiene los últimos turnos creados para la pantalla de recepción (máximo 3).
+   */
+  async getRecentTickets(): Promise<
+    Array<{
+      publicCode: string;
+      status: TicketStatus;
+      cubicleDisplayName?: string | undefined;
+      createdAt: string;
+      patientName: string;
+    }>
+  > {
+    const tickets = await this.prisma.ticket.findMany({
+      take: 3,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        cubicle: {
+          select: { displayName: true },
+        },
+      },
+    });
+
+    return tickets.map((t) => ({
+      publicCode: t.publicCode,
+      status: t.status as TicketStatus,
+      cubicleDisplayName: t.cubicle?.displayName,
+      createdAt: t.createdAt.toISOString(),
+      patientName: t.patientName,
+    }));
   }
 }

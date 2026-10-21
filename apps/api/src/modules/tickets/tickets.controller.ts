@@ -1,6 +1,7 @@
 import {
   Controller,
   Post,
+  Get,
   Body,
   Param,
   Headers,
@@ -19,6 +20,16 @@ import { UserRole } from '@cubiora/shared';
 @Controller('tickets')
 export class TicketsController {
   constructor(private readonly ticketsService: TicketsService) {}
+
+  @Roles(UserRole.RECEPTION, UserRole.ADMIN)
+  @Get('recent')
+  async getRecentTickets() {
+    const data = await this.ticketsService.getRecentTickets();
+    return {
+      success: true,
+      data,
+    };
+  }
 
   @Roles(UserRole.RECEPTION, UserRole.ADMIN)
   @Post()

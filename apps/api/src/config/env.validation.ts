@@ -7,7 +7,7 @@
  */
 import { z } from 'zod/v4';
 
-const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '192.168.1.33']);
 
 /**
  * Valida de forma estricta que las URLs de base de datos cumplan con las reglas
