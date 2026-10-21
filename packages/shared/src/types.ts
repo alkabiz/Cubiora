@@ -50,6 +50,11 @@ export interface CubicleActiveTicket {
   publicId: string;
   publicCode: string;
   patientName: string;
+  /**
+   * Documento del paciente ya enmascarado por el backend.
+   * El documento completo nunca sale del servidor.
+   */
+  maskedDocument?: string | null;
   status: TicketStatus;
   version: number;
   assignedAt?: string | null;
@@ -70,6 +75,10 @@ export interface CubicleSnapshot {
     version: number;
   };
   activeTicket: CubicleActiveTicket | null;
+  /** Pacientes pendientes de asignación al momento de construir el snapshot. */
+  waitingCount: number;
+  /** Hora del servidor usada como referencia para cronómetros y offsets de reloj. */
+  serverTime: string;
 }
 
 /**
@@ -90,4 +99,3 @@ export interface ApiResponse<T> {
   data: T;
   meta?: Record<string, unknown>;
 }
-

@@ -38,9 +38,8 @@ describe('Punto 7 — Integración y Concurrencia de Cubículos y Pantalla', () 
         let items = Array.from(ticketsDb.values());
         if (where?.OR) {
           return (
-            items.find(
-              (t) =>
-                where.OR.some((cond: any) => cond.id === t.id || cond.publicId === t.publicId),
+            items.find((t) =>
+              where.OR.some((cond: any) => cond.id === t.id || cond.publicId === t.publicId),
             ) || null
           );
         }
@@ -67,6 +66,11 @@ describe('Punto 7 — Integración y Concurrencia de Cubículos y Pantalla', () 
       findUnique: vi.fn(async ({ where }) => {
         return ticketsDb.get(where.id) || null;
       }),
+      count: vi.fn(async ({ where }) => {
+        return Array.from(ticketsDb.values()).filter(
+          (ticket) => !where?.status || ticket.status === where.status,
+        ).length;
+      }),
       update: vi.fn(async ({ where, data }) => {
         const item = ticketsDb.get(where.id);
         if (!item) throw new Error('Ticket not found');
@@ -83,12 +87,7 @@ describe('Punto 7 — Integración y Concurrencia de Cubículos y Pantalla', () 
       findFirst: vi.fn(async ({ where }) => {
         const items = Array.from(cubiclesDb.values());
         if (where?.OR) {
-          return (
-            items.find(
-              (c) =>
-                where.OR.some((cond: any) => cond.code === c.code),
-            ) || null
-          );
+          return items.find((c) => where.OR.some((cond: any) => cond.code === c.code)) || null;
         }
         return items[0] || null;
       }),
@@ -208,7 +207,10 @@ describe('Punto 7 — Integración y Concurrencia de Cubículos y Pantalla', () 
         sseEventsEmitted.push(event);
       }),
       getSnapshot: vi.fn(async () => {
-        const calls = await mockPrisma.ticketCall.findMany({ take: 5, orderBy: { createdAt: 'desc' } });
+        const calls = await mockPrisma.ticketCall.findMany({
+          take: 5,
+          orderBy: { createdAt: 'desc' },
+        });
         const formatted = calls.map((c: any) => ({
           publicCode: c.ticket.publicCode,
           cubicleDisplayName: c.cubicle.displayName,
@@ -252,6 +254,7 @@ describe('Punto 7 — Integración y Concurrencia de Cubículos y Pantalla', () 
         sequenceNumber: BigInt(1),
         publicCode: 'TUR-000001-GE',
         patientName: 'Carlos Pérez',
+        patientDocument: '79.438.212',
         status: TicketStatus.ASSIGNED,
         cubicleId: 'cub_03_id',
         version: 1,
@@ -267,6 +270,7 @@ describe('Punto 7 — Integración y Concurrencia de Cubículos y Pantalla', () 
         sequenceNumber: BigInt(2),
         publicCode: 'TUR-000002-GE',
         patientName: 'María Rodríguez',
+        patientDocument: '12.345.678',
         status: TicketStatus.PENDING,
         cubicleId: null,
         version: 1,
@@ -280,6 +284,10 @@ describe('Punto 7 — Integración y Concurrencia de Cubículos y Pantalla', () 
       expect(initialSnapshot.activeTicket).not.toBeNull();
       expect(initialSnapshot.activeTicket?.publicCode).toBe('TUR-000001-GE');
       expect(initialSnapshot.activeTicket?.status).toBe(TicketStatus.ASSIGNED);
+      expect(initialSnapshot.activeTicket?.maskedDocument).toBe('C.C. ••••••8212');
+      expect((initialSnapshot.activeTicket as any).patientDocument).toBeUndefined();
+      expect(initialSnapshot.waitingCount).toBe(1);
+      expect(new Date(initialSnapshot.serverTime).toString()).not.toBe('Invalid Date');
 
       // 3. Llamar turno (ASSIGNED -> CALLED)
       const callResult = await ticketsService.callTicket(
@@ -334,7 +342,10 @@ describe('Punto 7 — Integración y Concurrencia de Cubículos y Pantalla', () 
       // Snapshot retornado: nuevo turno ticket 2 asignado automáticamente
       expect(closeResult.data.activeTicket?.publicCode).toBe('TUR-000002-GE');
       expect(closeResult.data.activeTicket?.status).toBe(TicketStatus.ASSIGNED);
+      expect(closeResult.data.activeTicket?.maskedDocument).toBe('C.C. ••••••5678');
       expect(closeResult.data.cubicle.status).toBe(CubicleStatus.RESERVED);
+      expect(closeResult.data.waitingCount).toBe(0);
+      expect(new Date(closeResult.data.serverTime).toString()).not.toBe('Invalid Date');
 
       // 7. Cerrar ticket2 sin que haya más turnos en cola -> cubículo queda AVAILABLE
       // Primero llamamos y comenzamos atención de ticket 2
@@ -349,6 +360,7 @@ describe('Punto 7 — Integración y Concurrencia de Cubículos y Pantalla', () 
       );
       expect(finalClose.data.activeTicket).toBeNull();
       expect(finalClose.data.cubicle.status).toBe(CubicleStatus.AVAILABLE);
+      expect(finalClose.data.waitingCount).toBe(0);
     });
 
     it('debe marcar no presentado (NO_SHOW) y asignar el siguiente PENDING si existe', async () => {

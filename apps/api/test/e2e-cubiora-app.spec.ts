@@ -44,8 +44,24 @@ describe('E2E Operacional Completo con Rol cubiora_app', () => {
         if (sql.includes('system_sequences')) {
           return [{ next_value: 1n }];
         }
+        if (sql.includes("status = 'PENDING'")) {
+          const pending = Array.from(ticketsDb.values())
+            .filter((ticket) => ticket.status === TicketStatus.PENDING)
+            .sort((a, b) => Number(a.sequenceNumber - b.sequenceNumber))[0];
+          return pending ? [{ id: pending.id }] : [];
+        }
         if (sql.includes('cubicles')) {
-          return [{ id: 'cub-01', display_name: 'Cubículo 01' }];
+          const cubicle = cubiclesDb.get('cub-01');
+          const hasActiveTicket = Array.from(ticketsDb.values()).some(
+            (ticket) =>
+              ticket.cubicleId === 'cub-01' &&
+              [TicketStatus.ASSIGNED, TicketStatus.CALLED, TicketStatus.IN_SERVICE].includes(
+                ticket.status,
+              ),
+          );
+          return cubicle?.status === CubicleStatus.AVAILABLE && cubicle.active && !hasActiveTicket
+            ? [{ id: 'cub-01', display_name: 'Cubículo 01' }]
+            : [];
         }
         return [];
       },
@@ -56,7 +72,9 @@ describe('E2E Operacional Completo con Rol cubiora_app', () => {
             return ticketsDb.get(where.id) || null;
           }
           if (where?.publicId) {
-            return Array.from(ticketsDb.values()).find((t) => t.publicId === where.publicId) || null;
+            return (
+              Array.from(ticketsDb.values()).find((t) => t.publicId === where.publicId) || null
+            );
           }
           return null;
         },
@@ -64,9 +82,8 @@ describe('E2E Operacional Completo con Rol cubiora_app', () => {
           let items = Array.from(ticketsDb.values());
           if (where?.OR) {
             return (
-              items.find(
-                (t) =>
-                  where.OR.some((c: any) => c.id === t.id || c.publicId === t.publicId),
+              items.find((t) =>
+                where.OR.some((c: any) => c.id === t.id || c.publicId === t.publicId),
               ) || null
             );
           }
@@ -133,6 +150,11 @@ describe('E2E Operacional Completo con Rol cubiora_app', () => {
           };
           ticketsDb.set(where.id, updated);
           return updated;
+        },
+        count: async ({ where }: any) => {
+          return Array.from(ticketsDb.values()).filter(
+            (ticket) => !where?.status || ticket.status === where.status,
+          ).length;
         },
         findMany: async () => Array.from(ticketsDb.values()),
       },
@@ -213,9 +235,7 @@ describe('E2E Operacional Completo con Rol cubiora_app', () => {
               const t =
                 ticketsDb.get(c.ticketId) ||
                 Array.from(ticketsDb.values()).find((x) => x.id === c.ticketId);
-              const cub =
-                cubiclesDb.get(c.cubicleId) ||
-                Array.from(cubiclesDb.values())[0];
+              const cub = cubiclesDb.get(c.cubicleId) || Array.from(cubiclesDb.values())[0];
               return {
                 ...c,
                 ticket: t ? { publicCode: t.publicCode } : { publicCode: 'TUR-000001-GE' },
@@ -277,6 +297,10 @@ describe('E2E Operacional Completo con Rol cubiora_app', () => {
     const snapshotAssigned = await cubiclesService.buildCubicleSnapshot('cub-01');
     expect(snapshotAssigned.cubicle.status).toBe(CubicleStatus.RESERVED);
     expect(snapshotAssigned.activeTicket?.publicId).toBe(createdTicket.publicId);
+    expect(snapshotAssigned.activeTicket?.maskedDocument).toBe('C.C. ••••••3040');
+    expect(snapshotAssigned.activeTicket?.maskedDocument).not.toContain('10203040');
+    expect(snapshotAssigned.waitingCount).toBe(0);
+    expect(new Date(snapshotAssigned.serverTime).toString()).not.toBe('Invalid Date');
 
     // 4. Llamar Turno (CALLED)
     const callResult = await ticketsService.callTicket(
@@ -316,6 +340,7 @@ describe('E2E Operacional Completo con Rol cubiora_app', () => {
     const snapshotClosed = await cubiclesService.buildCubicleSnapshot('cub-01');
     expect(snapshotClosed.cubicle.status).toBe(CubicleStatus.AVAILABLE);
     expect(snapshotClosed.activeTicket).toBeNull();
+    expect(snapshotClosed.waitingCount).toBe(0);
 
     // 7. Flujo de No Presentado (NO_SHOW) con un segundo turno
     const secondRes = await ticketsService.createTicket(
@@ -335,8 +360,22 @@ describe('E2E Operacional Completo con Rol cubiora_app', () => {
       'idemp-call-2',
     );
 
+    // Con el cubículo en CALLED, un tercer turno queda en cola PENDING.
+    const thirdRes = await ticketsService.createTicket(
+      {
+        patientName: 'Ana Torres',
+        patientDocument: '30405060',
+      },
+      'recepcion-01',
+    );
+    const thirdTicket = thirdRes.data;
+    expect(thirdTicket.status).toBe(TicketStatus.PENDING);
+
     const snapshotBeforeNoShow = await cubiclesService.buildCubicleSnapshot('cub-01');
-    await ticketsService.noShowTicket(
+    expect(snapshotBeforeNoShow.activeTicket?.publicId).toBe(secondTicket.publicId);
+    expect(snapshotBeforeNoShow.waitingCount).toBe(1);
+
+    const noShowResult = await ticketsService.noShowTicket(
       secondTicket.publicId,
       'cub-01',
       'corr-noshow',
@@ -344,9 +383,14 @@ describe('E2E Operacional Completo con Rol cubiora_app', () => {
       snapshotBeforeNoShow.activeTicket!.version,
     );
 
+    // La inasistencia libera el cubículo y asigna el siguiente PENDING real.
+    expect(noShowResult.data.activeTicket?.publicId).toBe(thirdTicket.publicId);
+    expect(noShowResult.data.activeTicket?.status).toBe(TicketStatus.ASSIGNED);
+    expect(noShowResult.data.waitingCount).toBe(0);
+
     const snapshotAfterNoShow = await cubiclesService.buildCubicleSnapshot('cub-01');
-    expect(snapshotAfterNoShow.cubicle.status).toBe(CubicleStatus.AVAILABLE);
-    expect(snapshotAfterNoShow.activeTicket).toBeNull();
+    expect(snapshotAfterNoShow.cubicle.status).toBe(CubicleStatus.RESERVED);
+    expect(snapshotAfterNoShow.activeTicket?.publicId).toBe(thirdTicket.publicId);
 
     // 8. Snapshot de Pantalla Pública (Garantía Cero PII)
     const publicSnapshot = await publicDisplayService.getSnapshot();

@@ -6,6 +6,7 @@ import {
   CubicleStatus,
   TicketStatus,
   ApiErrorCode,
+  maskDocument,
 } from '@cubiora/shared';
 
 @Injectable()
@@ -20,9 +21,7 @@ export class CubiclesService {
    */
   async getOrCreateCubicleByCode(codeParam: string): Promise<CubicleSnapshot> {
     const rawCode = codeParam.trim().toUpperCase();
-    const normalizedCode = rawCode.startsWith('CUB-')
-      ? rawCode
-      : `CUB-${rawCode.padStart(2, '0')}`;
+    const normalizedCode = rawCode.startsWith('CUB-') ? rawCode : `CUB-${rawCode.padStart(2, '0')}`;
 
     // 1. Buscar cubículo en la base de datos
     let cubicle = await this.prisma.cubicle.findFirst({
@@ -68,21 +67,27 @@ export class CubiclesService {
       });
     }
 
-    // Buscar ticket activo asociado a este cubículo
-    const activeTicketRaw = await this.prisma.ticket.findFirst({
-      where: {
-        cubicleId: cubicle.id,
-        status: {
-          in: [TicketStatus.ASSIGNED, TicketStatus.CALLED, TicketStatus.IN_SERVICE],
+    // El turno activo y la cola se consultan en paralelo. La cola cuenta
+    // únicamente turnos PENDING: los que todavía no tienen cubículo asignado.
+    const [activeTicketRaw, waitingCount] = await Promise.all([
+      this.prisma.ticket.findFirst({
+        where: {
+          cubicleId: cubicle.id,
+          status: {
+            in: [TicketStatus.ASSIGNED, TicketStatus.CALLED, TicketStatus.IN_SERVICE],
+          },
         },
-      },
-      include: {
-        calls: {
-          orderBy: { callNumber: 'desc' },
-          take: 1,
+        include: {
+          calls: {
+            orderBy: { callNumber: 'desc' },
+            take: 1,
+          },
         },
-      },
-    });
+      }),
+      this.prisma.ticket.count({
+        where: { status: TicketStatus.PENDING },
+      }),
+    ]);
 
     let activeTicket = null;
     if (activeTicketRaw) {
@@ -92,6 +97,7 @@ export class CubiclesService {
         publicId: activeTicketRaw.publicId,
         publicCode: activeTicketRaw.publicCode,
         patientName: activeTicketRaw.patientName,
+        maskedDocument: maskDocument(activeTicketRaw.patientDocument),
         status: activeTicketRaw.status as TicketStatus,
         version: activeTicketRaw.version,
         assignedAt: activeTicketRaw.assignedAt?.toISOString() ?? null,
@@ -110,6 +116,8 @@ export class CubiclesService {
         version: cubicle.version,
       },
       activeTicket,
+      waitingCount,
+      serverTime: new Date().toISOString(),
     };
   }
 }
