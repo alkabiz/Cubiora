@@ -19,8 +19,10 @@ import {
   Cross2Icon,
   ExclamationTriangleIcon,
 } from '@radix-ui/react-icons';
+import { useNavigate } from 'react-router-dom';
 import { apiClient, ApiClientError } from '../lib/api';
 import { CubicleSnapshot, TicketStatus } from '@cubiora/shared';
+import { useAuth } from '../context/auth-context';
 
 export type CubicleState = 'AVAILABLE' | 'ASSIGNED' | 'CALLED' | 'IN_SERVICE';
 
@@ -36,6 +38,8 @@ export interface ActiveTicketModel {
 }
 
 export const CashierPage: React.FC = () => {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [cubicleCode] = useState('CUB-03');
   const [cubicleDisplayName, setCubicleDisplayName] = useState('Cubículo 03');
   const [cubicleState, setCubicleState] = useState<CubicleState>('AVAILABLE');
@@ -200,7 +204,7 @@ export const CashierPage: React.FC = () => {
     }
   };
 
-  const handleLogoutClick = () => {
+  const handleLogoutClick = async () => {
     // Bloquear cierre de sesión en ASSIGNED, CALLED, IN_SERVICE
     if (
       currentTicket !== null &&
@@ -211,7 +215,8 @@ export const CashierPage: React.FC = () => {
     }
 
     // Permitido únicamente en AVAILABLE o sin turno activo
-    window.location.href = '/login';
+    await logout();
+    navigate('/login', { replace: true });
   };
 
   const formatSecs = (total: number) => {
@@ -252,7 +257,7 @@ export const CashierPage: React.FC = () => {
             <Flex align="center" gap="1.5" className="px-2.5 py-1 rounded-md bg-[var(--gray-a3)]">
               <PersonIcon width={14} height={14} />
               <Text size="1" weight="medium">
-                Usuario
+                {user?.displayName || user?.username || 'Cajero'}
               </Text>
             </Flex>
 

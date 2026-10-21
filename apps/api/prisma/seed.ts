@@ -88,6 +88,22 @@ async function main() {
     {
       id: ulid(),
       publicId: ulid(),
+      username: 'receptor',
+      displayName: 'Recepción de Farmacia',
+      role: 'RECEPTION' as const,
+      passwordHash,
+    },
+    {
+      id: ulid(),
+      publicId: ulid(),
+      username: 'cajero',
+      displayName: 'Atención Cubículo 01',
+      role: 'CASHIER' as const,
+      passwordHash,
+    },
+    {
+      id: ulid(),
+      publicId: ulid(),
       username: 'recepcion',
       displayName: 'Recepcionista Turnos',
       role: 'RECEPTION' as const,
@@ -118,7 +134,7 @@ async function main() {
       create: user,
     });
   }
-  console.log('✅ 3 Usuarios de prueba asegurados (recepcion, cajero1, admin)');
+  console.log('✅ Usuarios de prueba asegurados (receptor, cajero, recepcion, cajero1, admin)');
   console.log('🌱 Seed de desarrollo completado exitosamente.');
 }
 

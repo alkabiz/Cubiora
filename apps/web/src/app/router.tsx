@@ -2,6 +2,8 @@ import React, { lazy, Suspense } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { Layout } from './layout';
 
+import { ProtectedRoute } from '../components/protected-route';
+
 const ReceptionPage = lazy(() =>
   import('../pages/reception-page').then((m) => ({ default: m.ReceptionPage })),
 );
@@ -34,13 +36,15 @@ export const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: <Navigate to="/recepcion" replace />,
+        element: <Navigate to="/login" replace />,
       },
       {
         path: 'recepcion',
         element: (
           <RouteWrapper>
-            <ReceptionPage />
+            <ProtectedRoute allowedRoles={['RECEPTION', 'ADMIN']}>
+              <ReceptionPage />
+            </ProtectedRoute>
           </RouteWrapper>
         ),
       },
@@ -48,7 +52,9 @@ export const router = createBrowserRouter([
         path: 'cajero',
         element: (
           <RouteWrapper>
-            <CashierPage />
+            <ProtectedRoute allowedRoles={['CASHIER', 'ADMIN']}>
+              <CashierPage />
+            </ProtectedRoute>
           </RouteWrapper>
         ),
       },

@@ -65,8 +65,12 @@ export class PrismaService
         }
       : undefined;
 
+    const sanitizedConnectionString = env.DATABASE_URL
+      .replace(/([?&])sslmode=[^&]+(&|$)/, '$1')
+      .replace(/[?&]$/, '');
+
     const pool = new Pool({
-      connectionString: env.DATABASE_URL,
+      connectionString: sanitizedConnectionString,
       max: 10,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,

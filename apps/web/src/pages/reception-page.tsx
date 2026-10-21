@@ -11,8 +11,10 @@ import {
   Table,
 } from '@radix-ui/themes';
 import { CheckCircledIcon, CopyIcon, PersonIcon, ExitIcon } from '@radix-ui/react-icons';
+import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../lib/api';
 import { TicketStatus } from '@cubiora/shared';
+import { useAuth } from '../context/auth-context';
 
 export interface IssuedTicket {
   code: string;
@@ -24,6 +26,8 @@ export interface IssuedTicket {
 }
 
 export const ReceptionPage: React.FC = () => {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [patientName, setPatientName] = useState('');
   const [idDocument, setIdDocument] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -155,6 +159,11 @@ export const ReceptionPage: React.FC = () => {
     nameInputRef.current?.focus();
   };
 
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login', { replace: true });
+  };
+
   return (
     <Box className="w-full max-w-6xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
       {/* ─── Encabezado institucional de Recepción ─────────────────────── */}
@@ -183,11 +192,18 @@ export const ReceptionPage: React.FC = () => {
             <Flex align="center" gap="1.5" className="px-2.5 py-1 rounded-md bg-[var(--gray-a3)]">
               <PersonIcon width={14} height={14} />
               <Text size="1" weight="medium">
-                recepcion
+                {user?.displayName || user?.username || 'recepcion'}
               </Text>
             </Flex>
 
-            <Button size="1" variant="ghost" color="gray" style={{ cursor: 'pointer' }}>
+            <Button
+              id="btn-logout-reception"
+              size="1"
+              variant="ghost"
+              color="gray"
+              onClick={handleLogout}
+              style={{ cursor: 'pointer' }}
+            >
               <ExitIcon width={14} height={14} />
               Cerrar sesión
             </Button>
