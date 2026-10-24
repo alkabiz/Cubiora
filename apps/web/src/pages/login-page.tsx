@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card, Heading, Text, TextField, Button, Flex, Box, Badge, Callout } from '@radix-ui/themes';
 import { ExclamationTriangleIcon } from '@radix-ui/react-icons';
 import { useAuth } from '../context/auth-context';
+import { DEFAULT_ROUTE_BY_ROLE } from '../app/navigation-config';
 
 const loginSchema = z.object({
   username: z.string().trim().min(3, 'El usuario es obligatorio (mínimo 3 caracteres)'),
@@ -33,11 +34,7 @@ export const LoginPage: React.FC = () => {
 
   useEffect(() => {
     if (user) {
-      if (user.role === 'CASHIER') {
-        navigate('/cajero', { replace: true });
-      } else {
-        navigate('/recepcion', { replace: true });
-      }
+      navigate(DEFAULT_ROUTE_BY_ROLE[user.role], { replace: true });
     }
   }, [user, navigate]);
 
@@ -45,11 +42,7 @@ export const LoginPage: React.FC = () => {
     setServerError(null);
     try {
       const loggedUser = await login(data.username, data.password);
-      if (loggedUser.role === 'CASHIER') {
-        navigate('/cajero', { replace: true });
-      } else {
-        navigate('/recepcion', { replace: true });
-      }
+      navigate(DEFAULT_ROUTE_BY_ROLE[loggedUser.role], { replace: true });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Credenciales inválidas o usuario inactivo';
       setServerError(message);
