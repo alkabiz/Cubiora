@@ -120,9 +120,9 @@ model TicketStatusHistory {
   correlationId String        @map("correlation_id") @db.VarChar(36)
   createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  ticket  Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  cubicle Cubicle? @relation(fields: [cubicleId], references: [id], onDelete: SetNull)
-  actor   User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  ticket  Ticket   @relation(fields: [ticketId], references: [id], onDelete: Restrict)
+  cubicle Cubicle? @relation(fields: [cubicleId], references: [id], onDelete: Restrict)
+  actor   User?    @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
 
   @@index([ticketId, createdAt, id], name: "ix_history_ticket_time")
   @@index([createdAt, id], name: "ix_history_time")
@@ -137,7 +137,7 @@ model TicketCall {
   callNumber Int      @default(1) @map("call_number")
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  ticket  Ticket  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticket  Ticket  @relation(fields: [ticketId], references: [id], onDelete: Restrict)
   cubicle Cubicle @relation(fields: [cubicleId], references: [id], onDelete: Restrict)
   caller  User    @relation(fields: [calledBy], references: [id], onDelete: Restrict)
 
