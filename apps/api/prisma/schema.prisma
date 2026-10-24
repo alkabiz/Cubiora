@@ -98,12 +98,14 @@ model Ticket {
   updatedAt        DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   cubicle       Cubicle?              @relation(fields: [cubicleId], references: [id], onDelete: SetNull)
-  creator       User                  @relation(fields: [createdBy], references: [id])
+  creator       User                  @relation(fields: [createdBy], references: [id], onDelete: Restrict)
   calls         TicketCall[]
   statusHistory TicketStatusHistory[]
 
+  @@index([status, sequenceNumber], name: "ix_tickets_status_sequence")
   @@index([cubicleId, status], name: "ix_tickets_cubicle_status")
   @@index([patientDocument, status], name: "ix_tickets_document_status")
+  @@index([createdBy], name: "ix_tickets_created_by")
   @@map("tickets")
 }
 
