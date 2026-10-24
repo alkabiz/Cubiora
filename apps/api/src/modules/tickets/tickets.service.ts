@@ -94,31 +94,40 @@ export class TicketsService {
 
     // 2. Transacción atómica con aislamiento y bloqueo pesimista
     const result = await this.prisma.$transaction(async (tx) => {
-      // Bloqueo pesimista de la fila de secuencia con FOR UPDATE
-      const sequenceRows = await tx.$queryRaw<{ next_value: bigint }[]>`
-        SELECT next_value 
-        FROM system_sequences 
-        WHERE sequence_name = 'TICKETS' 
-        FOR UPDATE
+      // 2. Incremento atómico en 1 solo paso con UPDATE ... RETURNING
+      let seqRows = await tx.$queryRaw<Array<{ current_value: bigint }>>`
+        UPDATE "system_sequences"
+        SET "next_value" = "next_value" + 1,
+            "updated_at" = NOW()
+        WHERE "sequence_name" = 'TICKETS'
+        RETURNING ("next_value" - 1) AS "current_value"
       `;
 
-      let currentSequence: bigint;
-      const firstRow = sequenceRows[0];
-
-      if (!firstRow) {
+      if (!seqRows.length) {
         await tx.$executeRaw`
-          INSERT INTO system_sequences (sequence_name, next_value, updated_at)
+          INSERT INTO "system_sequences" ("sequence_name", "next_value", "updated_at")
           VALUES ('TICKETS', 2, NOW())
+          ON CONFLICT ("sequence_name") DO NOTHING
         `;
-        currentSequence = BigInt(1);
-      } else {
-        currentSequence = BigInt(firstRow.next_value);
-        await tx.$executeRaw`
-          UPDATE system_sequences 
-          SET next_value = next_value + 1, updated_at = NOW() 
-          WHERE sequence_name = 'TICKETS'
+        seqRows = await tx.$queryRaw<Array<{ current_value: bigint }>>`
+          UPDATE "system_sequences"
+          SET "next_value" = "next_value" + 1,
+              "updated_at" = NOW()
+          WHERE "sequence_name" = 'TICKETS'
+          RETURNING ("next_value" - 1) AS "current_value"
         `;
       }
+
+      const firstRow = seqRows[0];
+      if (!firstRow) {
+        throw new Error('La secuencia del sistema TICKETS no está inicializada.');
+      }
+
+      const rawVal = (firstRow as any).current_value ?? (firstRow as any).next_value;
+      if (rawVal === undefined) {
+        throw new Error('La secuencia del sistema TICKETS no devolvió un valor válido.');
+      }
+      const currentSequence = BigInt(rawVal);
 
       // Formato requerido: TUR-NNNNNN-XX
       const seqPadded = String(currentSequence).padStart(6, '0');
@@ -1028,5 +1037,19 @@ export class TicketsService {
       cubicleDisplayName: t.cubicle?.displayName,
       createdAt: t.createdAt.toISOString(),
     }));
+  }
+
+  /**
+   * Elimina las claves de idempotencia vencidas usando el índice ix_idempotency_expiry
+   */
+  async purgeExpiredIdempotencyKeys(): Promise<number> {
+    const result = await this.prisma.idempotencyKey.deleteMany({
+      where: {
+        expiresAt: {
+          lt: new Date(),
+        },
+      },
+    });
+    return result.count;
   }
 }

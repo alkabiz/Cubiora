@@ -42,7 +42,7 @@ describe('E2E Operacional Completo con Rol cubiora_app', () => {
       $queryRaw: async (query: any) => {
         const sql = String(query?.strings ? query.strings.join(' ') : query);
         if (sql.includes('system_sequences')) {
-          return [{ next_value: 1n }];
+          return [{ next_value: 1n, current_value: 1n }];
         }
         if (sql.includes("status = 'PENDING'")) {
           const pending = Array.from(ticketsDb.values())

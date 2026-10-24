@@ -45,13 +45,30 @@ describe('Fase 3a — Creación de Turnos (CP-01, CP-02, CP-03)', () => {
         const key = `${where.uq_idempotency_key.actorUserId}:${where.uq_idempotency_key.operation}:${where.uq_idempotency_key.idempotencyKey}`;
         return idempotencyStore.get(key) || null;
       }),
+      deleteMany: vi.fn(async ({ where }) => {
+        let count = 0;
+        const now = where?.expiresAt?.lt ?? new Date();
+        for (const [key, val] of idempotencyStore.entries()) {
+          if (val.expiresAt && val.expiresAt < now) {
+            idempotencyStore.delete(key);
+            count++;
+          }
+        }
+        return { count };
+      }),
     },
     $transaction: vi.fn(async (callback) => {
       const release = await acquireLock();
       try {
         const mockTx = {
-          $queryRaw: vi.fn(async () => {
-            return [{ next_value: sequenceValue }];
+          $queryRaw: vi.fn(async (query: any) => {
+            const sql = String(query?.strings ? query.strings.join(' ') : query);
+            if (sql.includes('system_sequences')) {
+              const current = sequenceValue;
+              sequenceValue = sequenceValue + BigInt(1);
+              return [{ current_value: current, next_value: sequenceValue }];
+            }
+            return [];
           }),
           $executeRaw: vi.fn(async () => {
             sequenceValue = sequenceValue + BigInt(1);
@@ -214,6 +231,20 @@ describe('Fase 3a — Creación de Turnos (CP-01, CP-02, CP-03)', () => {
       await expect(
         ticketsService.createTicket(dto2, 'user1', 'corr-2', idempotencyKey),
       ).rejects.toThrow(ConflictException);
+    });
+
+    it('debe purgar llaves de idempotencia expiradas sin afectar las activas', async () => {
+      idempotencyStore.set('user1:OP:exp-1', {
+        expiresAt: new Date(Date.now() - 10000),
+      });
+      idempotencyStore.set('user1:OP:act-1', {
+        expiresAt: new Date(Date.now() + 60000),
+      });
+
+      const purged = await ticketsService.purgeExpiredIdempotencyKeys();
+      expect(purged).toBe(1);
+      expect(idempotencyStore.has('user1:OP:exp-1')).toBe(false);
+      expect(idempotencyStore.has('user1:OP:act-1')).toBe(true);
     });
   });
 
