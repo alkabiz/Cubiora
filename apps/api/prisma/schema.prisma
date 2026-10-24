@@ -130,19 +130,20 @@ model TicketStatusHistory {
 }
 
 model TicketCall {
-  id        String   @id @db.VarChar(26)
-  ticketId  String   @map("ticket_id") @db.VarChar(26)
-  cubicleId String   @map("cubicle_id") @db.VarChar(26)
-  calledBy  String   @map("called_by") @db.VarChar(26)
-  callNumber Int     @default(1) @map("call_number")
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  id         String   @id @db.VarChar(26)
+  ticketId   String   @map("ticket_id") @db.VarChar(26)
+  cubicleId  String   @map("cubicle_id") @db.VarChar(26)
+  calledBy   String   @map("called_by") @db.VarChar(26)
+  callNumber Int      @default(1) @map("call_number")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   ticket  Ticket  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  cubicle Cubicle @relation(fields: [cubicleId], references: [id], onDelete: Cascade)
-  caller  User    @relation(fields: [calledBy], references: [id], onDelete: Cascade)
+  cubicle Cubicle @relation(fields: [cubicleId], references: [id], onDelete: Restrict)
+  caller  User    @relation(fields: [calledBy], references: [id], onDelete: Restrict)
 
   @@unique([ticketId, callNumber], name: "uq_ticket_calls_call_number")
   @@index([createdAt, id], name: "ix_calls_recent")
+  @@index([cubicleId, createdAt], name: "ix_calls_cubicle_time")
   @@map("ticket_calls")
 }
 
