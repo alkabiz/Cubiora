@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "@radix-ui/themes/styles.css";
+@import "./app-shell.css";
 
 /* ─── Base Operativa Cubiora (Radix Themes + Tailwind v4) ──────────────────── */
 :root {
@@ -7,11 +8,18 @@
   --font-mono: 'JetBrains Mono', monospace;
 }
 
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
 body {
   min-height: 100vh;
   margin: 0;
+  overflow-x: hidden;
   font-family: var(--default-font-family);
-  background-color: var(--color-background);
+  background-color: var(--app-bg);
   color: var(--gray-12);
   -webkit-font-smoothing: antialiased;
 }
