@@ -145,6 +145,12 @@ const envSchema = z
 
     // Negocio
     NO_SHOW_MAX_CALLS: z.coerce.number().int().min(1).max(10).default(3),
+    CUBICLE_DAILY_TARGET_SECONDS: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(86_400)
+      .default(12 * 60),
   })
   .superRefine((data, ctx) => {
     try {

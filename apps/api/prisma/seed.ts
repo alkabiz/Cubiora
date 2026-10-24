@@ -63,12 +63,14 @@ async function main() {
     { id: ulid(), code: 'CUB-03', displayName: 'Cubículo 03', status: 'AVAILABLE' as const },
   ];
 
+  const cubicleIds = new Map<string, string>();
   for (const cubicle of cubiclesData) {
-    await prisma.cubicle.upsert({
+    const persisted = await prisma.cubicle.upsert({
       where: { code: cubicle.code },
       update: { displayName: cubicle.displayName },
       create: cubicle,
     });
+    cubicleIds.set(persisted.code, persisted.id);
   }
   console.log('✅ 3 Cubículos asegurados (CUB-01, CUB-02, CUB-03)');
 
@@ -91,14 +93,16 @@ async function main() {
       username: 'receptor',
       displayName: 'Recepción de Farmacia',
       role: 'RECEPTION' as const,
+      cubicleId: null,
       passwordHash,
     },
     {
       id: ulid(),
       publicId: ulid(),
       username: 'cajero',
-      displayName: 'Atención Cubículo 01',
+      displayName: 'Atención Cubículo 03',
       role: 'CASHIER' as const,
+      cubicleId: cubicleIds.get('CUB-03') ?? null,
       passwordHash,
     },
     {
@@ -107,14 +111,16 @@ async function main() {
       username: 'recepcion',
       displayName: 'Recepcionista Turnos',
       role: 'RECEPTION' as const,
+      cubicleId: null,
       passwordHash,
     },
     {
       id: ulid(),
       publicId: ulid(),
       username: 'cajero1',
-      displayName: 'Atención Cubículo 1',
+      displayName: 'Atención Cubículo 01',
       role: 'CASHIER' as const,
+      cubicleId: cubicleIds.get('CUB-01') ?? null,
       passwordHash,
     },
     {
@@ -123,6 +129,7 @@ async function main() {
       username: 'admin',
       displayName: 'Administrador Sistema',
       role: 'ADMIN' as const,
+      cubicleId: null,
       passwordHash,
     },
   ];
@@ -130,7 +137,11 @@ async function main() {
   for (const user of testUsers) {
     await prisma.user.upsert({
       where: { username: user.username },
-      update: {}, // No sobrescribir credenciales si el usuario ya existe
+      update: {
+        // No sobrescribir credenciales si el usuario ya existe, pero sí
+        // mantener determinista la asignación de cubículo en desarrollo.
+        cubicleId: user.cubicleId,
+      },
       create: user,
     });
   }

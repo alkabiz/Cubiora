@@ -82,6 +82,29 @@ export interface CubicleSnapshot {
 }
 
 /**
+ * Rendimiento diario de un cubículo.
+ * Se calcula exclusivamente con turnos CLOSED de la jornada actual.
+ * No contiene datos personales de pacientes.
+ */
+export interface CubicleDailyPerformance {
+  /** Código del cubículo consultado. */
+  cubicleCode: string;
+  /** Total de turnos CLOSED del cubículo durante la jornada actual. */
+  completedTickets: number;
+  /** Promedio de serviceStartedAt → closedAt en segundos; null si no hay datos. */
+  averageServiceSeconds: number | null;
+  /** Objetivo operativo configurado en backend, en segundos. */
+  targetSeconds: number;
+  /**
+   * Porcentaje de turnos cerrados cuya duración fue ≤ targetSeconds.
+   * null si no hay turnos cerrados con marcas de tiempo válidas.
+   */
+  targetCompliancePercentage: number | null;
+  /** Timestamp ISO 8601 generado por el servidor al calcular la respuesta. */
+  calculatedAt: string;
+}
+
+/**
  * Formato estándar de error devuelto por la API.
  * @see apps/api/src/common/filters/global-exception.filter.ts
  */

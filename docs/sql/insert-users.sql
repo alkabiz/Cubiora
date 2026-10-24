@@ -146,6 +146,18 @@ ON CONFLICT ("username") DO UPDATE SET
   "active"        = true,
   "updated_at"    = CURRENT_TIMESTAMP;
 
+-- 4. Asignación determinista de cubículos para operadores de caja.
+--    Requiere que los cubículos CUB-01 y CUB-03 existan (seed o migración).
+UPDATE "users" AS u
+SET "cubicle_id" = c."id", "updated_at" = CURRENT_TIMESTAMP
+FROM "cubicles" AS c
+WHERE u."username" = 'cajero' AND c."code" = 'CUB-03';
+
+UPDATE "users" AS u
+SET "cubicle_id" = c."id", "updated_at" = CURRENT_TIMESTAMP
+FROM "cubicles" AS c
+WHERE u."username" = 'cajero1' AND c."code" = 'CUB-01';
+
 COMMIT;
 
 -- Verificación de inserción
@@ -155,6 +167,7 @@ SELECT
   "username", 
   "display_name", 
   "role", 
+  "cubicle_id",
   "active", 
   "created_at"
 FROM "users"

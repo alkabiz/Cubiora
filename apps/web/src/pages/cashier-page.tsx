@@ -4,8 +4,10 @@ import { TicketStatus } from '@cubiora/shared';
 import { AppMain } from '../app/app-main';
 import { PageHeader } from '../app/page-header';
 import { useShellOperationalStatus } from '../app/shell-status-context';
+import { CubicleDailyPerformanceCard } from '../features/cashier/cubicle-daily-performance-card';
 import { MiCubiculo } from '../features/cashier/mi-cubiculo';
 import { useCubicleWorkspace } from '../features/cashier/use-cubicle-workspace';
+import { useAuth } from '../context/auth-context';
 
 /**
  * Código del cubículo operado por esta estación.
@@ -21,7 +23,9 @@ const ACTIVE_TICKET_STATUSES: TicketStatus[] = [
 ];
 
 export const CashierPage: React.FC = () => {
+  const { user } = useAuth();
   const workspace = useCubicleWorkspace({ cubicleCode: CUBICLE_CODE });
+  const canViewPerformance = user?.role === 'CASHIER' || user?.role === 'ADMIN';
 
   const isTurnInProgress =
     workspace.activeTicket !== null &&
@@ -90,7 +94,16 @@ export const CashierPage: React.FC = () => {
           </div>
         )}
 
-      <MiCubiculo workspace={workspace} />
+      <div className="cashier-workspace-grid">
+        <MiCubiculo workspace={workspace} />
+
+        {canViewPerformance && (
+          <CubicleDailyPerformanceCard
+            cubicleCode={CUBICLE_CODE}
+            outcome={workspace.outcome}
+          />
+        )}
+      </div>
     </AppMain>
   );
 };

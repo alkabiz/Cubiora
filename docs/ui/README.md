@@ -35,6 +35,12 @@ Este directorio contiene única y exclusivamente la especificación y matrices d
   - `GET /api/v1/cubicles/{cubicleCode}/current` entrega `cubicle`, `activeTicket`, `waitingCount` y `serverTime`.
   - El único estado persistido que se representa es el del snapshot: `ASSIGNED`, `CALLED` o `IN_SERVICE`. Sin turno activo se representa `AVAILABLE`.
   - Los comandos usan `POST /api/v1/tickets/{publicId}/{call|start-service|close|no-show}` con sesión autenticada, `Idempotency-Key`, `X-Correlation-ID`, `expected-version` e `If-Match`.
+- **Rendimiento Diario**:
+  - `GET /api/v1/cubicles/{cubicleCode}/daily-performance` entrega `completedTickets`, `averageServiceSeconds`, `targetSeconds`, `targetCompliancePercentage` y `calculatedAt`.
+  - Solo considera turnos `CLOSED` de la jornada actual del servidor y excluye `CANCELLED`/`NO_SHOW`. No expone datos personales.
+  - `CASHIER` solo puede consultar su cubículo asignado; `ADMIN` puede consultar cualquier cubículo.
+  - El objetivo operativo se configura con `CUBICLE_DAILY_TARGET_SECONDS` (720 s por defecto) y se presenta como "Cumplimiento del objetivo operativo", nunca como SLA.
+  - La CARD se actualiza al confirmar un cierre, ante invalidación de la consulta y cada 60 s. Conserva el último dato confirmado con la marca "Datos desactualizados" si se pierde la conexión.
 - **Mapeo de Estados Visuales**:
   | Estado persistido | Estado visual base | Acciones principales |
   | :--- | :--- | :--- |

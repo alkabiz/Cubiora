@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Theme } from '@radix-ui/themes';
 import {
   createMemoryRouter,
@@ -142,10 +143,21 @@ function renderShellAt(path: string) {
     { initialEntries: [path] },
   );
 
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+        staleTime: 0,
+      },
+    },
+  });
+
   return render(
-    <Theme accentColor="teal" grayColor="slate">
-      <RouterProvider router={router} />
-    </Theme>,
+    <QueryClientProvider client={queryClient}>
+      <Theme accentColor="teal" grayColor="slate">
+        <RouterProvider router={router} />
+      </Theme>
+    </QueryClientProvider>,
   );
 }
 
@@ -508,11 +520,16 @@ describe('Separación del shell privado y la pantalla pública', () => {
     });
 
     const router = createMemoryRouter(appRoutes, { initialEntries: ['/admin/cubiculos'] });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 0 } },
+    });
 
     render(
-      <Theme accentColor="teal" grayColor="slate">
-        <RouterProvider router={router} />
-      </Theme>,
+      <QueryClientProvider client={queryClient}>
+        <Theme accentColor="teal" grayColor="slate">
+          <RouterProvider router={router} />
+        </Theme>
+      </QueryClientProvider>,
     );
 
     expect(await screen.findByRole('heading', { name: 'Mi cubículo' })).toBeDefined();
@@ -626,7 +643,7 @@ describe('Tarjeta de resumen operativo (SCR-CAJ-OPS)', () => {
     expect(within(card).getByText('5')).toBeDefined();
     expect(within(card).getByText('Espera promedio')).toBeDefined();
     expect(within(card).getByText('4m 12s')).toBeDefined();
-    expect(within(card).getByText('Cumplimiento SLA')).toBeDefined();
+    expect(within(card).getByText('Cumplimiento del objetivo')).toBeDefined();
     expect(within(card).getByText('98.2%')).toBeDefined();
   });
 

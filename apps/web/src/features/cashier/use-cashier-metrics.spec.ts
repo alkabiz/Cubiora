@@ -34,7 +34,8 @@ describe('useCashierMetrics hook y formateadores', () => {
       expect(formatWaitTime(45)).toBe('45s');
       expect(formatWaitTime(60)).toBe('1m');
       expect(formatWaitTime(252)).toBe('4m 12s');
-      expect(formatWaitTime(3600)).toBe('60m');
+      expect(formatWaitTime(3600)).toBe('1h');
+      expect(formatWaitTime(3661)).toBe('1h 1m 1s');
     });
 
     it('formatSla devuelve "—" para valores nulos y un decimal para porcentajes válidos', () => {

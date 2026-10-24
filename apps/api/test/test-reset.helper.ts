@@ -70,8 +70,9 @@ export async function resetTestDatabase(
       { id: ulid(), code: 'CUB-03', displayName: 'Cubículo 03', status: 'AVAILABLE' as const, version: 1 },
     ];
 
+    const cubicleIds = new Map<string, string>();
     for (const cubicle of cubicles) {
-      await tx.cubicle.upsert({
+      const persisted = await tx.cubicle.upsert({
         where: { code: cubicle.code },
         update: {
           displayName: cubicle.displayName,
@@ -80,6 +81,7 @@ export async function resetTestDatabase(
         },
         create: cubicle,
       });
+      cubicleIds.set(persisted.code, persisted.id);
     }
 
     // D. Reconstrucción de usuarios fixture
@@ -93,6 +95,7 @@ export async function resetTestDatabase(
         username: 'recepcion_test',
         displayName: 'Recepcionista Test',
         role: UserRole.RECEPTION,
+        cubicleId: null,
         passwordHash,
       },
       {
@@ -101,6 +104,7 @@ export async function resetTestDatabase(
         username: 'cajero_test',
         displayName: 'Cajero Test',
         role: UserRole.CASHIER,
+        cubicleId: cubicleIds.get('CUB-03') ?? null,
         passwordHash,
       },
       {
@@ -109,6 +113,7 @@ export async function resetTestDatabase(
         username: 'admin_test',
         displayName: 'Admin Test',
         role: UserRole.ADMIN,
+        cubicleId: null,
         passwordHash,
       },
     ];
@@ -118,6 +123,7 @@ export async function resetTestDatabase(
         where: { username: u.username },
         update: {
           role: u.role,
+          cubicleId: u.cubicleId,
           passwordHash,
         },
         create: u,

@@ -168,13 +168,39 @@ async function main() {
       ]);
     }
 
+    // Asignación determinista de cubículos para los operadores de caja.
+    // Si los cubículos aún no existen, el usuario queda sin asignar y el
+    // endpoint de rendimiento devolverá 403 hasta ejecutar el seed.
+    const cubicleAssignments = [
+      { username: 'cajero', cubicleCode: 'CUB-03' },
+      { username: 'cajero1', cubicleCode: 'CUB-01' },
+    ];
+
+    for (const assignment of cubicleAssignments) {
+      const result = await client.query(
+        `
+          UPDATE "users" AS u
+          SET "cubicle_id" = c."id", "updated_at" = CURRENT_TIMESTAMP
+          FROM "cubicles" AS c
+          WHERE u."username" = $1 AND c."code" = $2;
+        `,
+        [assignment.username, assignment.cubicleCode],
+      );
+
+      if (result.rowCount === 0) {
+        console.warn(
+          `⚠️  No se pudo asignar ${assignment.username} a ${assignment.cubicleCode}: el cubículo no existe. Ejecuta el seed.`,
+        );
+      }
+    }
+
     await client.query('COMMIT');
     console.log('✅ Inserción de usuarios completada con éxito.');
 
     // Verificación
     const result = await client.query(`
       SELECT 
-        "id", "public_id", "username", "display_name", "role", "active", "created_at"
+        "id", "public_id", "username", "display_name", "role", "cubicle_id", "active", "created_at"
       FROM "users"
       WHERE "username" IN ('cajero', 'receptor', 'cajero1', 'recepcion')
       ORDER BY "role", "username";

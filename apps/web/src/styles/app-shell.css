@@ -581,6 +581,26 @@
   min-width: 0;
 }
 
+/* ─── SCR-CAJ-001: CARD operativa + rendimiento diario ───────────────────── */
+.cashier-workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 20px;
+}
+
+.cashier-workspace-grid > * {
+  min-width: 0;
+}
+
+/* En escritorio amplio la CARD de rendimiento ocupa la columna derecha.
+   En tablet y móvil se apila debajo de la CARD operativa. */
+@media (min-width: 1280px) {
+  .cashier-workspace-grid {
+    grid-template-columns: minmax(0, 1fr) 340px;
+  }
+}
+
 .app-skip-link {
   position: fixed;
   top: 10px;

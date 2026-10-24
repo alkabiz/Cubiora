@@ -109,7 +109,7 @@ export const SidebarOperativeSummary: React.FC<SidebarOperativeSummaryProps> = (
           <CheckCircledIcon width={14} height={14} />
         </span>
         <Text as="span" size="1" className="sidebar-summary-label">
-          Cumplimiento SLA
+          Cumplimiento del objetivo
         </Text>
         <Text as="span" size="1" weight="bold" className="sidebar-summary-value sidebar-summary-value--accent">
           {formatSla(sla)}

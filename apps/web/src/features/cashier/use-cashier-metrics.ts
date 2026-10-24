@@ -23,16 +23,29 @@ export interface UseCashierMetricsResult {
 export const DEFAULT_POLL_INTERVAL_MS = 30_000;
 
 /**
- * Formatea segundos como "Xm Ys" o "—" si el valor es nulo.
- * Nunca inventa valores.
+ * Formatea segundos como "Xh Ym Zs", "Xm Ys" o "Ys" y "—" si el valor es nulo.
+ * Nunca inventa valores. Evita mostrar cantidades absurdas como "1635m 4s".
  */
 export function formatWaitTime(seconds: number | null): string {
-  if (seconds === null) return '—';
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  if (m === 0) return `${s}s`;
-  if (s === 0) return `${m}m`;
-  return `${m}m ${s}s`;
+  if (seconds === null || !Number.isFinite(seconds) || seconds < 0) return '—';
+
+  const totalSeconds = Math.round(seconds);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const remainingSeconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    const parts = [`${hours}h`];
+    if (minutes > 0) parts.push(`${minutes}m`);
+    if (remainingSeconds > 0) parts.push(`${remainingSeconds}s`);
+    return parts.join(' ');
+  }
+
+  if (minutes > 0) {
+    return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
+  }
+
+  return `${remainingSeconds}s`;
 }
 
 /**
