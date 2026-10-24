@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { TicketsService } from '../src/modules/tickets/tickets.service';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { PublicDisplayService } from '../src/modules/public-display/public-display.service';
 import { CubiclesService } from '../src/modules/cubicles/cubicles.service';
-import { TicketStatus } from '@cubiora/shared';
+import { TicketStatus, UserRole, QueueCategory } from '@cubiora/shared';
 
 describe('Fase 3a — Creación de Turnos (CP-01, CP-02, CP-03)', () => {
   let ticketsService: TicketsService;
@@ -169,7 +169,7 @@ describe('Fase 3a — Creación de Turnos (CP-01, CP-02, CP-03)', () => {
       expect(statusHistory[0].toStatus).toBe(TicketStatus.PENDING);
     });
 
-    it('debe asignar el sufijo PR cuando el turno es prioritario', async () => {
+    it('debe asignar el sufijo PR cuando el turno es prioritario y el usuario es autorizado', async () => {
       const dto = {
         patientName: 'María Gomez',
         priority: true,
@@ -177,11 +177,47 @@ describe('Fase 3a — Creación de Turnos (CP-01, CP-02, CP-03)', () => {
 
       const result = await ticketsService.createTicket(
         dto,
-        'user_operator_reception',
+        'user_operator_admin',
         'corr-456-def',
+        undefined,
+        UserRole.ADMIN,
       );
 
       expect(result.data.publicCode).toBe('TUR-000001-PR');
+      expect(result.data.queueCategory).toBe(QueueCategory.PREFERENTIAL);
+    });
+
+    it('debe asignar GENERAL por defecto cuando no se especifica categoría', async () => {
+      const dto = {
+        patientName: 'Carlos López',
+      };
+
+      const result = await ticketsService.createTicket(
+        dto,
+        'user_operator_reception',
+        'corr-def-cat',
+      );
+
+      expect(result.data.queueCategory).toBe(QueueCategory.GENERAL);
+      expect(result.data.publicCode).toBe('TUR-000001-GE');
+    });
+
+    it('debe rechazar la asignación de PREFERENTIAL si el usuario no está autorizado', async () => {
+      const dto = {
+        patientName: 'Paciente Sin Autorización',
+        queueCategory: QueueCategory.PREFERENTIAL,
+      };
+
+      // Recepción sin política aprobada no puede asignar PREFERENTIAL
+      await expect(
+        ticketsService.createTicket(
+          dto,
+          'user_recepcion_1',
+          'corr-unauth',
+          undefined,
+          UserRole.RECEPTION,
+        ),
+      ).rejects.toThrow(ForbiddenException);
     });
   });
 
@@ -257,8 +293,10 @@ describe('Fase 3a — Creación de Turnos (CP-01, CP-02, CP-03)', () => {
             patientName: `Paciente Concurrente ${index + 1}`,
             priority: index % 2 === 0,
           },
-          'user_operator_reception',
+          'user_operator_admin',
           `corr-conc-${index}`,
+          undefined,
+          UserRole.ADMIN,
         );
       });
 

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { TicketsService } from '../src/modules/tickets/tickets.service';
 import { CubiclesService } from '../src/modules/cubicles/cubicles.service';
 import { PublicDisplayService } from '../src/modules/public-display/public-display.service';
-import { TicketStatus, CubicleStatus } from '@cubiora/shared';
+import { TicketStatus, CubicleStatus, QueueCategory } from '@cubiora/shared';
 
 describe('E2E Operacional Completo con Rol cubiora_app', () => {
   let ticketsService: TicketsService;
@@ -117,6 +117,8 @@ describe('E2E Operacional Completo con Rol cubiora_app', () => {
             patientName: data.patientName,
             patientDocument: data.patientDocument,
             status: data.status,
+            queueCategory: data.queueCategory || 'GENERAL',
+            preferentialReason: data.preferentialReason || null,
             cubicleId: data.cubicleId || null,
             createdBy: data.createdBy,
             version: 1,
@@ -288,6 +290,7 @@ describe('E2E Operacional Completo con Rol cubiora_app', () => {
 
     expect(createdTicket.status).toBe(TicketStatus.ASSIGNED);
     expect(createdTicket.publicCode).toMatch(/^TUR-[0-9]{6}-[A-Z0-9]{2}$/);
+    expect(createdTicket.queueCategory).toBe(QueueCategory.GENERAL);
     expect(createdTicket.assignedCubicle).toBe('Cubículo 01');
 
     // 2. Verificar Historial Permitido (INSERT de PENDING y ASSIGNED)
@@ -399,11 +402,13 @@ describe('E2E Operacional Completo con Rol cubiora_app', () => {
     expect(snapshotAfterNoShow.cubicle.status).toBe(CubicleStatus.RESERVED);
     expect(snapshotAfterNoShow.activeTicket?.publicId).toBe(thirdTicket.publicId);
 
-    // 8. Snapshot de Pantalla Pública (Garantía Cero PII)
+    // 8. Snapshot de Pantalla Pública (Garantía Cero PII y Cero Categoría/Motivo)
     const publicSnapshot = await publicDisplayService.getSnapshot();
     expect(publicSnapshot).toBeDefined();
     expect((publicSnapshot as any).patientName).toBeUndefined();
     expect((publicSnapshot as any).patientDocument).toBeUndefined();
+    expect((publicSnapshot as any).queueCategory).toBeUndefined();
+    expect((publicSnapshot as any).preferentialReason).toBeUndefined();
 
     // 9. Auditoría completa registrada en historial (append-only)
     const statuses = historyDb.map((h) => h.toStatus);

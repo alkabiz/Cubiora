@@ -48,6 +48,17 @@ export enum TicketStatus {
 }
 
 /**
+ * Clasificación operacional del turno en cola.
+ * - GENERAL: Atención según el orden de llegada (FIFO).
+ * - PREFERENTIAL: Atención preferencial respaldada por criterio institucional autorizado.
+ * No sustituye el estado del turno (TicketStatus).
+ */
+export enum QueueCategory {
+  GENERAL = 'GENERAL',
+  PREFERENTIAL = 'PREFERENTIAL',
+}
+
+/**
  * Códigos de error de la API.
  * Deben coincidir con los producidos por GlobalExceptionFilter en apps/api.
  * @see apps/api/src/common/filters/global-exception.filter.ts

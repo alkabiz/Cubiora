@@ -48,6 +48,7 @@ export class TicketsController {
       user.id,
       correlationId,
       idempotencyKey,
+      user.role,
     );
 
     return res.status(statusCode || HttpStatus.CREATED).json({

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { ValidationPipe, BadRequestException, ArgumentMetadata } from '@nestjs/common';
 import { IsString, IsNotEmpty } from 'class-validator';
+import { CreateTicketDto } from '../src/modules/tickets/dto/create-ticket.dto.js';
 
 class CreateTestDto {
   @IsString()
@@ -44,5 +45,48 @@ describe('ValidationPipe (forbidNonWhitelisted)', () => {
     await expect(pipe.transform(maliciousPayload, targetMetadata)).rejects.toThrow(
       BadRequestException,
     );
+  });
+
+  describe('CreateTicketDto - Reglas de categoría y campos clínicos', () => {
+    const ticketMetadata: ArgumentMetadata = {
+      type: 'body',
+      metatype: CreateTicketDto,
+      data: '',
+    };
+    const pipe = new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+    });
+
+    it('debe aceptar payload válido con queueCategory GENERAL o PREFERENTIAL', async () => {
+      const payload = {
+        patientName: 'Juan Pérez',
+        queueCategory: 'GENERAL',
+      };
+      const result = await pipe.transform(payload, ticketMetadata);
+      expect(result.queueCategory).toBe('GENERAL');
+    });
+
+    it('debe rechazar categorías desconocidas como VIP o URGENTE (criterio 7)', async () => {
+      const invalidPayload = {
+        patientName: 'Juan Pérez',
+        queueCategory: 'VIP',
+      };
+      await expect(pipe.transform(invalidPayload, ticketMetadata)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('debe rechazar campos clínicos o no autorizados (diagnóstico, embarazo, etc.)', async () => {
+      const clinicalPayload = {
+        patientName: 'Juan Pérez',
+        diagnosis: 'Hipertensión',
+        pregnancy: true,
+      };
+      await expect(pipe.transform(clinicalPayload, ticketMetadata)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
   });
 });

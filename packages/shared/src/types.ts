@@ -12,7 +12,7 @@
  * @see RF-005 — Pantalla Pública de Llamados
  * @see apps/web/src/features/display
  */
-import { CubicleStatus, TicketStatus } from './enums.js';
+import { CubicleStatus, TicketStatus, QueueCategory } from './enums.js';
 
 export interface PublicCall {
   /** Código único del turno en formato TUR-XXXXXX-YY (ej: TUR-000123-A7) */
@@ -56,6 +56,7 @@ export interface CubicleActiveTicket {
    */
   maskedDocument?: string | null;
   status: TicketStatus;
+  queueCategory?: QueueCategory;
   version: number;
   assignedAt?: string | null;
   calledAt?: string | null;

@@ -31,6 +31,11 @@ enum TicketStatus {
   CANCELLED
 }
 
+enum QueueCategory {
+  GENERAL
+  PREFERENTIAL
+}
+
 model User {
   id           String   @id @db.VarChar(26)
   publicId     String   @unique @map("public_id") @db.VarChar(26)
@@ -86,6 +91,8 @@ model Ticket {
   patientName      String       @map("patient_name") @db.VarChar(100)
   patientDocument  String?      @map("patient_document") @db.VarChar(30)
   status           TicketStatus @default(PENDING)
+  queueCategory    QueueCategory @default(GENERAL) @map("queue_category")
+  preferentialReason String?    @map("preferential_reason") @db.VarChar(100)
   cubicleId        String?      @map("cubicle_id") @db.VarChar(26)
   createdBy        String       @map("created_by") @db.VarChar(26)
   assignedAt       DateTime?    @map("assigned_at") @db.Timestamptz(3)
@@ -103,6 +110,7 @@ model Ticket {
   statusHistory TicketStatusHistory[]
 
   @@index([status, sequenceNumber], name: "ix_tickets_status_sequence")
+  @@index([status, queueCategory, sequenceNumber], name: "ix_tickets_status_category_sequence")
   @@index([cubicleId, status], name: "ix_tickets_cubicle_status")
   @@index([patientDocument, status], name: "ix_tickets_document_status")
   @@index([createdBy], name: "ix_tickets_created_by")

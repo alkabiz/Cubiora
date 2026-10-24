@@ -9,30 +9,55 @@ import {
   Flex,
   Box,
   Table,
+  RadioCards,
+  Select,
 } from '@radix-ui/themes';
-import { CheckCircledIcon, CopyIcon } from '@radix-ui/react-icons';
+import {
+  CheckCircledIcon,
+  CopyIcon,
+  PersonIcon,
+  HeartIcon,
+} from '@radix-ui/react-icons';
 import { AppMain } from '../app/app-main';
 import { PageHeader } from '../app/page-header';
 import { apiClient } from '../lib/api';
-import { TicketStatus } from '@cubiora/shared';
+import { TicketStatus, QueueCategory } from '@cubiora/shared';
 
 export interface IssuedTicket {
   code: string;
   timeStr: string;
   assignedCubicle?: string;
   state: TicketStatus | 'PENDING' | 'ASSIGNED' | 'CALLED';
+  queueCategory?: QueueCategory | 'GENERAL' | 'PREFERENTIAL';
   patientName?: string;
   idDocument?: string;
 }
 
-export const ReceptionPage: React.FC = () => {
+export interface ReceptionPageProps {
+  /**
+   * Permite activar la política institucional para pruebas o configuración explícita.
+   * Por defecto es falso según directiva PMV (Pendiente de habilitación institucional).
+   */
+  allowPreferentialPolicy?: boolean;
+}
+
+export const ReceptionPage: React.FC<ReceptionPageProps> = ({
+  allowPreferentialPolicy = false,
+}) => {
   const [patientName, setPatientName] = useState('');
   const [idDocument, setIdDocument] = useState('');
+  const [queueCategory, setQueueCategory] = useState<QueueCategory>(QueueCategory.GENERAL);
+  const [operationalReason, setOperationalReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [lastTicket, setLastTicket] = useState<IssuedTicket | null>(null);
   const [recentTickets, setRecentTickets] = useState<IssuedTicket[]>([]);
   const [copiedCode, setCopiedCode] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const isPreferentialPolicyEnabled =
+    allowPreferentialPolicy ||
+    (typeof import.meta !== 'undefined' &&
+      Boolean(import.meta.env?.['VITE_PREFERENTIAL_POLICY_ENABLED'] === 'true'));
 
   const nameInputRef = useRef<HTMLInputElement>(null);
 
@@ -46,6 +71,7 @@ export const ReceptionPage: React.FC = () => {
           data: Array<{
             publicCode: string;
             status: TicketStatus;
+            queueCategory?: QueueCategory;
             cubicleDisplayName?: string;
             createdAt: string;
           }>;
@@ -59,6 +85,7 @@ export const ReceptionPage: React.FC = () => {
               code: t.publicCode,
               timeStr,
               state: t.status,
+              queueCategory: t.queueCategory || QueueCategory.GENERAL,
               assignedCubicle: t.cubicleDisplayName,
             };
           });
@@ -74,10 +101,14 @@ export const ReceptionPage: React.FC = () => {
   }, []);
 
   const isNameValid = patientName.trim().length >= 2;
+  const isReasonValid =
+    queueCategory === QueueCategory.GENERAL ||
+    (queueCategory === QueueCategory.PREFERENTIAL && !!operationalReason);
+  const isFormValid = isNameValid && isReasonValid && !isSubmitting;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isNameValid || isSubmitting) return;
+    if (!isFormValid) return;
 
     setIsSubmitting(true);
     setErrorMessage(null);
@@ -93,7 +124,7 @@ export const ReceptionPage: React.FC = () => {
         : `${Date.now()}-1111-4000-8000-${Date.now().toString(16).padStart(12, '0')}`;
 
     try {
-      // POST real a la API sin calcular códigos ni secuencias localmente
+      // POST real a la API enviando categoría operativa
       const response = await apiClient<{
         success: boolean;
         data: {
@@ -102,6 +133,7 @@ export const ReceptionPage: React.FC = () => {
           sequenceNumber: number;
           patientName: string;
           status: TicketStatus;
+          queueCategory: QueueCategory;
           createdAt: string | Date;
         };
       }>('/tickets', {
@@ -113,6 +145,9 @@ export const ReceptionPage: React.FC = () => {
         body: JSON.stringify({
           patientName: patientName.trim(),
           patientDocument: idDocument.trim() || undefined,
+          queueCategory,
+          operationalReason:
+            queueCategory === QueueCategory.PREFERENTIAL ? operationalReason : undefined,
         }),
       });
 
@@ -124,7 +159,8 @@ export const ReceptionPage: React.FC = () => {
         code: serverTicket.publicCode,
         timeStr,
         state: serverTicket.status,
-        assignedCubicle: undefined, // El backend asigna el cubículo, no inventar
+        queueCategory: serverTicket.queueCategory || queueCategory,
+        assignedCubicle: undefined, // El backend asigna el cubículo
         patientName: serverTicket.patientName,
       };
 
@@ -132,6 +168,8 @@ export const ReceptionPage: React.FC = () => {
       setRecentTickets((prev) => [newTicket, ...prev].slice(0, 3));
       setPatientName('');
       setIdDocument('');
+      setQueueCategory(QueueCategory.GENERAL);
+      setOperationalReason('');
     } catch (err: unknown) {
       setErrorMessage(
         err instanceof Error ? err.message : 'Error de conexión con el servidor al emitir el turno.',
@@ -153,6 +191,8 @@ export const ReceptionPage: React.FC = () => {
     if (isSubmitting) return;
     setPatientName('');
     setIdDocument('');
+    setQueueCategory(QueueCategory.GENERAL);
+    setOperationalReason('');
     setErrorMessage(null);
     nameInputRef.current?.focus();
   };
@@ -223,6 +263,98 @@ export const ReceptionPage: React.FC = () => {
                   />
                 </Box>
 
+                {/* ─── Sección Tipo de Turno ───────────────────────────────── */}
+                <Box className="pt-2 border-t border-[var(--gray-a4)]">
+                  <label htmlFor="queue-category-group" className="block text-sm font-semibold mb-2 text-[var(--gray-12)]">
+                    Tipo de turno
+                  </label>
+                  <RadioCards.Root
+                    id="queue-category-group"
+                    value={queueCategory}
+                    onValueChange={(val) => {
+                      setQueueCategory(val as QueueCategory);
+                      if (val === QueueCategory.GENERAL) {
+                        setOperationalReason('');
+                      }
+                    }}
+                    columns={{ initial: '1', sm: '2' }}
+                    gap="3"
+                    aria-label="Tipo de turno"
+                  >
+                    <RadioCards.Item
+                      value={QueueCategory.GENERAL}
+                      className="cursor-pointer p-3.5 border border-[var(--gray-a6)] rounded-lg text-left"
+                    >
+                      <Flex direction="column" gap="1.5" width="100%">
+                        <Flex align="center" gap="2">
+                          <PersonIcon width={18} height={18} className="text-[var(--teal-10)]" />
+                          <Text weight="bold" size="2">
+                            Turno general
+                          </Text>
+                        </Flex>
+                        <Text size="1" color="gray">
+                          Atención según el orden de llegada.
+                        </Text>
+                      </Flex>
+                    </RadioCards.Item>
+
+                    <RadioCards.Item
+                      value={QueueCategory.PREFERENTIAL}
+                      disabled={!isPreferentialPolicyEnabled}
+                      className="p-3.5 border border-[var(--gray-a6)] rounded-lg text-left disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      <Flex direction="column" gap="1.5" width="100%">
+                        <Flex align="center" justify="between" gap="2" wrap="wrap">
+                          <Flex align="center" gap="2">
+                            <HeartIcon width={18} height={18} className="text-[var(--amber-10)]" />
+                            <Text weight="bold" size="2">
+                              Atención preferencial
+                            </Text>
+                          </Flex>
+                          {!isPreferentialPolicyEnabled && (
+                            <Badge size="1" color="gray" variant="surface">
+                              Pendiente de habilitación institucional
+                            </Badge>
+                          )}
+                        </Flex>
+                        <Text size="1" color="gray">
+                          Disponible únicamente cuando exista un criterio institucional autorizado.
+                        </Text>
+                      </Flex>
+                    </RadioCards.Item>
+                  </RadioCards.Root>
+
+                  {/* Motivo operacional cerrado cuando la política preferencial está habilitada */}
+                  {isPreferentialPolicyEnabled && queueCategory === QueueCategory.PREFERENTIAL && (
+                    <Box className="mt-3 p-3 rounded-md bg-[var(--gray-a2)] border border-[var(--gray-a4)]">
+                      <label htmlFor="operationalReason" className="block text-xs font-semibold mb-1.5 text-[var(--gray-12)]">
+                        Motivo operacional institucional <span className="text-red-500">*</span>
+                      </label>
+                      <Select.Root
+                        value={operationalReason}
+                        onValueChange={(val) => setOperationalReason(val)}
+                      >
+                        <Select.Trigger
+                          id="operationalReason"
+                          placeholder="Seleccione motivo operacional..."
+                          className="w-full"
+                        />
+                        <Select.Content>
+                          <Select.Item value="OPERATIONAL_MOBILITY_SUPPORT">
+                            Asistencia de movilidad en sala
+                          </Select.Item>
+                          <Select.Item value="OPERATIONAL_INSTITUTIONAL_CRITERION">
+                            Criterio institucional autorizado
+                          </Select.Item>
+                          <Select.Item value="OPERATIONAL_ESCORT_SUPPORT">
+                            Acompañamiento prioritario institucional
+                          </Select.Item>
+                        </Select.Content>
+                      </Select.Root>
+                    </Box>
+                  )}
+                </Box>
+
                 {/* Botón de envío principal */}
                 <Button
                   id="btn-generar-turno"
@@ -230,14 +362,14 @@ export const ReceptionPage: React.FC = () => {
                   size="3"
                   color="teal"
                   variant="solid"
-                  disabled={!isNameValid || isSubmitting}
+                  disabled={!isFormValid}
                   className="mt-2 w-full cursor-pointer"
                 >
                   {isSubmitting ? 'Generando turno…' : 'Generar turno'}
                 </Button>
 
                 {/* Limpiar formulario */}
-                {(patientName || idDocument) && !isSubmitting && (
+                {(patientName || idDocument || queueCategory !== QueueCategory.GENERAL) && !isSubmitting && (
                   <Button
                     type="button"
                     size="1"
@@ -263,23 +395,34 @@ export const ReceptionPage: React.FC = () => {
                 Último turno generado
               </Text>
               {lastTicket && (
-                <Badge
-                  size="1"
-                  variant="surface"
-                  color={
-                    lastTicket.state === 'PENDING'
-                      ? 'gray'
+                <Flex gap="2" align="center">
+                  <Badge
+                    size="1"
+                    variant="surface"
+                    color={lastTicket.queueCategory === QueueCategory.PREFERENTIAL ? 'amber' : 'blue'}
+                  >
+                    {lastTicket.queueCategory === QueueCategory.PREFERENTIAL
+                      ? 'Atención preferencial'
+                      : 'Turno general'}
+                  </Badge>
+                  <Badge
+                    size="1"
+                    variant="surface"
+                    color={
+                      lastTicket.state === 'PENDING'
+                        ? 'gray'
+                        : lastTicket.state === 'ASSIGNED'
+                        ? 'teal'
+                        : 'green'
+                    }
+                  >
+                    {lastTicket.state === 'PENDING'
+                      ? 'En espera'
                       : lastTicket.state === 'ASSIGNED'
-                      ? 'teal'
-                      : 'green'
-                  }
-                >
-                  {lastTicket.state === 'PENDING'
-                    ? 'En espera'
-                    : lastTicket.state === 'ASSIGNED'
-                    ? 'Asignado'
-                    : 'Llamado'}
-                </Badge>
+                      ? 'Asignado'
+                      : 'Llamado'}
+                  </Badge>
+                </Flex>
               )}
             </Flex>
 
@@ -374,7 +517,16 @@ export const ReceptionPage: React.FC = () => {
                   {recentTickets.slice(0, 3).map((t, idx) => (
                     <Table.Row key={t.code + idx}>
                       <Table.RowHeaderCell className="font-mono font-bold">
-                        {t.code}
+                        <Flex align="center" gap="2">
+                          <span>{t.code}</span>
+                          <Badge
+                            size="1"
+                            variant="soft"
+                            color={t.queueCategory === QueueCategory.PREFERENTIAL ? 'amber' : 'gray'}
+                          >
+                            {t.queueCategory === QueueCategory.PREFERENTIAL ? 'Preferencial' : 'General'}
+                          </Badge>
+                        </Flex>
                       </Table.RowHeaderCell>
                       <Table.Cell>{t.timeStr}</Table.Cell>
                       <Table.Cell>{t.assignedCubicle || 'Sin asignar'}</Table.Cell>

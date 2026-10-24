@@ -2,6 +2,8 @@ import {
   Injectable,
   ConflictException,
   NotFoundException,
+  ForbiddenException,
+  BadRequestException,
   Logger,
   OnModuleInit,
   OnModuleDestroy,
@@ -16,9 +18,17 @@ import { CubiclesService } from '../cubicles/cubicles.service';
 import {
   TicketStatus,
   CubicleStatus,
+  QueueCategory,
+  UserRole,
   ApiErrorCode,
   CubicleSnapshot,
 } from '@cubiora/shared';
+
+export const ALLOWED_OPERATIONAL_REASONS = [
+  'OPERATIONAL_MOBILITY_SUPPORT',
+  'OPERATIONAL_INSTITUTIONAL_CRITERION',
+  'OPERATIONAL_ESCORT_SUPPORT',
+] as const;
 
 export interface CreatedTicketResult {
   publicId: string;
@@ -26,6 +36,7 @@ export interface CreatedTicketResult {
   sequenceNumber: number;
   patientName: string;
   status: TicketStatus;
+  queueCategory: QueueCategory;
   createdAt: Date;
   assignedCubicle?: string;
 }
@@ -69,6 +80,14 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Indica si la política institucional para atención preferencial ha sido formalmente habilitada.
+   * Por defecto en PMV permanece deshabilitada ('false') salvo configuración institucional explícita.
+   */
+  isPreferentialPolicyEnabled(): boolean {
+    return process.env['PREFERENTIAL_POLICY_ENABLED'] === 'true';
+  }
+
+  /**
    * Crea un nuevo turno de manera atómica:
    * 1. Comprueba clave de idempotencia previa si fue provista.
    * 2. Bloquea la secuencia global con FOR UPDATE para garantizar correlativos sin saltos ni colisiones.
@@ -81,14 +100,56 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     actorUserId: string,
     correlationId: string,
     idempotencyKey?: string,
+    actorUserRole?: UserRole,
   ): Promise<{ statusCode: number; data: CreatedTicketResult }> {
+    let resolvedCategory = QueueCategory.GENERAL;
+    if (dto.queueCategory) {
+      resolvedCategory = dto.queueCategory;
+    } else if (dto.priority !== undefined) {
+      resolvedCategory = dto.priority ? QueueCategory.PREFERENTIAL : QueueCategory.GENERAL;
+    }
+
+    if (resolvedCategory === QueueCategory.PREFERENTIAL) {
+      const isPolicyApproved = this.isPreferentialPolicyEnabled();
+      // Regla de autorización: un usuario no autorizado no puede asignar PREFERENTIAL.
+      // - Si la política está deshabilitada: únicamente ADMIN puede asignar preferencial.
+      // - Si la política está aprobada: RECEPTION y ADMIN están autorizados.
+      const isAuthorized =
+        actorUserRole === UserRole.ADMIN ||
+        (isPolicyApproved && (actorUserRole === UserRole.RECEPTION || actorUserRole === undefined));
+
+      if (!isAuthorized) {
+        throw new ForbiddenException({
+          code: ApiErrorCode.FORBIDDEN,
+          message: isPolicyApproved
+            ? 'Usuario no autorizado para asignar atención preferencial.'
+            : 'Atención preferencial no autorizada: pendiente de habilitación de política institucional.',
+        });
+      }
+
+      if (isPolicyApproved) {
+        if (
+          !dto.operationalReason ||
+          !ALLOWED_OPERATIONAL_REASONS.includes(
+            dto.operationalReason as (typeof ALLOWED_OPERATIONAL_REASONS)[number],
+          )
+        ) {
+          throw new BadRequestException({
+            code: ApiErrorCode.REQUEST_INVALID,
+            message: `La atención preferencial exige un motivo operacional de la lista cerrada configurada por administración [${ALLOWED_OPERATIONAL_REASONS.join(', ')}].`,
+          });
+        }
+      }
+    }
+
     const requestHash = crypto
       .createHash('sha256')
       .update(
         JSON.stringify({
           patientName: dto.patientName,
           patientDocument: dto.patientDocument,
-          priority: dto.priority,
+          queueCategory: resolvedCategory,
+          operationalReason: dto.operationalReason,
         }),
       )
       .digest('hex');
@@ -161,7 +222,7 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
 
       // Formato requerido: TUR-NNNNNN-XX
       const seqPadded = String(currentSequence).padStart(6, '0');
-      const suffix = dto.priority ? 'PR' : 'GE';
+      const suffix = resolvedCategory === QueueCategory.PREFERENTIAL ? 'PR' : 'GE';
       const publicCode = `TUR-${seqPadded}-${suffix}`;
 
       const ticketInternalId = ulid();
@@ -177,6 +238,11 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
           patientName: dto.patientName.trim(),
           patientDocument: dto.patientDocument?.trim() ?? null,
           status: TicketStatus.PENDING,
+          queueCategory: resolvedCategory,
+          preferentialReason:
+            resolvedCategory === QueueCategory.PREFERENTIAL
+              ? (dto.operationalReason ?? 'CRITERIO_INSTITUCIONAL_AUTORIZADO')
+              : null,
           createdBy: actorUserId,
         },
       });
@@ -189,7 +255,10 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
           fromStatus: null,
           toStatus: TicketStatus.PENDING,
           actorUserId,
-          reasonCode: 'TICKET_CREATED',
+          reasonCode:
+            resolvedCategory === QueueCategory.PREFERENTIAL
+              ? (dto.operationalReason ? `PREFERENTIAL:${dto.operationalReason}` : 'TICKET_CREATED_PREFERENTIAL')
+              : 'TICKET_CREATED',
           correlationId: correlationId || ulid(),
         },
       });
@@ -200,6 +269,7 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
         sequenceNumber: Number(ticket.sequenceNumber),
         patientName: ticket.patientName,
         status: ticket.status as TicketStatus,
+        queueCategory: ticket.queueCategory as QueueCategory,
         createdAt: ticket.createdAt,
       };
 
@@ -758,24 +828,50 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
 
       // 3. Buscar siguiente turno PENDING de manera concurrente y atómica
       let nextTicketId: string | null = null;
+      const isPolicyApproved = this.isPreferentialPolicyEnabled();
       try {
-        const pendingRows = await tx.$queryRaw<{ id: string }[]>`
-          SELECT id FROM tickets 
-          WHERE status = 'PENDING' 
-          ORDER BY sequence_number ASC 
-          LIMIT 1 
-          FOR UPDATE SKIP LOCKED
-        `;
+        let pendingRows: { id: string }[];
+        if (isPolicyApproved) {
+          pendingRows = await tx.$queryRaw<{ id: string }[]>`
+            SELECT id FROM tickets 
+            WHERE status = 'PENDING' 
+            ORDER BY CASE WHEN queue_category = 'PREFERENTIAL' THEN 0 ELSE 1 END ASC, sequence_number ASC 
+            LIMIT 1 
+            FOR UPDATE SKIP LOCKED
+          `;
+        } else {
+          pendingRows = await tx.$queryRaw<{ id: string }[]>`
+            SELECT id FROM tickets 
+            WHERE status = 'PENDING' 
+            ORDER BY sequence_number ASC 
+            LIMIT 1 
+            FOR UPDATE SKIP LOCKED
+          `;
+        }
         const firstRow = pendingRows[0];
         if (firstRow) {
           nextTicketId = firstRow.id;
         }
       } catch {
         // Fallback para entornos donde SKIP LOCKED no esté disponible (mock Vitest / SQLite)
-        const nextPending = await tx.ticket.findFirst({
-          where: { status: TicketStatus.PENDING },
-          orderBy: { sequenceNumber: 'asc' },
-        });
+        let nextPending;
+        if (isPolicyApproved) {
+          nextPending = await tx.ticket.findFirst({
+            where: { status: TicketStatus.PENDING, queueCategory: QueueCategory.PREFERENTIAL },
+            orderBy: { sequenceNumber: 'asc' },
+          });
+          if (!nextPending) {
+            nextPending = await tx.ticket.findFirst({
+              where: { status: TicketStatus.PENDING },
+              orderBy: { sequenceNumber: 'asc' },
+            });
+          }
+        } else {
+          nextPending = await tx.ticket.findFirst({
+            where: { status: TicketStatus.PENDING },
+            orderBy: { sequenceNumber: 'asc' },
+          });
+        }
         if (nextPending) {
           nextTicketId = nextPending.id;
         }
@@ -935,23 +1031,49 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
 
       // 3. Buscar siguiente turno PENDING
       let nextTicketId: string | null = null;
+      const isPolicyApproved = this.isPreferentialPolicyEnabled();
       try {
-        const pendingRows = await tx.$queryRaw<{ id: string }[]>`
-          SELECT id FROM tickets 
-          WHERE status = 'PENDING' 
-          ORDER BY sequence_number ASC 
-          LIMIT 1 
-          FOR UPDATE SKIP LOCKED
-        `;
+        let pendingRows: { id: string }[];
+        if (isPolicyApproved) {
+          pendingRows = await tx.$queryRaw<{ id: string }[]>`
+            SELECT id FROM tickets 
+            WHERE status = 'PENDING' 
+            ORDER BY CASE WHEN queue_category = 'PREFERENTIAL' THEN 0 ELSE 1 END ASC, sequence_number ASC 
+            LIMIT 1 
+            FOR UPDATE SKIP LOCKED
+          `;
+        } else {
+          pendingRows = await tx.$queryRaw<{ id: string }[]>`
+            SELECT id FROM tickets 
+            WHERE status = 'PENDING' 
+            ORDER BY sequence_number ASC 
+            LIMIT 1 
+            FOR UPDATE SKIP LOCKED
+          `;
+        }
         const firstRow = pendingRows[0];
         if (firstRow) {
           nextTicketId = firstRow.id;
         }
       } catch {
-        const nextPending = await tx.ticket.findFirst({
-          where: { status: TicketStatus.PENDING },
-          orderBy: { sequenceNumber: 'asc' },
-        });
+        let nextPending;
+        if (isPolicyApproved) {
+          nextPending = await tx.ticket.findFirst({
+            where: { status: TicketStatus.PENDING, queueCategory: QueueCategory.PREFERENTIAL },
+            orderBy: { sequenceNumber: 'asc' },
+          });
+          if (!nextPending) {
+            nextPending = await tx.ticket.findFirst({
+              where: { status: TicketStatus.PENDING },
+              orderBy: { sequenceNumber: 'asc' },
+            });
+          }
+        } else {
+          nextPending = await tx.ticket.findFirst({
+            where: { status: TicketStatus.PENDING },
+            orderBy: { sequenceNumber: 'asc' },
+          });
+        }
         if (nextPending) {
           nextTicketId = nextPending.id;
         }
@@ -1035,6 +1157,7 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     Array<{
       publicCode: string;
       status: TicketStatus;
+      queueCategory: QueueCategory;
       cubicleDisplayName?: string | undefined;
       createdAt: string;
     }>
@@ -1064,6 +1187,7 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     return tickets.map((t) => ({
       publicCode: t.publicCode,
       status: t.status as TicketStatus,
+      queueCategory: (t.queueCategory as QueueCategory) || QueueCategory.GENERAL,
       cubicleDisplayName: t.cubicle?.displayName,
       createdAt: t.createdAt.toISOString(),
     }));

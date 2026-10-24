@@ -280,6 +280,117 @@ describe('Contrato Aprobado de Cubiora — Suite de Pantallas e Integración', (
         expect(screen.getByText(/Diríjase al Cubículo 03/i)).toBeDefined();
       });
     });
+
+    it('debe mostrar la sección "Tipo de turno" con GENERAL seleccionado por defecto y opción preferencial deshabilitada sin política', () => {
+      renderWithTheme(<ReceptionPage />);
+
+      expect(screen.getByText('Tipo de turno')).toBeDefined();
+      expect(screen.getByText('Turno general')).toBeDefined();
+      expect(screen.getByText('Atención según el orden de llegada.')).toBeDefined();
+
+      expect(screen.getByText('Atención preferencial')).toBeDefined();
+      expect(
+        screen.getByText(
+          'Disponible únicamente cuando exista un criterio institucional autorizado.',
+        ),
+      ).toBeDefined();
+
+      // Opción preferencial deshabilitada con texto explícito de pendiente de habilitación
+      expect(screen.getByText('Pendiente de habilitación institucional')).toBeDefined();
+
+      const radioGeneral = screen.getByRole('radio', { name: /turno general/i });
+      expect(radioGeneral.getAttribute('aria-checked')).toBe('true');
+
+      const radioPreferential = screen.getByRole('radio', { name: /atención preferencial/i });
+      expect(radioPreferential.getAttribute('aria-checked')).toBe('false');
+      expect((radioPreferential as HTMLButtonElement).disabled).toBe(true);
+
+      // Reglas estrictas: No agregar despacho urgente, no clasificación clínica, no diagnósticos
+      expect(screen.queryByText(/despacho urgente/i)).toBeNull();
+      expect(screen.queryByText(/diagnóstico/i)).toBeNull();
+      expect(screen.queryByText(/embarazo/i)).toBeNull();
+      expect(screen.queryByText(/discapacidad/i)).toBeNull();
+    });
+
+    it('solo puede elegirse una categoría a la vez en RadioCards', () => {
+      renderWithTheme(<ReceptionPage allowPreferentialPolicy={true} />);
+
+      const radioGeneral = screen.getByRole('radio', { name: /turno general/i });
+      const radioPreferential = screen.getByRole('radio', { name: /atención preferencial/i });
+
+      expect(radioGeneral.getAttribute('aria-checked')).toBe('true');
+      expect(radioPreferential.getAttribute('aria-checked')).toBe('false');
+
+      fireEvent.click(radioPreferential);
+      expect(radioPreferential.getAttribute('aria-checked')).toBe('true');
+      expect(radioGeneral.getAttribute('aria-checked')).toBe('false');
+
+      fireEvent.click(radioGeneral);
+      expect(radioGeneral.getAttribute('aria-checked')).toBe('true');
+      expect(radioPreferential.getAttribute('aria-checked')).toBe('false');
+    });
+
+    it('cuando se habilita la atención preferencial, exige motivo operacional cerrado y no permite texto libre', async () => {
+      renderWithTheme(<ReceptionPage allowPreferentialPolicy={true} />);
+
+      const radioPreferential = screen.getByRole('radio', { name: /atención preferencial/i });
+      fireEvent.click(radioPreferential);
+
+      // Debe aparecer el selector de motivo operacional
+      expect(screen.getByText(/motivo operacional institucional/i)).toBeDefined();
+
+      // El botón de generar turno debe permanecer deshabilitado si falta el motivo
+      const nameInput = screen.getByPlaceholderText(/Ingrese nombre y apellido/i);
+      fireEvent.change(nameInput, { target: { value: 'Paciente Preferencial' } });
+
+      const submitButton = screen.getByRole('button', { name: /Generar turno/i });
+      expect((submitButton as HTMLButtonElement).disabled).toBe(true);
+
+      // No debe existir un input de texto clínico libre
+      expect(screen.queryByPlaceholderText(/diagnóstico/i)).toBeNull();
+      expect(screen.queryByPlaceholderText(/observaciones clínicas/i)).toBeNull();
+    });
+
+    it('la categoría de turno aparece después de recargar la página', async () => {
+      const mockFetch = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+        const urlStr =
+          typeof input === 'string'
+            ? input
+            : input instanceof URL
+              ? input.toString()
+              : 'url' in input
+                ? (input as Request).url
+                : String(input);
+        if (urlStr.includes('/tickets/recent')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              success: true,
+              data: [
+                {
+                  publicCode: 'TUR-000042-GE',
+                  status: TicketStatus.PENDING,
+                  queueCategory: 'GENERAL',
+                  createdAt: new Date().toISOString(),
+                },
+              ],
+            }),
+          };
+        }
+        return { ok: true, status: 200, json: async () => ({ success: true }) };
+      });
+      window.fetch = mockFetch;
+
+      renderWithTheme(<ReceptionPage />);
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalled();
+        expect(screen.getAllByText('TUR-000042-GE').length).toBeGreaterThanOrEqual(1);
+        // La categoría aparece en el panel de último turno generado además de la opción de formulario
+        expect(screen.getAllByText('Turno general').length).toBeGreaterThanOrEqual(2);
+      });
+    });
   });
 
   describe('SCR-CAJ-001: Mi Cubículo (Caja)', () => {
