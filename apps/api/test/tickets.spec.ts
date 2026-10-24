@@ -282,4 +282,71 @@ describe('Fase 3a — Creación de Turnos (CP-01, CP-02, CP-03)', () => {
       expect(publicCodes.size).toBe(totalTickets);
     });
   });
+
+  describe('Ciclo de vida y automatización de purga de idempotencia (OnModuleInit / OnModuleDestroy)', () => {
+    it('no debe inicializar el timer automático si NODE_ENV === "test"', async () => {
+      await ticketsService.onModuleInit();
+      expect((ticketsService as any).purgeIntervalRef).toBeUndefined();
+    });
+
+    it('debe inicializar el timer y llamar a unref() en entornos distintos de test', async () => {
+      const originalEnv = process.env['NODE_ENV'];
+      const unrefSpy = vi.fn();
+      const mockTimer = { unref: unrefSpy };
+      const setIntervalSpy = vi.spyOn(global, 'setInterval').mockReturnValue(mockTimer as any);
+      const purgeSpy = vi.spyOn(ticketsService, 'runSafeIdempotencyPurge').mockResolvedValue();
+
+      try {
+        process.env['NODE_ENV'] = 'production';
+        await ticketsService.onModuleInit();
+
+        expect((ticketsService as any).purgeIntervalRef).toBe(mockTimer);
+        expect(unrefSpy).toHaveBeenCalled();
+        expect(purgeSpy).toHaveBeenCalled();
+        expect(setIntervalSpy).toHaveBeenCalled();
+      } finally {
+        process.env['NODE_ENV'] = originalEnv;
+        ticketsService.onModuleDestroy();
+        setIntervalSpy.mockRestore();
+      }
+    });
+
+    it('debe limpiar el timer en onModuleDestroy() si fue inicializado', () => {
+      const clearIntervalSpy = vi.spyOn(global, 'clearInterval');
+      const dummyTimer = setInterval(() => {}, 60000);
+      dummyTimer.unref();
+      (ticketsService as any).purgeIntervalRef = dummyTimer;
+
+      expect((ticketsService as any).purgeIntervalRef).toBeDefined();
+
+      ticketsService.onModuleDestroy();
+
+      expect(clearIntervalSpy).toHaveBeenCalledWith(dummyTimer);
+      expect((ticketsService as any).purgeIntervalRef).toBeUndefined();
+      clearIntervalSpy.mockRestore();
+    });
+
+    it('debe capturar errores de base de datos en runSafeIdempotencyPurge sin propagar excepciones', async () => {
+      const deleteManySpy = vi
+        .spyOn(mockPrisma.idempotencyKey, 'deleteMany')
+        .mockRejectedValueOnce(new Error('PostgreSQL connection drop'));
+
+      await expect(ticketsService.runSafeIdempotencyPurge()).resolves.toBeUndefined();
+      expect(deleteManySpy).toHaveBeenCalled();
+    });
+
+    it('debe registrar en log cuando se purgan claves expiradas exitosamente', async () => {
+      idempotencyStore.set('user1:OP:exp-auto', {
+        expiresAt: new Date(Date.now() - 5000),
+      });
+
+      const loggerSpy = vi.spyOn((ticketsService as any).logger, 'log');
+
+      await ticketsService.runSafeIdempotencyPurge();
+
+      expect(loggerSpy).toHaveBeenCalledWith(
+        expect.stringContaining('claves de idempotencia expiradas'),
+      );
+    });
+  });
 });

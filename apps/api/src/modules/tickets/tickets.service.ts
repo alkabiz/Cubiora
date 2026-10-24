@@ -3,6 +3,8 @@ import {
   ConflictException,
   NotFoundException,
   Logger,
+  OnModuleInit,
+  OnModuleDestroy,
 } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { ulid } from 'ulid';
@@ -29,14 +31,42 @@ export interface CreatedTicketResult {
 }
 
 @Injectable()
-export class TicketsService {
+export class TicketsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(TicketsService.name);
+  private purgeIntervalRef?: ReturnType<typeof setInterval> | undefined;
 
   constructor(
     private readonly prisma: PrismaService,
     private readonly publicDisplayService: PublicDisplayService,
     private readonly cubiclesService: CubiclesService,
   ) {}
+
+  async onModuleInit(): Promise<void> {
+    if (process.env['NODE_ENV'] === 'test') {
+      return;
+    }
+
+    const intervalRaw = process.env['IDEMPOTENCY_PURGE_INTERVAL_MS'];
+    const intervalMs =
+      intervalRaw && !isNaN(Number(intervalRaw))
+        ? Number(intervalRaw)
+        : 3_600_000;
+
+    void this.runSafeIdempotencyPurge();
+
+    this.purgeIntervalRef = setInterval(() => {
+      void this.runSafeIdempotencyPurge();
+    }, intervalMs);
+
+    this.purgeIntervalRef.unref?.();
+  }
+
+  onModuleDestroy(): void {
+    if (this.purgeIntervalRef) {
+      clearInterval(this.purgeIntervalRef);
+      this.purgeIntervalRef = undefined;
+    }
+  }
 
   /**
    * Crea un nuevo turno de manera atómica:
@@ -1051,5 +1081,23 @@ export class TicketsService {
       },
     });
     return result.count;
+  }
+
+  /**
+   * Ejecuta la purga periódica de claves de idempotencia vencidas de forma segura,
+   * capturando errores para evitar rechazos de promesas no controlados.
+   */
+  async runSafeIdempotencyPurge(): Promise<void> {
+    try {
+      const deletedCount = await this.purgeExpiredIdempotencyKeys();
+      if (deletedCount > 0) {
+        this.logger.log(`Purgadas ${deletedCount} claves de idempotencia expiradas.`);
+      }
+    } catch (error) {
+      this.logger.error(
+        `Error durante la purga periódica de claves de idempotencia: ${(error as Error)?.message}`,
+        (error as Error)?.stack,
+      );
+    }
   }
 }
