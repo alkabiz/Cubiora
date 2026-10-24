@@ -110,15 +110,15 @@ model Ticket {
 }
 
 model TicketStatusHistory {
-  id            String   @id @db.VarChar(26)
-  ticketId      String   @map("ticket_id") @db.VarChar(26)
-  fromStatus    String?  @map("from_status") @db.VarChar(20)
-  toStatus      String   @map("to_status") @db.VarChar(20)
-  cubicleId     String?  @map("cubicle_id") @db.VarChar(26)
-  actorUserId   String?  @map("actor_user_id") @db.VarChar(26)
-  reasonCode    String?  @map("reason_code") @db.VarChar(50)
-  correlationId String   @map("correlation_id") @db.VarChar(36)
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  id            String        @id @db.VarChar(26)
+  ticketId      String        @map("ticket_id") @db.VarChar(26)
+  fromStatus    TicketStatus? @map("from_status")
+  toStatus      TicketStatus  @map("to_status")
+  cubicleId     String?       @map("cubicle_id") @db.VarChar(26)
+  actorUserId   String?       @map("actor_user_id") @db.VarChar(26)
+  reasonCode    String?       @map("reason_code") @db.VarChar(50)
+  correlationId String        @map("correlation_id") @db.VarChar(36)
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
 
   ticket  Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   cubicle Cubicle? @relation(fields: [cubicleId], references: [id], onDelete: SetNull)
