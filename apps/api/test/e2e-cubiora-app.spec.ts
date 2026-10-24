@@ -282,6 +282,7 @@ describe('E2E Operacional Completo con Rol cubiora_app', () => {
         patientDocument: '10203040',
       },
       'recepcion-01',
+      'corr-e2e-create-1',
     );
     const createdTicket = createdRes.data;
 
@@ -306,8 +307,9 @@ describe('E2E Operacional Completo con Rol cubiora_app', () => {
     const callResult = await ticketsService.callTicket(
       createdTicket.publicId,
       'cub-01',
-      snapshotAssigned.activeTicket!.version,
+      'corr-e2e-call-1',
       'idemp-call-1',
+      snapshotAssigned.activeTicket!.version,
     );
     expect(callResult.statusCode).toBe(200);
     expect(callResult.data.cubicle.status).toBe(CubicleStatus.CALLING);
@@ -321,8 +323,9 @@ describe('E2E Operacional Completo con Rol cubiora_app', () => {
     await ticketsService.startService(
       createdTicket.publicId,
       'cub-01',
-      snapshotCalled.activeTicket!.version,
+      'corr-e2e-start-1',
       'idemp-start-1',
+      snapshotCalled.activeTicket!.version,
     );
 
     const snapshotInService = await cubiclesService.buildCubicleSnapshot('cub-01');
@@ -333,8 +336,9 @@ describe('E2E Operacional Completo con Rol cubiora_app', () => {
     await ticketsService.closeTicket(
       createdTicket.publicId,
       'cub-01',
-      snapshotInService.activeTicket!.version,
+      'corr-e2e-close-1',
       'idemp-close-1',
+      snapshotInService.activeTicket!.version,
     );
 
     const snapshotClosed = await cubiclesService.buildCubicleSnapshot('cub-01');
@@ -349,6 +353,7 @@ describe('E2E Operacional Completo con Rol cubiora_app', () => {
         patientDocument: '20304050',
       },
       'recepcion-01',
+      'corr-e2e-create-2',
     );
     const secondTicket = secondRes.data;
 
@@ -356,8 +361,9 @@ describe('E2E Operacional Completo con Rol cubiora_app', () => {
     await ticketsService.callTicket(
       secondTicket.publicId,
       'cub-01',
-      snapshotAssigned2.activeTicket!.version,
+      'corr-e2e-call-2',
       'idemp-call-2',
+      snapshotAssigned2.activeTicket!.version,
     );
 
     // Con el cubículo en CALLED, un tercer turno queda en cola PENDING.
@@ -367,6 +373,7 @@ describe('E2E Operacional Completo con Rol cubiora_app', () => {
         patientDocument: '30405060',
       },
       'recepcion-01',
+      'corr-e2e-create-3',
     );
     const thirdTicket = thirdRes.data;
     expect(thirdTicket.status).toBe(TicketStatus.PENDING);
