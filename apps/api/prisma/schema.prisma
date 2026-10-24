@@ -38,11 +38,12 @@ model User {
   passwordHash String   @map("password_hash") @db.VarChar(255)
   displayName  String   @map("display_name") @db.VarChar(100)
   role         UserRole @default(RECEPTION)
-  cubicleId    String?  @map("cubicle_id") @db.VarChar(26)
+  cubicleId    String?  @unique @map("cubicle_id") @db.VarChar(26)
   active       Boolean  @default(true)
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
+  cubicle         Cubicle?              @relation("CubicleCurrentOperator", fields: [cubicleId], references: [id], onDelete: SetNull)
   statusHistory   TicketStatusHistory[]
   callsMade       TicketCall[]
   ticketsCreated  Ticket[]
@@ -61,9 +62,10 @@ model Cubicle {
   createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  tickets       Ticket[]
-  calls         TicketCall[]
-  statusHistory TicketStatusHistory[]
+  currentOperator User?                 @relation("CubicleCurrentOperator")
+  tickets         Ticket[]
+  calls           TicketCall[]
+  statusHistory   TicketStatusHistory[]
 
   @@map("cubicles")
 }
