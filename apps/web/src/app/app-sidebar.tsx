@@ -9,6 +9,7 @@ import {
   NAVIGATION_SECTION_LABEL,
   type NavigationItem,
 } from './navigation-config';
+import { SidebarOperativeSummary } from './sidebar-operative-summary';
 
 interface SidebarBrandProps {
   sectionLabel: string;
@@ -188,6 +189,8 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
             />
           </ScrollArea>
         </Box>
+
+        <SidebarOperativeSummary role={role} collapsed={collapsed} />
 
         <SidebarFooter collapsed={collapsed} />
       </div>

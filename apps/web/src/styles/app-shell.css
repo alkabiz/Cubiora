@@ -428,6 +428,100 @@
   color: var(--app-text-muted);
 }
 
+/* ─── Resumen operativo del cajero ───────────────────────────────────────── */
+
+.sidebar-summary-card {
+  flex: 0 0 auto;
+  margin: 10px 0 0;
+  padding: 11px 12px 10px;
+  border: 1px solid var(--app-border);
+  border-radius: 10px;
+  background: var(--app-surface-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.sidebar-summary-card.is-stale {
+  border-color: var(--app-warning);
+  background: #fff9f0;
+}
+
+.sidebar-summary-card--loading {
+  gap: 9px;
+  padding: 12px;
+}
+
+.sidebar-summary-card--error {
+  padding: 10px 12px;
+}
+
+.sidebar-summary-skeleton {
+  height: 14px;
+  border-radius: 4px;
+}
+
+.sidebar-summary-skeleton--short {
+  width: 70%;
+}
+
+.sidebar-summary-error-text {
+  color: var(--app-text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.sidebar-summary-stale-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #fef3c7;
+  color: var(--app-warning);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  cursor: default;
+}
+
+.sidebar-summary-row {
+  display: grid;
+  grid-template-columns: 14px 1fr auto;
+  align-items: center;
+  gap: 7px;
+}
+
+.sidebar-summary-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--app-text-muted);
+}
+
+.sidebar-summary-label {
+  color: var(--app-text-muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-summary-value {
+  color: var(--app-text);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sidebar-summary-value--accent {
+  color: var(--app-primary);
+}
+
+/* El sidebar colapsado ya oculta la tarjeta desde React (returns null),
+   pero añadimos esta regla como defensa adicional. */
+.app-sidebar.is-collapsed .sidebar-summary-card {
+  display: none;
+}
+
 .app-main {
   grid-column: 2;
   grid-row: 2;
