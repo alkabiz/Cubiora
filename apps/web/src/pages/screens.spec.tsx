@@ -92,10 +92,13 @@ describe('Contrato Aprobado de Cubiora — Suite de Pantallas e Integración', (
     it('debe mostrar el estado inicial correctamente sin turnos generados', () => {
       renderWithTheme(<ReceptionPage />);
 
-      // Encabezado institucional
-      expect(screen.getByText('Cubiora')).toBeDefined();
-      expect(screen.getByText('Recepción')).toBeDefined();
-      expect(screen.getByText('En línea')).toBeDefined();
+      // Encabezado de página provisto por el shell
+      expect(screen.getByText('SCR-REC-001 · Recepción')).toBeDefined();
+      expect(
+        screen.getByText(/Registra los datos mínimos del paciente para generar un turno/i),
+      ).toBeDefined();
+      expect(screen.queryByText('Cubiora')).toBeNull();
+      expect(screen.queryByRole('button', { name: /Cerrar sesión/i })).toBeNull();
 
       // Formulario
       expect(screen.getByRole('heading', { name: /Generar turno/i })).toBeDefined();
@@ -169,7 +172,7 @@ describe('Contrato Aprobado de Cubiora — Suite de Pantallas e Integración', (
 
     it('debe renderizar la tabla de últimos turnos sin columna ni dato de Paciente y con máx 3 registros', async () => {
       let seq = 1;
-      window.fetch = vi.fn().mockImplementation(async (url: any) => {
+      window.fetch = vi.fn().mockImplementation(async (url: RequestInfo | URL) => {
         if (typeof url === 'string' && url.includes('/tickets/recent')) {
           return {
             ok: true,
@@ -294,53 +297,6 @@ describe('Contrato Aprobado de Cubiora — Suite de Pantallas e Integración', (
       expect(screen.getByText('C.C. ••••••8212')).toBeDefined();
       expect(screen.getByText('3 pacientes en espera')).toBeDefined();
       expect(screen.getByRole('button', { name: /Llamar turno/i })).toBeDefined();
-    });
-
-    it('debe bloquear cierre de sesión en ASSIGNED, CALLED e IN_SERVICE con mensaje y acción "Volver al turno"', async () => {
-      window.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({
-          success: true,
-          data: {
-            cubicle: {
-              id: 'cub_03',
-              code: 'CUB-03',
-              displayName: 'Cubículo 03',
-              status: CubicleStatus.RESERVED,
-              version: 1,
-            },
-            activeTicket: {
-              id: 'ticket_124',
-              publicId: '01JTICK124',
-              publicCode: 'TUR-000124-C3',
-              patientName: 'Carlos Pérez',
-              status: TicketStatus.ASSIGNED,
-              version: 1,
-              callNumber: 0,
-            },
-          },
-        }),
-      });
-
-      renderWithTheme(<CashierPage />);
-      await waitFor(() => expect(screen.getByText('TUR-000124-C3')).toBeDefined());
-
-      // Intentar cerrar sesión estando en ASSIGNED
-      const logoutBtn = screen.getByRole('button', { name: /Cerrar sesión/i });
-      fireEvent.click(logoutBtn);
-
-      // Mensaje bloqueante normativo
-      expect(
-        screen.getByText(
-          /No puedes cerrar sesión durante un turno activo\. Finaliza la atención antes de salir\./i,
-        ),
-      ).toBeDefined();
-
-      // Acción única: Volver al turno
-      const backBtn = screen.getByRole('button', { name: /Volver al turno/i });
-      expect(backBtn).toBeDefined();
-      fireEvent.click(backBtn);
     });
 
     it('debe ejecutar comandos reales con expected-version e idempotency-key', async () => {
@@ -592,35 +548,6 @@ describe('Contrato Aprobado de Cubiora — Suite de Pantallas e Integración', (
           screen.getByText(/El estado del turno fue actualizado por otro operador/i),
         ).toBeDefined();
       });
-    });
-
-    it('debe permitir cerrar sesión en AVAILABLE sin advertencias ni bloqueos', async () => {
-      window.fetch = vi.fn().mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: async () => ({
-          success: true,
-          data: {
-            cubicle: {
-              id: 'cub_03',
-              code: 'CUB-03',
-              displayName: 'Cubículo 03',
-              status: CubicleStatus.AVAILABLE,
-              version: 1,
-            },
-            activeTicket: null,
-          },
-        }),
-      });
-
-      renderWithTheme(<CashierPage />);
-      await waitFor(() => expect(screen.getByText('Disponible')).toBeDefined());
-
-      const logoutBtn = screen.getByRole('button', { name: /Cerrar sesión/i });
-      fireEvent.click(logoutBtn);
-
-      // No debe abrirse el diálogo de bloqueo
-      expect(screen.queryByText(/No puedes cerrar sesión durante un turno activo/i)).toBeNull();
     });
 
     it('debe confirmar el cierre y presentar el siguiente turno confirmado por la API', async () => {

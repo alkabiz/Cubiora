@@ -10,11 +10,11 @@ import {
   Box,
   Table,
 } from '@radix-ui/themes';
-import { CheckCircledIcon, CopyIcon, PersonIcon, ExitIcon } from '@radix-ui/react-icons';
-import { useNavigate } from 'react-router-dom';
+import { CheckCircledIcon, CopyIcon } from '@radix-ui/react-icons';
+import { AppMain } from '../app/app-main';
+import { PageHeader } from '../app/page-header';
 import { apiClient } from '../lib/api';
 import { TicketStatus } from '@cubiora/shared';
-import { useAuth } from '../context/auth-context';
 
 export interface IssuedTicket {
   code: string;
@@ -26,8 +26,6 @@ export interface IssuedTicket {
 }
 
 export const ReceptionPage: React.FC = () => {
-  const { user, logout } = useAuth();
-  const navigate = useNavigate();
   const [patientName, setPatientName] = useState('');
   const [idDocument, setIdDocument] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -159,65 +157,24 @@ export const ReceptionPage: React.FC = () => {
     nameInputRef.current?.focus();
   };
 
-  const handleLogout = async () => {
-    await logout();
-    navigate('/login', { replace: true });
-  };
-
   return (
-    <Box className="w-full max-w-6xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
-      {/* ─── Encabezado institucional de Recepción ─────────────────────── */}
-      <header className="border-b border-[var(--gray-a4)] pb-4 mb-6">
-        <Flex justify="between" align="center" wrap="wrap" gap="3">
-          <Flex align="center" gap="3">
-            <Badge size="2" variant="solid" color="teal" className="w-8 h-8 flex items-center justify-center font-bold">
-              C
-            </Badge>
-            <Heading size="4" weight="bold">
-              Cubiora
-            </Heading>
-            <Badge size="1" variant="surface" color="teal">
-              Recepción
-            </Badge>
-          </Flex>
-
-          <Flex align="center" gap="3">
-            <Flex align="center" gap="1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block" />
-              <Text size="1" color="gray" weight="medium">
-                En línea
-              </Text>
-            </Flex>
-
-            <Flex align="center" gap="1.5" className="px-2.5 py-1 rounded-md bg-[var(--gray-a3)]">
-              <PersonIcon width={14} height={14} />
-              <Text size="1" weight="medium">
-                {user?.displayName || user?.username || 'recepcion'}
-              </Text>
-            </Flex>
-
-            <Button
-              id="btn-logout-reception"
-              size="1"
-              variant="ghost"
-              color="gray"
-              onClick={handleLogout}
-              style={{ cursor: 'pointer' }}
-            >
-              <ExitIcon width={14} height={14} />
-              Cerrar sesión
-            </Button>
-          </Flex>
-        </Flex>
-      </header>
-
+    <AppMain
+      header={
+        <PageHeader
+          code="SCR-REC-001"
+          section="Recepción"
+          title="Generar turno"
+          description="Registra los datos mínimos del paciente para generar un turno."
+        />
+      }
+    >
       {/* ─── Contenido Principal: Dos Columnas ──────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Columna Izquierda: Formulario (5 columnas) */}
         <div className="lg:col-span-5">
           <Card size="3" className="p-6">
             <Heading size="4" weight="bold" className="mb-4">
-              Generar turno
+              Datos del paciente
             </Heading>
 
             {errorMessage && (
@@ -448,6 +405,6 @@ export const ReceptionPage: React.FC = () => {
           )}
         </div>
       </div>
-    </Box>
+    </AppMain>
   );
 };
