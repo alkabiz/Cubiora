@@ -223,8 +223,12 @@ describe('Shell de aplicación Cubiora', () => {
     expect(within(nav).queryByRole('link', { name: 'Generar turno' })).toBeNull();
     expect(within(nav).queryByRole('link', { name: 'Cubículos' })).toBeNull();
 
-    await waitFor(() => expect(screen.getByText('Disponible')).toBeDefined());
-    expect(screen.getByRole('status', { name: /Estado de conexión: En línea/i })).toBeDefined();
+    await waitFor(() => {
+      expect(screen.getByText('Disponible')).toBeDefined();
+      expect(
+        screen.getByRole('status', { name: /Estado de conexión: En línea/i }),
+      ).toBeDefined();
+    });
   });
 
   it('ADMIN ve Cubículos e Historial, sin módulos operativos', () => {
