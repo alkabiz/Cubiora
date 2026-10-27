@@ -16,6 +16,8 @@ RUN pnpm install --frozen-lockfile
 
 # ─── Etapa de compilación ─────────────────────────────────────────────────────
 FROM base AS builder
+ENV DIRECT_URL="postgresql://cubiora_build:cubiora_build@localhost:5432/cubiora_build"
+ENV DATABASE_URL="postgresql://cubiora_build:cubiora_build@localhost:5432/cubiora_build"
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY --from=dependencies /app/packages/shared/node_modules ./packages/shared/node_modules
 COPY --from=dependencies /app/apps/api/node_modules ./apps/api/node_modules
