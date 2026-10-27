@@ -51,6 +51,31 @@ export class CubiclesService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
+   * Obtiene el snapshot actual de un cubículo existente por su código.
+   * Lanza NotFoundException si el cubículo no existe para garantizar la seguridad
+   * e idempotencia de las peticiones GET conforme a RFC 9110.
+   */
+  async getCubicleSnapshotByCode(codeParam: string): Promise<CubicleSnapshot> {
+    const rawCode = codeParam.trim().toUpperCase();
+    const normalizedCode = rawCode.startsWith('CUB-') ? rawCode : `CUB-${rawCode.padStart(2, '0')}`;
+
+    const cubicle = await this.prisma.cubicle.findFirst({
+      where: {
+        OR: [{ code: normalizedCode }, { code: rawCode }],
+      },
+    });
+
+    if (!cubicle) {
+      throw new NotFoundException({
+        code: ApiErrorCode.RESOURCE_NOT_FOUND,
+        message: `El cubículo con código '${codeParam}' no existe.`,
+      });
+    }
+
+    return this.buildCubicleSnapshot(cubicle.id);
+  }
+
+  /**
    * Obtiene o asegura la existencia de un cubículo por su código y retorna su snapshot actual.
    * Soporta formatos como 'CUB-03', '03', 'CUB-01', '1', etc.
    */

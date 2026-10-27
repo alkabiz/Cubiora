@@ -81,6 +81,8 @@ export class TicketsController {
       correlationId,
       idempotencyKey,
       expectedVersion,
+      user.role,
+      user.cubicleId,
     );
 
     return res.status(statusCode || HttpStatus.OK).json({
@@ -113,6 +115,8 @@ export class TicketsController {
       correlationId,
       idempotencyKey,
       expectedVersion,
+      user.role,
+      user.cubicleId,
     );
 
     return res.status(statusCode || HttpStatus.OK).json({
@@ -145,6 +149,8 @@ export class TicketsController {
       correlationId,
       idempotencyKey,
       expectedVersion,
+      user.role,
+      user.cubicleId,
     );
 
     return res.status(statusCode || HttpStatus.OK).json({
@@ -177,6 +183,8 @@ export class TicketsController {
       correlationId,
       idempotencyKey,
       expectedVersion,
+      user.role,
+      user.cubicleId,
     );
 
     return res.status(statusCode || HttpStatus.OK).json({

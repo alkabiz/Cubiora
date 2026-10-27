@@ -49,8 +49,10 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   async logout(@Res({ passthrough: true }) response: Response) {
+    const env = getEnv();
     response.clearCookie('cubiora_session', {
       httpOnly: true,
+      secure: env.NODE_ENV === 'production',
       sameSite: 'strict',
       path: '/',
     });

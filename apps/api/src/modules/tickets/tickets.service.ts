@@ -420,6 +420,44 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Valida que un operador con rol CASHIER solo pueda intervenir turnos
+   * asignados a su propio cubículo (mitigación BOLA/IDOR).
+   */
+  private async validateCashierCubicleAssignment(
+    ticketCubicleId: string | null | undefined,
+    actorUserId: string,
+    actorUserRole?: UserRole,
+    actorCubicleId?: string | null,
+  ): Promise<void> {
+    if (!ticketCubicleId) return;
+
+    let role = actorUserRole;
+    let cubicleId = actorCubicleId;
+
+    if (!role && this.prisma.user?.findUnique) {
+      try {
+        const dbUser = await this.prisma.user.findUnique({
+          where: { id: actorUserId },
+          select: { role: true, cubicleId: true },
+        });
+        if (dbUser) {
+          role = dbUser.role as UserRole;
+          cubicleId = dbUser.cubicleId;
+        }
+      } catch {
+        // Fallback si la tabla no está disponible en el mock
+      }
+    }
+
+    if (role === UserRole.CASHIER && cubicleId && ticketCubicleId !== cubicleId) {
+      throw new ForbiddenException({
+        code: ApiErrorCode.FORBIDDEN,
+        message: `El operador de caja está asignado al cubículo (${cubicleId}) y no puede operar en el cubículo (${ticketCubicleId}).`,
+      });
+    }
+  }
+
+  /**
    * POST /api/v1/tickets/:id/call
    * Llama un turno asignado o repite el llamado.
    * Transiciona ASSIGNED -> CALLED (o repite en CALLED), registra TicketCall, emite evento SSE y actualiza cubículo.
@@ -430,8 +468,11 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     correlationId: string,
     idempotencyKey?: string,
     expectedVersion?: number,
+    actorUserRole?: UserRole,
+    actorCubicleId?: string | null,
   ): Promise<{ statusCode: number; data: CubicleSnapshot }> {
     const ticket = await this.findTicket(ticketIdOrPublicId);
+    await this.validateCashierCubicleAssignment(ticket.cubicleId, actorUserId, actorUserRole, actorCubicleId);
 
     // Idempotencia
     if (idempotencyKey) {
@@ -637,8 +678,11 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     correlationId: string,
     idempotencyKey?: string,
     expectedVersion?: number,
+    actorUserRole?: UserRole,
+    actorCubicleId?: string | null,
   ): Promise<{ statusCode: number; data: CubicleSnapshot }> {
     const ticket = await this.findTicket(ticketIdOrPublicId);
+    await this.validateCashierCubicleAssignment(ticket.cubicleId, actorUserId, actorUserRole, actorCubicleId);
 
     if (idempotencyKey) {
       const existing = await this.prisma.idempotencyKey.findUnique({
@@ -754,8 +798,11 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     correlationId: string,
     idempotencyKey?: string,
     expectedVersion?: number,
+    actorUserRole?: UserRole,
+    actorCubicleId?: string | null,
   ): Promise<{ statusCode: number; data: CubicleSnapshot }> {
     const ticket = await this.findTicket(ticketIdOrPublicId);
+    await this.validateCashierCubicleAssignment(ticket.cubicleId, actorUserId, actorUserRole, actorCubicleId);
 
     if (idempotencyKey) {
       const existing = await this.prisma.idempotencyKey.findUnique({
@@ -956,8 +1003,11 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     correlationId: string,
     idempotencyKey?: string,
     expectedVersion?: number,
+    actorUserRole?: UserRole,
+    actorCubicleId?: string | null,
   ): Promise<{ statusCode: number; data: CubicleSnapshot }> {
     const ticket = await this.findTicket(ticketIdOrPublicId);
+    await this.validateCashierCubicleAssignment(ticket.cubicleId, actorUserId, actorUserRole, actorCubicleId);
 
     if (idempotencyKey) {
       const existing = await this.prisma.idempotencyKey.findUnique({

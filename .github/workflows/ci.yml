@@ -5,10 +5,84 @@ on:
     branches: [main, develop, 'feature/**']
   pull_request:
     branches: [main, develop]
+  workflow_dispatch:
+
+# Cancelar ejecuciones previas en la misma rama para evitar consumo redundante de minutos
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+# Principio de menor privilegio a nivel global
+permissions:
+  contents: read
 
 jobs:
-  validate:
-    name: Lint, Typecheck, Test & Build
+  security-audit:
+    name: Security & Secret Scanning
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Secret Scanning (Gitleaks)
+        uses: gitleaks/gitleaks-action@eed94751480f2d9e685f6e80b2a95c32857e4e1a # v2.3.8
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@a64a0e9272304910cfdd726053da8be99fed99a1 # v4.1.0
+        with:
+          version: 12.11.2
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832e0b1 # v4.2.0
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Dependency Audit (Production)
+        run: pnpm audit --prod
+
+  lint-and-typecheck:
+    name: Lint & Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@a64a0e9272304910cfdd726053da8be99fed99a1 # v4.1.0
+        with:
+          version: 12.11.2
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832e0b1 # v4.2.0
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Shared Types
+        run: pnpm --filter @cubiora/shared build
+
+      - name: Generate Prisma Client
+        run: pnpm db:generate
+
+      - name: Run ESLint
+        run: pnpm lint
+
+      - name: Run TypeScript typecheck
+        run: pnpm typecheck
+
+  test:
+    name: Automated Tests (Vitest & PostgreSQL)
     runs-on: ubuntu-latest
 
     services:
@@ -36,22 +110,15 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Secret Scanning (Gitleaks)
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v3
+        uses: pnpm/action-setup@a64a0e9272304910cfdd726053da8be99fed99a1 # v4.1.0
         with:
           version: 12.11.2
 
       - name: Setup Node.js 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832e0b1 # v4.2.0
         with:
           node-version: 22
           cache: 'pnpm'
@@ -59,23 +126,80 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build Shared Types
+        run: pnpm --filter @cubiora/shared build
+
       - name: Validate Prisma Schema
         run: pnpm --filter api prisma:validate
 
       - name: Generate Prisma Client
         run: pnpm db:generate
 
-      - name: Security Audit (Production Dependencies)
-        run: pnpm audit --prod
-
-      - name: Run ESLint
-        run: pnpm lint
-
-      - name: Run TypeScript typecheck
-        run: pnpm typecheck
-
-      - name: Run Vitest tests
+      - name: Run Vitest Suite (API & Web)
         run: pnpm test
+
+  build:
+    name: Production Build
+    needs: [lint-and-typecheck, test]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@a64a0e9272304910cfdd726053da8be99fed99a1 # v4.1.0
+        with:
+          version: 12.11.2
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832e0b1 # v4.2.0
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
       - name: Build applications
         run: pnpm build
+
+      - name: Archive Web SPA Artifacts
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        with:
+          name: web-dist
+          path: apps/web/dist
+          retention-days: 7
+
+      - name: Archive API Dist Artifacts
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        with:
+          name: api-dist
+          path: apps/api/dist
+          retention-days: 7
+
+  docker-dryrun:
+    name: Docker Build Validation
+    needs: [build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
+
+      - name: Validate API Dockerfile
+        uses: docker/build-push-action@471d140ea77bf9c0544bef00de1e0d94fa5f6e82 # v6.15.0
+        with:
+          context: .
+          file: docker/Dockerfile.api
+          push: false
+          tags: cubiora-api:test
+
+      - name: Validate Web Dockerfile
+        uses: docker/build-push-action@471d140ea77bf9c0544bef00de1e0d94fa5f6e82 # v6.15.0
+        with:
+          context: .
+          file: docker/Dockerfile.web
+          push: false
+          tags: cubiora-web:test

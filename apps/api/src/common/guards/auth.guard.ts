@@ -3,21 +3,26 @@ import {
   CanActivate,
   ExecutionContext,
   UnauthorizedException,
+  Optional,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { SessionTokenUtil } from '../../modules/auth/session-token.util';
 import { getEnv } from '../../config/env.validation';
 import { ApiErrorCode } from '@cubiora/shared';
+import { PrismaService } from '../../prisma/prisma.service';
 
 import { AuthenticatedUser } from '../decorators/current-user.decorator';
 import type { Request } from 'express';
 
 @Injectable()
 export class AuthGuard implements CanActivate {
-  constructor(private readonly reflector: Reflector) {}
+  constructor(
+    private readonly reflector: Reflector,
+    @Optional() private readonly prisma?: PrismaService,
+  ) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  canActivate(context: ExecutionContext): boolean | Promise<boolean> {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),
       context.getClass(),
@@ -48,24 +53,47 @@ export class AuthGuard implements CanActivate {
       });
     }
 
-    // Validación de usuario inactivo
-    if ((payload as unknown as { status?: string }).status === 'INACTIVE') {
+    // Validación de usuario inactivo (en token)
+    if (
+      (payload as unknown as { status?: string }).status === 'INACTIVE' ||
+      (payload as unknown as { active?: boolean }).active === false
+    ) {
       throw new UnauthorizedException({
         code: ApiErrorCode.AUTH_REQUIRED,
         message: 'Acceso denegado: el usuario se encuentra inactivo.',
       });
     }
 
-    (request as unknown as { user: AuthenticatedUser }).user = {
-      id: payload.sub,
-      publicId: payload.publicId,
-      username: payload.username,
-      displayName: payload.displayName,
-      role: payload.role,
-      cubicleId: payload.cubicleId,
+    const attachUser = () => {
+      (request as unknown as { user: AuthenticatedUser }).user = {
+        id: payload.sub,
+        publicId: payload.publicId,
+        username: payload.username,
+        displayName: payload.displayName,
+        role: payload.role,
+        cubicleId: payload.cubicleId,
+      };
+      return true;
     };
 
-    return true;
+    if (this.prisma?.user?.findUnique) {
+      return this.prisma.user
+        .findUnique({
+          where: { id: payload.sub },
+          select: { active: true },
+        })
+        .then((dbUser) => {
+          if (dbUser && !dbUser.active) {
+            throw new UnauthorizedException({
+              code: ApiErrorCode.AUTH_REQUIRED,
+              message: 'Acceso denegado: el usuario se encuentra inactivo.',
+            });
+          }
+          return attachUser();
+        });
+    }
+
+    return attachUser();
   }
 
   private extractToken(request: Request): string | null {

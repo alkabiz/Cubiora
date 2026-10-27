@@ -1,0 +1,95 @@
+name: CD - Build & Publish Containers
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  publish-containers:
+    name: Build & Push Container (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: api
+            dockerfile: docker/Dockerfile.api
+            image_name: cubiora-api
+          - service: web
+            dockerfile: docker/Dockerfile.web
+            image_name: cubiora-web
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up QEMU (Multi-platform emulation)
+        uses: docker/setup-qemu-action@49b3bc8e6bdd4480b8283741299d6761f7529d96 # v3.2.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@b5ca514318bd6ebac0fb2aedd5d36ec1b5c232a2 # v3.10.0
+
+      - name: Log in to GitHub Container Registry (GHCR)
+        uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.3.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata (Tags & Labels)
+        id: meta
+        uses: docker/metadata-action@902fa8ec7d6ecbf8d84d538b9b233a880e428804 # v5.7.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.image_name }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=short
+
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@471d140ea77bf9c0544bef00de1e0d94fa5f6e82 # v6.15.0
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deployment-gate:
+    name: Production Deployment Gate
+    needs: [publish-containers]
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://cubiora.local
+    steps:
+      - name: Deployment Summary
+        run: |
+          echo "### 🚀 Despliegue de Contenedores Completado" >> $GITHUB_STEP_SUMMARY
+          echo "- **Repositorio:** \`${{ github.repository }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Ref:** \`${{ github.ref }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Commit SHA:** \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Registro:** \`${{ env.REGISTRY }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Imágenes Publicadas:**" >> $GITHUB_STEP_SUMMARY
+          echo "  - \`${{ env.REGISTRY }}/${{ github.repository_owner }}/cubiora-api:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "  - \`${{ env.REGISTRY }}/${{ github.repository_owner }}/cubiora-web:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Los contenedores están disponibles para orquestación mediante Docker Compose o Kubernetes." >> $GITHUB_STEP_SUMMARY

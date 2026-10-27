@@ -36,7 +36,7 @@ export class CubiclesController {
   async getCurrentSnapshot(
     @Param('code') code: string,
   ): Promise<{ success: boolean; data: CubicleSnapshot }> {
-    const data = await this.cubiclesService.getOrCreateCubicleByCode(code);
+    const data = await this.cubiclesService.getCubicleSnapshotByCode(code);
     return {
       success: true,
       data,

@@ -7,3 +7,9 @@ allowBuilds:
   '@swc/core': true
   esbuild: true
   prisma: true
+overrides:
+  zod: 4.6.7
+  fast-uri: 3.1.9
+  body-parser: 2.4.0
+  multer: 2.5.0
+
