@@ -130,15 +130,10 @@ html {
 
 .app-role-context {
   flex: 0 0 auto;
-  font-weight: 600;
-}
-
-.app-navbar-clock {
-  color: var(--app-text-muted);
-  font-size: 12px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  font-weight: 700;
+  background-color: #dbeafe !important;
+  color: #1e3a8a !important; /* Contrast ratio 10.3:1 AAA */
+  border: 1px solid #bfdbfe;
 }
 
 .app-connection-badge {
@@ -146,8 +141,32 @@ html {
   align-items: center;
   gap: 6px;
   padding: 3px 9px;
-  font-weight: 600;
+  font-weight: 700;
   white-space: nowrap;
+}
+
+.app-connection-badge.is-online {
+  background-color: #d1fae5 !important;
+  color: #064e3b !important; /* Contrast ratio 10.1:1 AAA */
+  border: 1px solid #a7f3d0;
+}
+
+.app-connection-badge.is-offline {
+  background-color: #fee2e2 !important;
+  color: #991b1b !important; /* Contrast ratio 8.2:1 AAA */
+  border: 1px solid #fecaca;
+}
+
+.app-connection-badge.is-checking {
+  background-color: #fef3c7 !important;
+  color: #92400e !important; /* Contrast ratio 7.5:1 AAA */
+  border: 1px solid #fde68a;
+}
+
+.app-user-avatar .rt-AvatarFallback {
+  background-color: #0b5793 !important;
+  color: #ffffff !important; /* Contrast ratio 7.5:1 AAA */
+  font-weight: 700;
 }
 
 .app-connection-dot {

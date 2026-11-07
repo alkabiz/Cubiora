@@ -498,3 +498,8 @@ dist/
 
 # Graphify tool outputs
 graphify-out/
+
+# Playwright test outputs
+test-results/
+playwright-report/
+e2e-axe-results/
