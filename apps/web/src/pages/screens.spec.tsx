@@ -391,6 +391,46 @@ describe('Contrato Aprobado de Cubiora — Suite de Pantallas e Integración', (
         expect(screen.getAllByText('Turno general').length).toBeGreaterThanOrEqual(2);
       });
     });
+
+    it('anuncia la copia del código al portapapeles mediante región accesible role="status"', async () => {
+      window.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 201,
+        json: async () => ({
+          success: true,
+          data: {
+            publicId: '01JREC_COPY_TEST',
+            publicCode: 'TUR-000088-GE',
+            sequenceNumber: 88,
+            patientName: 'Paciente Copia',
+            status: TicketStatus.PENDING,
+            createdAt: new Date().toISOString(),
+          },
+        }),
+      });
+
+      Object.assign(navigator, {
+        clipboard: {
+          writeText: vi.fn().mockResolvedValue(undefined),
+        },
+      });
+
+      renderWithTheme(<ReceptionPage />);
+      const nameInput = screen.getByPlaceholderText(/Ingrese nombre y apellido/i);
+      fireEvent.change(nameInput, { target: { value: 'Paciente Copia' } });
+      fireEvent.click(screen.getByRole('button', { name: /Generar turno/i }));
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /Copiar número de turno/i })).toBeDefined();
+      });
+
+      const copyBtn = screen.getByRole('button', { name: /Copiar número de turno/i });
+      fireEvent.click(copyBtn);
+
+      await waitFor(() => {
+        expect(screen.getByText('Código TUR-000088-GE copiado al portapapeles')).toBeDefined();
+      });
+    });
   });
 
   describe('SCR-CAJ-001: Mi Cubículo (Caja)', () => {

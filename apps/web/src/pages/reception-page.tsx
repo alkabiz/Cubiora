@@ -52,6 +52,7 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
   const [lastTicket, setLastTicket] = useState<IssuedTicket | null>(null);
   const [recentTickets, setRecentTickets] = useState<IssuedTicket[]>([]);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [copyAnnouncement, setCopyAnnouncement] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const isPreferentialPolicyEnabled =
@@ -184,7 +185,11 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
     if (!lastTicket) return;
     navigator.clipboard?.writeText(lastTicket.code);
     setCopiedCode(true);
-    setTimeout(() => setCopiedCode(false), 2000);
+    setCopyAnnouncement(`Código ${lastTicket.code} copiado al portapapeles`);
+    setTimeout(() => {
+      setCopiedCode(false);
+      setCopyAnnouncement('');
+    }, 2000);
   };
 
   const handleClear = () => {
@@ -388,8 +393,13 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
 
         {/* Columna Derecha: Último Turno y Tabla (7 columnas) */}
         <div className="lg:col-span-7 flex flex-col gap-6">
+          {/* Región de estado para anuncios a lectores de pantalla montada de forma permanente (WCAG 4.1.3 Nivel AA) */}
+          <div role="status" aria-live="polite" className="sr-only">
+            {copyAnnouncement}
+          </div>
+
           {/* Panel Último Turno Generado */}
-          <Card size="3" className="p-6" role="status" aria-live="polite">
+          <Card size="3" className="p-6">
             <Flex justify="between" align="center" className="pb-3 mb-4 border-b border-[var(--gray-a4)]">
               <Text size="1" weight="bold" color="teal" className="uppercase tracking-wider">
                 Último turno generado

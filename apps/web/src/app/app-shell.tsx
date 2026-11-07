@@ -22,9 +22,49 @@ const ShellLayout: React.FC = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
+  const [connectionAnnouncement, setConnectionAnnouncement] = useState('');
+  const [isProlongedOffline, setIsProlongedOffline] = useState(false);
+  const previousStatusRef = useRef(connectionStatus);
+  const offlineTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const logoutBackButtonRef = useRef<HTMLButtonElement>(null);
   const location = useLocation();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (previousStatusRef.current === connectionStatus) {
+      return;
+    }
+    const prev = previousStatusRef.current;
+    previousStatusRef.current = connectionStatus;
+
+    if (connectionStatus === 'offline') {
+      setIsProlongedOffline(false);
+      setConnectionAnnouncement('Reconectando con el servidor central...');
+
+      // WCAG 4.1.3 (AA): Eleva a alert tras 10 segundos de desconexión continua
+      offlineTimeoutRef.current = setTimeout(() => {
+        setIsProlongedOffline(true);
+        setConnectionAnnouncement('Sin conexión con el servidor central. Las operaciones están en espera.');
+      }, 10000);
+    } else if (connectionStatus === 'online') {
+      if (offlineTimeoutRef.current) {
+        clearTimeout(offlineTimeoutRef.current);
+        offlineTimeoutRef.current = null;
+      }
+      setIsProlongedOffline(false);
+      if (prev === 'offline' || prev === 'checking') {
+        setConnectionAnnouncement('Conexión restablecida. Sincronización activa.');
+      }
+    } else if (connectionStatus === 'checking') {
+      setConnectionAnnouncement('Verificando estado de la conexión...');
+    }
+
+    return () => {
+      if (offlineTimeoutRef.current) {
+        clearTimeout(offlineTimeoutRef.current);
+      }
+    };
+  }, [connectionStatus]);
 
   useEffect(() => {
     const handleOffline = () => setConnectionStatus('offline');
@@ -71,6 +111,15 @@ const ShellLayout: React.FC = () => {
       <a href="#main-content" className="app-skip-link">
         Saltar al contenido principal
       </a>
+
+      {/* Anuncios de conectividad para tecnologías de asistencia (WCAG 4.1.3 AA) */}
+      <div
+        role={isProlongedOffline ? 'alert' : 'status'}
+        aria-live={isProlongedOffline ? 'assertive' : 'polite'}
+        className="sr-only"
+      >
+        {connectionAnnouncement}
+      </div>
 
       <AppNavbar
         user={user}
