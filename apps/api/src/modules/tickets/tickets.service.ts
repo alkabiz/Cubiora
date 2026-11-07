@@ -7,6 +7,7 @@ import {
   Logger,
   OnModuleInit,
   OnModuleDestroy,
+  Optional,
 } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { ulid } from 'ulid';
@@ -15,6 +16,7 @@ import { Prisma } from '../../generated/prisma/client';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { PublicDisplayService } from '../public-display/public-display.service';
 import { CubiclesService } from '../cubicles/cubicles.service';
+import { OperationalTelemetryService } from '../operational-telemetry/operational-telemetry.service';
 import {
   TicketStatus,
   CubicleStatus,
@@ -50,6 +52,7 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly publicDisplayService: PublicDisplayService,
     private readonly cubiclesService: CubiclesService,
+    @Optional() private readonly telemetryService?: OperationalTelemetryService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -374,6 +377,14 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       return responsePayload;
     });
 
+    if (this.telemetryService) {
+      void this.telemetryService.emitQueueUpdate();
+      if (result.assignedCubicle) {
+        // En caso de autoasignación, emitir también el estado actualizado del cubículo
+        void this.telemetryService.broadcastSnapshot();
+      }
+    }
+
     return {
       statusCode: 201,
       data: result,
@@ -644,6 +655,11 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       },
     });
 
+    if (this.telemetryService) {
+      void this.telemetryService.emitCubicleUpdate(txResult.updatedCubicleId);
+      void this.telemetryService.emitQueueUpdate();
+    }
+
     const snapshot = await this.cubiclesService.buildCubicleSnapshot(txResult.updatedCubicleId);
 
     if (idempotencyKey) {
@@ -761,6 +777,11 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     });
 
     const snapshot = await this.cubiclesService.buildCubicleSnapshot(cubicleId);
+
+    if (this.telemetryService) {
+      void this.telemetryService.emitCubicleUpdate(cubicleId);
+      void this.telemetryService.emitQueueUpdate();
+    }
 
     if (idempotencyKey) {
       await this.prisma.idempotencyKey.create({
@@ -969,6 +990,11 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
 
     const snapshot = await this.cubiclesService.buildCubicleSnapshot(cubicleId);
 
+    if (this.telemetryService) {
+      void this.telemetryService.emitCubicleUpdate(cubicleId);
+      void this.telemetryService.emitQueueUpdate();
+    }
+
     if (idempotencyKey) {
       await this.prisma.idempotencyKey.create({
         data: {
@@ -1173,6 +1199,11 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     });
 
     const snapshot = await this.cubiclesService.buildCubicleSnapshot(cubicleId);
+
+    if (this.telemetryService) {
+      void this.telemetryService.emitCubicleUpdate(cubicleId);
+      void this.telemetryService.emitQueueUpdate();
+    }
 
     if (idempotencyKey) {
       await this.prisma.idempotencyKey.create({
