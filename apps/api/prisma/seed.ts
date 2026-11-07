@@ -19,8 +19,8 @@ dotenv.config({ path: path.resolve(process.cwd(), '.env.development.local') });
 dotenv.config({ path: path.resolve(process.cwd(), 'apps/api/.env.development.local') });
 dotenv.config({ path: path.resolve(__dirname, '../.env.development.local') });
 
-// 1. Salvaguarda crítica: jamás ejecutar seed en producción
-if (process.env.NODE_ENV === 'production') {
+// 1. Salvaguarda crítica: jamás ejecutar seed en producción salvo bandera explícita
+if (process.env.NODE_ENV === 'production' && process.env.ALLOW_SEED_IN_PRODUCTION !== 'true') {
   console.error('❌ ERROR FATAL: El seed de datos de prueba está estrictamente prohibido en NODE_ENV=production.');
   process.exit(1);
 }
@@ -32,13 +32,14 @@ if (!connectionString) {
   process.exit(1);
 }
 
-// 3. Guarda de host local: prohibida cualquier IP o dominio externo
+// 3. Guarda de host local: prohibida cualquier IP o dominio externo (a menos que sea contenedor interno 'postgres')
 try {
   const parsedUrl = new URL(connectionString);
   const host = parsedUrl.hostname.toLowerCase();
-  if (!['localhost', '127.0.0.1', '::1'].includes(host)) {
+  const allowedHosts = ['localhost', '127.0.0.1', '::1', 'postgres'];
+  if (!allowedHosts.includes(host) && process.env.ALLOW_SEED_IN_PRODUCTION !== 'true') {
     console.error(
-      `❌ ERROR_SEGURIDAD_HOST_NO_LOCAL: El seed solo puede ejecutarse contra localhost, 127.0.0.1 o ::1. Host detectado: '${host}'. Conexión remota prohibida.`,
+      `❌ ERROR_SEGURIDAD_HOST_NO_LOCAL: El seed solo puede ejecutarse contra localhost, 127.0.0.1, ::1 o postgres. Host detectado: '${host}'. Conexión remota prohibida.`,
     );
     process.exit(1);
   }
@@ -47,11 +48,11 @@ try {
   process.exit(1);
 }
 
-// 4. Exigir contraseña obligatoria por entorno (sin contraseñas por defecto)
-const devPassword = process.env.DEV_SEED_USER_PASSWORD;
+// 4. Exigir contraseña obligatoria por entorno (con fallback a DEFAULT_ADMIN_PASSWORD si está definido)
+const devPassword = process.env.DEV_SEED_USER_PASSWORD || process.env.DEFAULT_ADMIN_PASSWORD;
 if (!devPassword || devPassword.length < 8) {
   console.error(
-    '❌ ERROR DE SEGURIDAD: La variable DEV_SEED_USER_PASSWORD es obligatoria en el entorno (mínimo 8 caracteres) para crear usuarios de prueba.',
+    '❌ ERROR DE SEGURIDAD: La variable DEV_SEED_USER_PASSWORD o DEFAULT_ADMIN_PASSWORD es obligatoria en el entorno (mínimo 8 caracteres) para crear usuarios.',
   );
   process.exit(1);
 }

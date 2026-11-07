@@ -9,7 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { z } from 'zod/v4';
 
-const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '192.168.1.33']);
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '192.168.1.33', 'postgres']);
 
 /**
  * Valida de forma estricta que las URLs de base de datos cumplan con las reglas
@@ -50,6 +50,11 @@ export function assertDatabaseUrlSecurity(
 
   // 3. Blindaje en producción: rol exclusivo cubiora_app y sslmode estricto verify-full
   if (nodeEnv === 'production') {
+    // Si se despliega en red interna aislada de Docker Compose (ej. Coolify), se permite la conexión directa
+    if (process.env['ALLOW_DOCKER_INTERNAL_DB'] === 'true') {
+      return;
+    }
+
     if (varName === 'DATABASE_URL') {
       const username = decodeURIComponent(parsedUrl.username);
       if (username !== 'cubiora_app') {

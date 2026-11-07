@@ -42,15 +42,18 @@ export class PrismaService
       caCert = process.env['DATABASE_CA_CERT'];
     }
 
-    const requiresSsl =
+    const isDockerInternal = process.env['ALLOW_DOCKER_INTERNAL_DB'] === 'true';
+
+    const requiresSsl = !isDockerInternal && (
       env.DATABASE_URL.includes('sslmode=require') ||
       env.DATABASE_URL.includes('sslmode=verify-ca') ||
       env.DATABASE_URL.includes('sslmode=verify-full') ||
-      env.NODE_ENV === 'production';
+      env.NODE_ENV === 'production'
+    );
 
     // Validación de inicio obligatoria:
-    // Si NODE_ENV=production y TLS no verifica el certificado, la API debe negarse a iniciar.
-    if (env.NODE_ENV === 'production') {
+    // Si NODE_ENV=production y no es red interna Docker, TLS con CA interna es obligatorio.
+    if (env.NODE_ENV === 'production' && !isDockerInternal) {
       if (!requiresSsl || !caCert) {
         throw new Error(
           'FATAL_TLS_VERIFICATION_FAILED: En producción es obligatorio el uso de TLS con CA interna verificada (rejectUnauthorized: true, verify-full). La API se niega a iniciar.',
