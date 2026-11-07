@@ -12,10 +12,10 @@ import {
   ReloadIcon,
   UpdateIcon,
 } from '@radix-ui/react-icons';
-import type { CubicleActiveTicket } from '@cubiora/shared';
+import { DispensationResolution, type CubicleActiveTicket } from '@cubiora/shared';
 import type { CubicleVisualStep, CubicleWorkspace } from './types';
 import { formatClockTime, formatDuration, waitingPatientsLabel } from './cubicle-view-model';
-import { useCashierHotkeys } from './use-cashier-hotkeys';
+import { useCashierHotkeys, CASHIER_HOTKEY_MAP } from './use-cashier-hotkeys';
 
 export interface MiCubiculoProps {
   workspace: CubicleWorkspace;
@@ -269,6 +269,24 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
   const { step, activeTicket, outcome } = workspace;
   const [clientNow, setClientNow] = useState(() => Date.now());
 
+  const [prescriptionCode, setPrescriptionCode] = useState('');
+  const [resolution, setResolution] = useState<DispensationResolution>(
+    DispensationResolution.TOTAL_DELIVERED,
+  );
+  const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [deliveryPhone, setDeliveryPhone] = useState('');
+  const [pendingDetails, setPendingDetails] = useState('');
+  const [formError, setFormError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPrescriptionCode('');
+    setResolution(DispensationResolution.TOTAL_DELIVERED);
+    setDeliveryAddress('');
+    setDeliveryPhone('');
+    setPendingDetails('');
+    setFormError(null);
+  }, [activeTicket?.id]);
+
   const closeTriggerRef = useRef<HTMLButtonElement>(null);
   const noShowTriggerRef = useRef<HTMLButtonElement>(null);
   const closeCancelRef = useRef<HTMLButtonElement>(null);
@@ -322,16 +340,40 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
     isModalOpen: closeModalOpen || noShowModalOpen,
   });
 
+  const handleConfirmClose = async () => {
+    if (resolution === DispensationResolution.PENDING_48H) {
+      if (!deliveryAddress.trim() || !deliveryPhone.trim()) {
+        setFormError(
+          'Para radicar un pendiente 48h (Res. 1604) debe ingresar dirección domiciliaria y teléfono de contacto.',
+        );
+        return;
+      }
+    }
+    setFormError(null);
+    await workspace.confirmClose({
+      resolution,
+      prescriptionCode: prescriptionCode.trim() || undefined,
+      deliveryAddress: deliveryAddress.trim() || undefined,
+      deliveryPhone: deliveryPhone.trim() || undefined,
+      pendingDetailsJson: pendingDetails.trim() || undefined,
+      itemsPendingCount: resolution === DispensationResolution.PENDING_48H ? 1 : 0,
+      itemsDeliveredCount: resolution === DispensationResolution.TOTAL_DELIVERED ? 1 : 0,
+    });
+  };
+
   const closeModal = (
     <Dialog.Root
       open={closeModalOpen}
       onOpenChange={(open) => {
-        if (!open && !isClosing) workspace.cancelClose();
+        if (!open && !isClosing) {
+          setFormError(null);
+          workspace.cancelClose();
+        }
       }}
     >
       <Dialog.Content
         size="2"
-        className="max-w-[480px]"
+        className="max-w-[520px]"
         role="dialog"
         aria-modal="true"
         aria-labelledby="close-ticket-title"
@@ -359,6 +401,142 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
           siguiente turno.
         </Dialog.Description>
 
+        {/* Código de Fórmula Médica / MIPRES */}
+        <div className="mt-3 space-y-1">
+          <label htmlFor="prescription-code-input" className="block text-[11px] font-bold text-slate-800">
+            Fórmula Médica / MIPRES
+          </label>
+          <input
+            id="prescription-code-input"
+            type="text"
+            value={prescriptionCode}
+            onChange={(e) => setPrescriptionCode(e.target.value)}
+            placeholder="ej. RX-E2E-9001"
+            disabled={isClosing}
+            className="w-full rounded border border-slate-300 bg-white px-2.5 py-1.5 font-mono text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-amber-500"
+          />
+        </div>
+
+        {/* Selector de Tipo de Resolución Farmacéutica */}
+        <div className="mt-4 space-y-2">
+          <label className="block text-xs font-bold text-[#0F2942]">
+            Resolución de Dispensación Farmacéutica
+          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setResolution(DispensationResolution.TOTAL_DELIVERED);
+                setFormError(null);
+              }}
+              disabled={isClosing}
+              className={`p-3 rounded-lg border text-left transition-all cursor-pointer ${
+                resolution === DispensationResolution.TOTAL_DELIVERED
+                  ? 'border-emerald-500 bg-emerald-50/60 ring-2 ring-emerald-500/20'
+                  : 'border-slate-200 bg-white hover:bg-slate-50'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <CheckCircledIcon className="w-4 h-4 text-emerald-600 shrink-0" aria-hidden="true" />
+                <span className="text-xs font-bold text-slate-900">Entrega Total (PBS)</span>
+              </div>
+              <p className="mt-1 text-[11px] text-slate-500 leading-snug">
+                Todos los medicamentos formulados fueron entregados al paciente.
+              </p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setResolution(DispensationResolution.PENDING_48H);
+                setFormError(null);
+              }}
+              disabled={isClosing}
+              className={`p-3 rounded-lg border text-left transition-all cursor-pointer ${
+                resolution === DispensationResolution.PENDING_48H
+                  ? 'border-amber-500 bg-amber-50/60 ring-2 ring-amber-500/20'
+                  : 'border-slate-200 bg-white hover:bg-slate-50'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                <ExclamationTriangleIcon className="w-4 h-4 text-amber-600 shrink-0" aria-hidden="true" />
+                <span className="text-xs font-bold text-slate-900">Generar Pendiente 48h</span>
+              </div>
+              <p className="mt-1 text-[11px] text-slate-500 leading-snug">
+                Res. 1604 MinSalud · Entrega domiciliaria obligatoria &le; 48h.
+              </p>
+            </button>
+          </div>
+        </div>
+
+        {/* Formulario condicional para Pendiente 48h */}
+        {resolution === DispensationResolution.PENDING_48H && (
+          <div className="mt-3.5 space-y-3 rounded-lg border border-amber-200/90 bg-amber-50/40 p-3.5 text-xs text-amber-950">
+            <div className="flex items-start gap-2">
+              <ExclamationTriangleIcon className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" aria-hidden="true" />
+              <div className="space-y-0.5">
+                <span className="font-bold text-amber-900">Garantía Legal de Entrega &le; 48 Horas:</span>
+                <p className="text-[11px] text-amber-800 leading-relaxed">
+                  Conforme a la Resolución 1604/2013 de MinSalud, Audifarma garantiza el despacho de los medicamentos pendientes al domicilio del usuario en un plazo máximo de 48 horas.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2 pt-1">
+              <div>
+                <label htmlFor="delivery-address-input" className="block text-[11px] font-bold text-slate-800">
+                  Dirección de Entrega Domiciliaria <span className="text-red-600">*</span>
+                </label>
+                <input
+                  id="delivery-address-input"
+                  type="text"
+                  value={deliveryAddress}
+                  onChange={(e) => setDeliveryAddress(e.target.value)}
+                  placeholder="ej. Cra 43A # 12-45 Apto 302, Barrio..."
+                  disabled={isClosing}
+                  className="mt-1 w-full rounded border border-slate-300 bg-white px-2.5 py-1.5 font-sans text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="delivery-phone-input" className="block text-[11px] font-bold text-slate-800">
+                  Teléfono de Contacto <span className="text-red-600">*</span>
+                </label>
+                <input
+                  id="delivery-phone-input"
+                  type="tel"
+                  value={deliveryPhone}
+                  onChange={(e) => setDeliveryPhone(e.target.value)}
+                  placeholder="ej. 300 123 4567"
+                  disabled={isClosing}
+                  className="mt-1 w-full rounded border border-slate-300 bg-white px-2.5 py-1.5 font-mono text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="pending-details-input" className="block text-[11px] font-bold text-slate-800">
+                  Medicamentos o ítems pendientes (Detalle opcional)
+                </label>
+                <input
+                  id="pending-details-input"
+                  type="text"
+                  value={pendingDetails}
+                  onChange={(e) => setPendingDetails(e.target.value)}
+                  placeholder="ej. Losartán 50mg x 30 tab (desabastecimiento)"
+                  disabled={isClosing}
+                  className="mt-1 w-full rounded border border-slate-300 bg-white px-2.5 py-1.5 font-sans text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {formError && (
+          <div className="mt-3 p-2.5 rounded bg-red-50 border border-red-200 text-red-800 text-xs font-semibold" role="alert">
+            {formError}
+          </div>
+        )}
+
         {isClosing && (
           <div
             className="mt-4 flex items-center gap-2 rounded-lg border border-[#C9E6FF] bg-[#EFF4FF] p-3 text-xs font-semibold text-[#006591]"
@@ -373,7 +551,10 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
           <button
             ref={closeCancelRef}
             type="button"
-            onClick={workspace.cancelClose}
+            onClick={() => {
+              setFormError(null);
+              workspace.cancelClose();
+            }}
             disabled={isClosing}
             className={SECONDARY_BUTTON}
           >
@@ -381,7 +562,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
           </button>
           <button
             type="button"
-            onClick={() => void workspace.confirmClose()}
+            onClick={() => void handleConfirmClose()}
             disabled={isClosing || !workspace.isOnline}
             className={PRIMARY_BUTTON}
           >
@@ -641,7 +822,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
                 onClick={() => void workspace.requestCall()}
                 disabled={isCalling || workspace.actionsDisabled}
                 aria-busy={isCalling}
-                aria-keyshortcuts="Alt+Shift+N"
+                aria-keyshortcuts={CASHIER_HOTKEY_MAP.call.label}
                 className={PRIMARY_BUTTON}
               >
                 {isCalling ? (
@@ -657,8 +838,8 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
                     <PlayIcon className="w-4 h-4" aria-hidden="true" />
                     Llamar turno
                     {hotkeysEnabled && (
-                      <kbd className="text-[10px] font-mono opacity-80 bg-white/20 px-1.5 py-0.5 rounded ml-1">
-                        Alt+Shift+N
+                      <kbd className="text-[10px] font-mono font-bold bg-white text-slate-900 px-1.5 py-0.5 rounded ml-1.5 shadow-xs border border-slate-200">
+                        {CASHIER_HOTKEY_MAP.call.label}
                       </kbd>
                     )}
                   </>
@@ -700,7 +881,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
                 onClick={() => void workspace.requestStartService()}
                 disabled={isStarting || isConfirming || workspace.actionsDisabled}
                 aria-busy={isStarting}
-                aria-keyshortcuts="Alt+Shift+A"
+                aria-keyshortcuts={CASHIER_HOTKEY_MAP.start.label}
                 className={PRIMARY_BLUE_BUTTON}
               >
                 {isStarting ? (
@@ -713,8 +894,8 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
                     <ArrowRightIcon className="w-4 h-4" aria-hidden="true" />
                     Iniciar atención
                     {hotkeysEnabled && (
-                      <kbd className="text-[10px] font-mono opacity-80 bg-white/20 px-1.5 py-0.5 rounded ml-1">
-                        Alt+Shift+A
+                      <kbd className="text-[10px] font-mono font-bold bg-white text-slate-900 px-1.5 py-0.5 rounded ml-1.5 shadow-xs border border-slate-200">
+                        {CASHIER_HOTKEY_MAP.start.label}
                       </kbd>
                     )}
                   </>
@@ -780,6 +961,30 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
               timerPrefix="Duración:"
             />
 
+            {/* Captura de Código de Fórmula Médica / MIPRES */}
+            <div className="rounded-xl border border-slate-200/90 bg-[#F8FAFC] p-4 space-y-2">
+              <label
+                htmlFor="prescription-barcode-input"
+                className="text-xs font-bold text-[#0F2942] flex items-center justify-between"
+              >
+                <span>Fórmula Médica / MIPRES</span>
+                <span className="text-[11px] font-mono text-[#64748B]">Soporte Lector USB / Pistola</span>
+              </label>
+              <div className="relative">
+                <input
+                  id="prescription-barcode-input"
+                  type="text"
+                  value={prescriptionCode}
+                  onChange={(e) => setPrescriptionCode(e.target.value)}
+                  placeholder="Escanee código de barras de fórmula o digite MIPRES..."
+                  className="w-full font-mono text-xs px-3.5 py-2.5 rounded-lg border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0EA5E9] focus:border-transparent transition-all"
+                />
+              </div>
+              <p className="text-[11px] text-[#64748B] leading-relaxed">
+                El código de fórmula se vinculará de forma atómica a la auditoría de dispensación y radicación de pendientes.
+              </p>
+            </div>
+
             <WaitingCounter count={workspace.waitingCount} />
 
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
@@ -788,14 +993,14 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
                 type="button"
                 onClick={workspace.requestClose}
                 disabled={isConfirming || isProcessingClose || workspace.actionsDisabled}
-                aria-keyshortcuts="Alt+Shift+F"
+                aria-keyshortcuts={CASHIER_HOTKEY_MAP.close.label}
                 className={PRIMARY_BUTTON}
               >
                 <CheckIcon className="w-4 h-4" aria-hidden="true" />
                 Cerrar turno
                 {hotkeysEnabled && (
-                  <kbd className="text-[10px] font-mono opacity-80 bg-white/20 px-1.5 py-0.5 rounded ml-1">
-                    Alt+Shift+F
+                  <kbd className="text-[10px] font-mono font-bold bg-white text-slate-900 px-1.5 py-0.5 rounded ml-1.5 shadow-xs border border-slate-200">
+                    {CASHIER_HOTKEY_MAP.close.label}
                   </kbd>
                 )}
               </button>
@@ -985,7 +1190,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-semibold text-slate-700">Atajos rápidos:</span>
           <span className="font-mono text-[11px] text-slate-600">
-            [Alt+Shift+N: Llamar] [Alt+Shift+A: Iniciar] [Alt+Shift+F: Cerrar]
+            [{CASHIER_HOTKEY_MAP.call.label}: Llamar] [{CASHIER_HOTKEY_MAP.start.label}: Iniciar] [{CASHIER_HOTKEY_MAP.close.label}: Cerrar]
           </span>
         </div>
         <button

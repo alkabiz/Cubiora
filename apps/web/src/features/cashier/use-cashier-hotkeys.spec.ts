@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useCashierHotkeys, CASHIER_HOTKEYS_STORAGE_KEY } from './use-cashier-hotkeys';
+import { useCashierHotkeys, CASHIER_HOTKEYS_STORAGE_KEY, CASHIER_HOTKEY_MAP } from './use-cashier-hotkeys';
 
 describe('useCashierHotkeys', () => {
   let onCall: () => void;
@@ -18,7 +18,7 @@ describe('useCashierHotkeys', () => {
     vi.restoreAllMocks();
   });
 
-  it('dispara onCall con Alt+Shift+N o Alt+N cuando canCall es true', () => {
+  it('dispara onCall con Ctrl+Shift+K cuando canCall es true', () => {
     renderHook(() =>
       useCashierHotkeys({
         onCall,
@@ -31,8 +31,8 @@ describe('useCashierHotkeys', () => {
     );
 
     const event = new KeyboardEvent('keydown', {
-      key: 'n',
-      altKey: true,
+      key: CASHIER_HOTKEY_MAP.call.key,
+      ctrlKey: true,
       shiftKey: true,
       bubbles: true,
       cancelable: true,
@@ -43,7 +43,7 @@ describe('useCashierHotkeys', () => {
     expect(event.defaultPrevented).toBe(true);
   });
 
-  it('dispara onStartService con Alt+Shift+A cuando canStart es true', () => {
+  it('dispara onStartService con Ctrl+Shift+J cuando canStart es true', () => {
     renderHook(() =>
       useCashierHotkeys({
         onCall,
@@ -56,8 +56,8 @@ describe('useCashierHotkeys', () => {
     );
 
     const event = new KeyboardEvent('keydown', {
-      key: 'a',
-      altKey: true,
+      key: CASHIER_HOTKEY_MAP.start.key,
+      ctrlKey: true,
       shiftKey: true,
       bubbles: true,
       cancelable: true,
@@ -68,7 +68,7 @@ describe('useCashierHotkeys', () => {
     expect(event.defaultPrevented).toBe(true);
   });
 
-  it('dispara onCloseTurn con Alt+Shift+F cuando canClose es true', () => {
+  it('dispara onCloseTurn con Ctrl+Shift+M cuando canClose es true', () => {
     renderHook(() =>
       useCashierHotkeys({
         onCall,
@@ -81,8 +81,8 @@ describe('useCashierHotkeys', () => {
     );
 
     const event = new KeyboardEvent('keydown', {
-      key: 'f',
-      altKey: true,
+      key: CASHIER_HOTKEY_MAP.close.key,
+      ctrlKey: true,
       shiftKey: true,
       bubbles: true,
       cancelable: true,
@@ -105,9 +105,30 @@ describe('useCashierHotkeys', () => {
       }),
     );
 
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', altKey: true, bubbles: true }));
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', altKey: true, bubbles: true }));
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', altKey: true, bubbles: true }));
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: CASHIER_HOTKEY_MAP.call.key,
+        ctrlKey: true,
+        shiftKey: true,
+        bubbles: true,
+      }),
+    );
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: CASHIER_HOTKEY_MAP.start.key,
+        ctrlKey: true,
+        shiftKey: true,
+        bubbles: true,
+      }),
+    );
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: CASHIER_HOTKEY_MAP.close.key,
+        ctrlKey: true,
+        shiftKey: true,
+        bubbles: true,
+      }),
+    );
 
     expect(onCall).not.toHaveBeenCalled();
     expect(onStartService).not.toHaveBeenCalled();
@@ -127,8 +148,9 @@ describe('useCashierHotkeys', () => {
     );
 
     const repeatEvent = new KeyboardEvent('keydown', {
-      key: 'n',
-      altKey: true,
+      key: CASHIER_HOTKEY_MAP.call.key,
+      ctrlKey: true,
+      shiftKey: true,
       repeat: true,
       bubbles: true,
     });
@@ -154,8 +176,9 @@ describe('useCashierHotkeys', () => {
     input.focus();
 
     const event = new KeyboardEvent('keydown', {
-      key: 'n',
-      altKey: true,
+      key: CASHIER_HOTKEY_MAP.call.key,
+      ctrlKey: true,
+      shiftKey: true,
       bubbles: true,
     });
     input.dispatchEvent(event);
@@ -177,7 +200,50 @@ describe('useCashierHotkeys', () => {
       }),
     );
 
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', altKey: true, bubbles: true }));
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: CASHIER_HOTKEY_MAP.call.key,
+        ctrlKey: true,
+        shiftKey: true,
+        bubbles: true,
+      }),
+    );
+    expect(onCall).not.toHaveBeenCalled();
+  });
+
+  it('no dispara con modificador incorrecto (Alt en lugar de Ctrl) — evita conflicto de idioma', () => {
+    // Verifica que el antiguo esquema Alt+Shift ya no se active
+    renderHook(() =>
+      useCashierHotkeys({
+        onCall,
+        onStartService,
+        onCloseTurn,
+        canCall: true,
+        canStart: true,
+        canClose: true,
+      }),
+    );
+
+    // Alt+Shift+K — antes era el esquema anterior; ahora no debe disparar nada
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'k',
+        altKey: true,
+        shiftKey: true,
+        bubbles: true,
+      }),
+    );
+    expect(onCall).not.toHaveBeenCalled();
+
+    // Solo Ctrl sin Shift — no debe disparar
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: CASHIER_HOTKEY_MAP.call.key,
+        ctrlKey: true,
+        shiftKey: false,
+        bubbles: true,
+      }),
+    );
     expect(onCall).not.toHaveBeenCalled();
   });
 
@@ -202,7 +268,14 @@ describe('useCashierHotkeys', () => {
     expect(result.current.hotkeysEnabled).toBe(false);
     expect(localStorage.getItem(CASHIER_HOTKEYS_STORAGE_KEY)).toBe('false');
 
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', altKey: true, bubbles: true }));
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: CASHIER_HOTKEY_MAP.call.key,
+        ctrlKey: true,
+        shiftKey: true,
+        bubbles: true,
+      }),
+    );
     expect(onCall).not.toHaveBeenCalled();
   });
 
@@ -220,7 +293,31 @@ describe('useCashierHotkeys', () => {
 
     unmount();
 
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'n', altKey: true, bubbles: true }));
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: CASHIER_HOTKEY_MAP.call.key,
+        ctrlKey: true,
+        shiftKey: true,
+        bubbles: true,
+      }),
+    );
     expect(onCall).not.toHaveBeenCalled();
+  });
+
+  it('expone las etiquetas correctas de los atajos desde CASHIER_HOTKEY_MAP', () => {
+    const { result } = renderHook(() =>
+      useCashierHotkeys({
+        onCall,
+        onStartService,
+        onCloseTurn,
+        canCall: true,
+        canStart: true,
+        canClose: true,
+      }),
+    );
+
+    expect(result.current.shortcuts.call).toBe(CASHIER_HOTKEY_MAP.call.label);
+    expect(result.current.shortcuts.start).toBe(CASHIER_HOTKEY_MAP.start.label);
+    expect(result.current.shortcuts.close).toBe(CASHIER_HOTKEY_MAP.close.label);
   });
 });

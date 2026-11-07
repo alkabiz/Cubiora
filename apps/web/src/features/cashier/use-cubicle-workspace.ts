@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CubicleActiveTicket, CubicleSnapshot, TicketStatus } from '@cubiora/shared';
+import { CloseTicketRequest, CubicleActiveTicket, CubicleSnapshot, TicketStatus } from '@cubiora/shared';
 import { ApiClientError, apiClient } from '../../lib/api';
 import type {
   CubicleCommand,
@@ -283,7 +283,7 @@ export function useCubicleWorkspace({
   ]);
 
   const executeCommand = useCallback(
-    async (command: CubicleCommand) => {
+    async (command: CubicleCommand, extraPayload?: Record<string, unknown>) => {
       if (!isOnlineRef.current || isUncertainRef.current || isReconcilingRef.current) return;
 
       const currentSnapshot = snapshotRef.current;
@@ -312,7 +312,7 @@ export function useCubicleWorkspace({
               'expected-version': String(ticket.version),
               'If-Match': String(ticket.version),
             },
-            body: JSON.stringify({ expectedVersion: ticket.version }),
+            body: JSON.stringify({ expectedVersion: ticket.version, ...extraPayload }),
           },
         );
 
@@ -395,7 +395,11 @@ export function useCubicleWorkspace({
     if (confirmActionRef.current === 'close') setConfirmAction(null);
   }, [setConfirmAction]);
 
-  const confirmClose = useCallback(() => executeCommand('close'), [executeCommand]);
+  const confirmClose = useCallback(
+    (payload?: Partial<CloseTicketRequest>) =>
+      executeCommand('close', payload as Record<string, unknown> | undefined),
+    [executeCommand],
+  );
 
   const requestNoShow = useCallback(() => {
     if (isPendingRef.current || isUncertainRef.current || !isOnlineRef.current) return;

@@ -1,4 +1,4 @@
-import type { CubicleActiveTicket, CubicleSnapshot } from '@cubiora/shared';
+import type { CloseTicketRequest, CubicleActiveTicket, CubicleSnapshot } from '@cubiora/shared';
 
 /**
  * Estados visuales de SCR-CAJ-001.
@@ -62,7 +62,7 @@ export interface CubicleWorkspace {
   requestStartService: () => Promise<void>;
   requestClose: () => void;
   cancelClose: () => void;
-  confirmClose: () => Promise<void>;
+  confirmClose: (payload?: Partial<CloseTicketRequest>) => Promise<void>;
   requestNoShow: () => void;
   cancelNoShow: () => void;
   confirmNoShow: () => Promise<void>;
