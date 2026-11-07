@@ -17,7 +17,9 @@ import {
   CopyIcon,
   PersonIcon,
   HeartIcon,
+  FileTextIcon,
 } from '@radix-ui/react-icons';
+import { ScanBarcode, Calculator, ReceiptText } from 'lucide-react';
 import { AppMain } from '../app/app-main';
 import { PageHeader } from '../app/page-header';
 import { apiClient } from '../lib/api';
@@ -46,6 +48,7 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
 }) => {
   const [patientName, setPatientName] = useState('');
   const [idDocument, setIdDocument] = useState('');
+  const [showKeypad, setShowKeypad] = useState(false);
   const [queueCategory, setQueueCategory] = useState<QueueCategory>(QueueCategory.GENERAL);
   const [operationalReason, setOperationalReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -101,10 +104,25 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
     fetchRecentTickets();
   }, []);
 
+  const handleKeypadPress = (digit: string) => {
+    setIdDocument((prev) => (prev.length < 15 ? prev + digit : prev));
+  };
+
+  const handleKeypadBackspace = () => {
+    setIdDocument((prev) => prev.slice(0, -1));
+  };
+
+  const handleKeypadClear = () => {
+    setIdDocument('');
+  };
+
+  const handleScanBarcodeDemo = () => {
+    setIdDocument('1023456789');
+  };
+
   const isNameValid = patientName.trim().length >= 2;
   const isReasonValid =
-    queueCategory === QueueCategory.GENERAL ||
-    (queueCategory === QueueCategory.PREFERENTIAL && !!operationalReason);
+    queueCategory !== QueueCategory.PREFERENTIAL || !!operationalReason;
   const isFormValid = isNameValid && isReasonValid && !isSubmitting;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -196,6 +214,7 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
     if (isSubmitting) return;
     setPatientName('');
     setIdDocument('');
+    setShowKeypad(false);
     setQueueCategory(QueueCategory.GENERAL);
     setOperationalReason('');
     setErrorMessage(null);
@@ -250,13 +269,36 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
 
                 {/* Documento (Opcional) */}
                 <Box>
-                  <Flex justify="between" align="center" className="mb-1.5">
+                  <Flex justify="between" align="center" className="mb-1.5 flex-wrap gap-1">
                     <label htmlFor="patientDocument" className="text-sm font-semibold text-[var(--gray-12)]">
-                      Documento
+                      Documento <Text size="1" color="gray" weight="regular">(Opcional)</Text>
                     </label>
-                    <Text size="1" color="gray">
-                      (Opcional)
-                    </Text>
+                    <Flex gap="2" align="center" wrap="wrap">
+                      <Button
+                        type="button"
+                        size="1"
+                        variant="soft"
+                        color="indigo"
+                        onClick={handleScanBarcodeDemo}
+                        className="cursor-pointer text-xs"
+                        title="Simular escaneo de código de barras PDF417 de cédula"
+                      >
+                        <ScanBarcode size={13} className="mr-1 inline" />
+                        Escanear Cédula / Código de Barras
+                      </Button>
+                      <Button
+                        type="button"
+                        size="1"
+                        variant={showKeypad ? 'solid' : 'ghost'}
+                        color="gray"
+                        onClick={() => setShowKeypad((prev) => !prev)}
+                        className="cursor-pointer text-xs"
+                        title="Mostrar teclado numérico táctil"
+                      >
+                        <Calculator size={13} className="mr-1 inline" />
+                        Teclado táctil
+                      </Button>
+                    </Flex>
                   </Flex>
                   <TextField.Root
                     id="patientDocument"
@@ -266,6 +308,63 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
                     disabled={isSubmitting}
                     onChange={(e) => setIdDocument(e.target.value)}
                   />
+
+                  {/* Teclado numérico táctil desplegable para quiosco */}
+                  {showKeypad && (
+                    <Box
+                      className="mt-3 p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xs"
+                      data-testid="touch-numeric-keypad"
+                    >
+                      <Flex justify="between" align="center" className="mb-2">
+                        <Text size="1" weight="bold" color="gray">
+                          Teclado táctil en pantalla (Quiosco)
+                        </Text>
+                        <Button
+                          type="button"
+                          size="1"
+                          variant="ghost"
+                          color="gray"
+                          onClick={() => setShowKeypad(false)}
+                          className="cursor-pointer text-xs"
+                        >
+                          Ocultar
+                        </Button>
+                      </Flex>
+                      <div className="grid grid-cols-3 gap-2">
+                        {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
+                          <button
+                            key={digit}
+                            type="button"
+                            onClick={() => handleKeypadPress(digit)}
+                            className="py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-95 text-slate-800 dark:text-slate-100 font-bold text-lg rounded-lg shadow-2xs transition-all cursor-pointer flex items-center justify-center min-h-[44px]"
+                          >
+                            {digit}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          onClick={handleKeypadClear}
+                          className="py-3 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 text-slate-600 dark:text-slate-300 font-semibold text-xs rounded-lg transition-all cursor-pointer flex items-center justify-center min-h-[44px]"
+                        >
+                          Limpiar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleKeypadPress('0')}
+                          className="py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-95 text-slate-800 dark:text-slate-100 font-bold text-lg rounded-lg shadow-2xs transition-all cursor-pointer flex items-center justify-center min-h-[44px]"
+                        >
+                          0
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleKeypadBackspace}
+                          className="py-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 hover:bg-red-100 dark:hover:bg-red-900/80 active:scale-95 text-red-700 dark:text-red-300 font-semibold text-xs rounded-lg transition-all cursor-pointer flex items-center justify-center min-h-[44px]"
+                        >
+                          Borrar
+                        </button>
+                      </div>
+                    </Box>
+                  )}
                 </Box>
 
                 {/* ─── Sección Tipo de Turno ───────────────────────────────── */}
@@ -324,6 +423,40 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
                         </Flex>
                         <Text size="1" color="gray">
                           Disponible únicamente cuando exista un criterio institucional autorizado.
+                        </Text>
+                      </Flex>
+                    </RadioCards.Item>
+
+                    <RadioCards.Item
+                      value={QueueCategory.HIGH_COST}
+                      className="cursor-pointer p-3.5 border border-[var(--gray-a6)] rounded-lg text-left"
+                    >
+                      <Flex direction="column" gap="1.5" width="100%">
+                        <Flex align="center" gap="2">
+                          <FileTextIcon width={18} height={18} className="text-purple-600" />
+                          <Text weight="bold" size="2">
+                            Alto Costo / MIPRES
+                          </Text>
+                        </Flex>
+                        <Text size="1" color="gray">
+                          Medicamentos especializados, tutelas y no financiados por UPC.
+                        </Text>
+                      </Flex>
+                    </RadioCards.Item>
+
+                    <RadioCards.Item
+                      value={QueueCategory.BILLING}
+                      className="cursor-pointer p-3.5 border border-[var(--gray-a6)] rounded-lg text-left"
+                    >
+                      <Flex direction="column" gap="1.5" width="100%">
+                        <Flex align="center" gap="2">
+                          <ReceiptText size={18} className="text-blue-600" />
+                          <Text weight="bold" size="2">
+                            Facturación y Copagos
+                          </Text>
+                        </Flex>
+                        <Text size="1" color="gray">
+                          Liquidación de cuotas moderadoras y trámites administrativos.
                         </Text>
                       </Flex>
                     </RadioCards.Item>
@@ -532,9 +665,23 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
                           <Badge
                             size="1"
                             variant="soft"
-                            color={t.queueCategory === QueueCategory.PREFERENTIAL ? 'amber' : 'gray'}
+                            color={
+                              t.queueCategory === QueueCategory.PREFERENTIAL
+                                ? 'amber'
+                                : t.queueCategory === QueueCategory.HIGH_COST
+                                ? 'purple'
+                                : t.queueCategory === QueueCategory.BILLING
+                                ? 'blue'
+                                : 'gray'
+                            }
                           >
-                            {t.queueCategory === QueueCategory.PREFERENTIAL ? 'Preferencial' : 'General'}
+                            {t.queueCategory === QueueCategory.PREFERENTIAL
+                              ? 'Preferencial'
+                              : t.queueCategory === QueueCategory.HIGH_COST
+                              ? 'Alto Costo'
+                              : t.queueCategory === QueueCategory.BILLING
+                              ? 'Facturación'
+                              : 'General'}
                           </Badge>
                         </Flex>
                       </Table.RowHeaderCell>
