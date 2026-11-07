@@ -76,6 +76,10 @@ export interface TelemetryDailyKpis {
   noShowTodayCount: number;
   /** Tasa de abandono en % */
   noShowRate: number | null;
+  /** Tiempo de espera promedio (AWT) en segundos (created_at -> called_at) */
+  averageWaitSeconds?: number | null;
+  /** Tiempo medio de atención (TMM) en segundos (service_started_at -> closed_at) */
+  averageServiceSeconds?: number | null;
 }
 
 // ─── Alerta de diagnóstico SLA ────────────────────────────────────────────────
@@ -103,6 +107,17 @@ export interface TelemetryHourlyBucket {
   count: number;
 }
 
+// ─── Recomendación Prescriptiva de Cuello de Botella ────────────────────────
+export interface BottleneckRecommendation {
+  detected: boolean;
+  congestedCategory: 'HIGH_COST' | 'PREFERENTIAL' | 'GENERAL' | 'BILLING';
+  averageWaitSeconds: number;
+  pendingCount: number;
+  suggestedIdleCubicleCode?: string;
+  suggestedAction?: string;
+  message: string;
+}
+
 // ─── EVENTOS: Server → Client ─────────────────────────────────────────────────
 
 /** Snapshot completo emitido al conectar o tras `telemetry:request-snapshot` */
@@ -111,6 +126,7 @@ export interface TelemetrySnapshotPayload {
   queue: TelemetryQueuedTicket[];
   kpis: TelemetryDailyKpis;
   slaAlert: TelemetrySlaAlert;
+  bottleneckRecommendation?: BottleneckRecommendation | null | undefined;
   hourlyFlow: TelemetryHourlyBucket[];
   serverTime: string;
 }
@@ -126,6 +142,7 @@ export interface QueueUpdatedPayload {
   queue: TelemetryQueuedTicket[];
   kpis: TelemetryDailyKpis;
   slaAlert: TelemetrySlaAlert;
+  bottleneckRecommendation?: BottleneckRecommendation | null | undefined;
   serverTime: string;
 }
 

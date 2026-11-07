@@ -56,6 +56,22 @@ export enum TicketStatus {
 export enum QueueCategory {
   GENERAL = 'GENERAL',
   PREFERENTIAL = 'PREFERENTIAL',
+  HIGH_COST = 'HIGH_COST',
+  BILLING = 'BILLING',
+}
+
+/**
+ * Resultado y resolución de la dispensación al cerrar el turno en ventanilla.
+ * - TOTAL_DELIVERED: Entrega nominal completa de los medicamentos prescritos.
+ * - PENDING_48H: Medicamento pendiente con promesa de entrega domiciliaria <= 48 horas (Res. 1604/2013 MinSalud).
+ * - PRESCRIPTION_REJECTED: Rechazo por inconsistencia médica o legal.
+ * - CANCELLED_BY_PATIENT: Desistimiento voluntario por parte del usuario.
+ */
+export enum DispensationResolution {
+  TOTAL_DELIVERED = 'TOTAL_DELIVERED',
+  PENDING_48H = 'PENDING_48H',
+  PRESCRIPTION_REJECTED = 'PRESCRIPTION_REJECTED',
+  CANCELLED_BY_PATIENT = 'CANCELLED_BY_PATIENT',
 }
 
 /**

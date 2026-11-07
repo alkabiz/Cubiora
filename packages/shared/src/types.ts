@@ -12,7 +12,7 @@
  * @see RF-005 — Pantalla Pública de Llamados
  * @see apps/web/src/features/display
  */
-import { CubicleStatus, TicketStatus, QueueCategory } from './enums.js';
+import { CubicleStatus, TicketStatus, QueueCategory, DispensationResolution } from './enums.js';
 
 export interface PublicCall {
   /** Código único del turno en formato TUR-XXXXXX-YY (ej: TUR-000123-A7) */
@@ -122,4 +122,96 @@ export interface ApiError {
 export interface ApiResponse<T> {
   data: T;
   meta?: Record<string, unknown>;
+}
+
+/**
+ * Petición para actualizar el operador de un cubículo.
+ * Campo vacío '' borra el operador asignado.
+ * @see PATCH /api/v1/cubicles/:id/operator
+ * TODO: campo pendiente de migración Prisma (operatorName en tabla cubicles)
+ */
+export interface UpdateCubicleOperatorRequest {
+  operatorName: string;
+}
+
+/**
+ * Respuesta al actualizar el operador de un cubículo.
+ * @see PATCH /api/v1/cubicles/:id/operator
+ */
+export interface UpdateCubicleOperatorResponse {
+  id: string;
+  operatorName: string | null;
+}
+
+/**
+ * Registro de dispensación farmacéutica y trazabilidad de pendientes 48h.
+ */
+export interface DispensationRecordDto {
+  id: string;
+  ticketId: string;
+  cubicleId: string;
+  operatorUserId: string;
+  resolution: DispensationResolution;
+  prescriptionCode?: string | null;
+  mipresNumber?: string | null;
+  itemsDeliveredCount: number;
+  itemsPendingCount: number;
+  pendingDetailsJson?: unknown | null;
+  deliveryAddress?: string | null;
+  deliveryPhone?: string | null;
+  deliveryDeadline?: string | null;
+  createdAt: string;
+}
+
+/**
+ * Payload para el cierre de turno en ventanilla del dispensador.
+ * @see POST /api/v1/tickets/:publicId/close
+ */
+export interface CloseTicketRequest {
+  expectedVersion?: number;
+  resolution?: DispensationResolution;
+  prescriptionCode?: string;
+  mipresNumber?: string;
+  itemsDeliveredCount?: number;
+  itemsPendingCount?: number;
+  pendingDetailsJson?: unknown;
+  deliveryAddress?: string;
+  deliveryPhone?: string;
+}
+
+/**
+ * Registro de turno en el historial operativo y de auditoría diaria.
+ * @see GET /api/v1/tickets/history
+ */
+export interface TicketHistoryItem {
+  id: string;
+  publicId: string;
+  publicCode: string;
+  patientName: string;
+  maskedDocument?: string | null;
+  status: TicketStatus;
+  queueCategory: QueueCategory;
+  assignedStation: string;
+  cubicleCode: string;
+  operatorName: string;
+  serviceDurationSeconds: number;
+  waitingDurationSeconds: number;
+  slaCompliant: boolean;
+  createdAt: string;
+  calledAt?: string | null;
+  serviceStartedAt?: string | null;
+  closedAt?: string | null;
+  dispensation?: DispensationRecordDto | null;
+}
+
+/**
+ * Respuesta paginada de auditoría histórica.
+ * @see GET /api/v1/tickets/history
+ */
+export interface TicketHistoryResponse {
+  items: TicketHistoryItem[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
 }
