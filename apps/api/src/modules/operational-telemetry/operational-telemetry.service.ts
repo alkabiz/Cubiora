@@ -16,6 +16,7 @@ import {
   CubicleStateChangedPayload,
   QueueUpdatedPayload,
   AdminCubicleVisualStatus,
+  BottleneckRecommendation,
 } from '@cubiora/shared';
 
 /** Módulo de atención mapeado por código de cubículo. */
@@ -246,6 +247,57 @@ export class OperationalTelemetryService {
         ? Math.round((noShowCount / totalFinalized) * 10000) / 100
         : null;
 
+    // ─── Agregaciones SQL Nativas en PostgreSQL (AWT y TMM) ─────────────────
+    let averageWaitSeconds: number | null = null;
+    let averageServiceSeconds: number | null = null;
+
+    if (typeof this.prisma.$queryRaw === 'function') {
+      try {
+        const rawAgg = await this.prisma.$queryRaw<
+          Array<{ awt_seconds: number | string; tmm_seconds: number | string }>
+        >`
+          SELECT
+            COALESCE(ROUND(AVG(EXTRACT(EPOCH FROM (called_at - created_at)))), 0)::int AS awt_seconds,
+            COALESCE(ROUND(AVG(EXTRACT(EPOCH FROM (closed_at - service_started_at)))), 0)::int AS tmm_seconds
+          FROM tickets
+          WHERE called_at IS NOT NULL
+            AND created_at >= ${startOfDay};
+        `;
+        if (rawAgg && rawAgg.length > 0 && rawAgg[0]) {
+          averageWaitSeconds = Number(rawAgg[0].awt_seconds);
+          averageServiceSeconds = Number(rawAgg[0].tmm_seconds);
+        }
+      } catch (err) {
+        this.logger.debug(
+          `Degradando a cálculo de agregaciones en memoria: ${(err as Error).message}`,
+        );
+      }
+    }
+
+    // Fallback en memoria si la consulta SQL no se ejecutó o devolvió 0 en mock
+    if (averageServiceSeconds === null || averageServiceSeconds === 0) {
+      if (durations.length > 0) {
+        averageServiceSeconds = Math.round(
+          durations.reduce((acc, d) => acc + d, 0) / durations.length,
+        );
+      } else {
+        averageServiceSeconds = null;
+      }
+    }
+
+    if (averageWaitSeconds === null) {
+      const queueWaitTimes = pendingTickets.map(
+        (t) => (now.getTime() - t.createdAt.getTime()) / 1000,
+      );
+      if (queueWaitTimes.length > 0) {
+        averageWaitSeconds = Math.round(
+          queueWaitTimes.reduce((acc, w) => acc + w, 0) / queueWaitTimes.length,
+        );
+      } else {
+        averageWaitSeconds = null;
+      }
+    }
+
     const kpis: TelemetryDailyKpis = {
       waitingCount: queue.length,
       activeCubicles,
@@ -254,7 +306,88 @@ export class OperationalTelemetryService {
       slaCompliancePercentage,
       noShowTodayCount: noShowCount,
       noShowRate,
+      averageWaitSeconds,
+      averageServiceSeconds,
     };
+
+    // ─── Motor Prescriptivo de Cuellos de Botella (Bottleneck Detector) ──────
+    const categoryStats = new Map<
+      QueueCategory,
+      { count: number; totalWaitSeconds: number; avgWaitSeconds: number }
+    >();
+
+    const allCategories = [
+      QueueCategory.HIGH_COST,
+      QueueCategory.PREFERENTIAL,
+      QueueCategory.BILLING,
+      QueueCategory.GENERAL,
+    ];
+
+    for (const cat of allCategories) {
+      categoryStats.set(cat, { count: 0, totalWaitSeconds: 0, avgWaitSeconds: 0 });
+    }
+
+    for (const t of pendingTickets) {
+      const cat = (t.queueCategory as QueueCategory) || QueueCategory.GENERAL;
+      const waitSec = Math.max(0, (now.getTime() - t.createdAt.getTime()) / 1000);
+      const stat = categoryStats.get(cat) ?? { count: 0, totalWaitSeconds: 0, avgWaitSeconds: 0 };
+      stat.count += 1;
+      stat.totalWaitSeconds += waitSec;
+      stat.avgWaitSeconds = Math.round(stat.totalWaitSeconds / stat.count);
+      categoryStats.set(cat, stat);
+    }
+
+    const generalStats = categoryStats.get(QueueCategory.GENERAL) ?? {
+      count: 0,
+      avgWaitSeconds: 0,
+      totalWaitSeconds: 0,
+    };
+
+    const idleCubicle = cubicles.find(
+      (c) => c.domainStatus === CubicleStatus.AVAILABLE || c.visualStatus === 'DISPONIBLE',
+    );
+
+    let bottleneckRecommendation: BottleneckRecommendation | null = null;
+
+    const specializedCategories: Array<{
+      cat: QueueCategory;
+      label: 'HIGH_COST' | 'PREFERENTIAL' | 'GENERAL' | 'BILLING';
+      readableName: string;
+    }> = [
+      { cat: QueueCategory.HIGH_COST, label: 'HIGH_COST', readableName: 'Alto Costo / MIPRES' },
+      { cat: QueueCategory.PREFERENTIAL, label: 'PREFERENTIAL', readableName: 'Preferencial / SIAU' },
+      { cat: QueueCategory.BILLING, label: 'BILLING', readableName: 'Facturación / Copagos' },
+    ];
+
+    for (const spec of specializedCategories) {
+      const stats = categoryStats.get(spec.cat);
+      if (!stats || stats.count === 0) continue;
+
+      const isHighWait = stats.avgWaitSeconds > 900; // > 15 min
+      const isHighVolumeCongested =
+        stats.count >= 3 &&
+        (generalStats.avgWaitSeconds === 0 || stats.avgWaitSeconds > 2 * generalStats.avgWaitSeconds);
+
+      if ((isHighWait || isHighVolumeCongested) && idleCubicle) {
+        const cubicleLabel = idleCubicle.displayName || idleCubicle.cubicleCode;
+        bottleneckRecommendation = {
+          detected: true,
+          congestedCategory: spec.label,
+          averageWaitSeconds: stats.avgWaitSeconds,
+          pendingCount: stats.count,
+          suggestedIdleCubicleCode: idleCubicle.cubicleCode,
+          suggestedAction:
+            spec.label === 'HIGH_COST'
+              ? `Reasignar [${cubicleLabel}] a Alto Costo / MIPRES`
+              : `Reasignar [${cubicleLabel}] a ${spec.readableName}`,
+          message:
+            spec.label === 'HIGH_COST'
+              ? `Cuello de botella detectado en Alto Costo / MIPRES. Se sugiere reasignar [${cubicleLabel}] a tipología Especializada.`
+              : `Cuello de botella detectado en ${spec.readableName}. Se sugiere reasignar [${cubicleLabel}] para aliviar la demanda.`,
+        };
+        break;
+      }
+    }
 
     // ─── Alerta SLA ───────────────────────────────────────────────────────────
     const exceedingCubicles = cubicles.filter((c) => c.isSlaExceeded && c.serviceStartedAt);
@@ -304,6 +437,7 @@ export class OperationalTelemetryService {
       queue,
       kpis,
       slaAlert,
+      bottleneckRecommendation,
       hourlyFlow,
       serverTime: now.toISOString(),
     };
@@ -420,6 +554,7 @@ export class OperationalTelemetryService {
         queue: snapshot.queue,
         kpis: snapshot.kpis,
         slaAlert: snapshot.slaAlert,
+        bottleneckRecommendation: snapshot.bottleneckRecommendation,
         serverTime: snapshot.serverTime,
       });
       this.logger.debug(

@@ -8,6 +8,7 @@ import {
   Req,
   Res,
   HttpStatus,
+  Query,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { TicketsService } from './tickets.service';
@@ -16,7 +17,7 @@ import { TicketCommandDto } from './dto/ticket-command.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { ParsePublicIdPipe } from '../../common/pipes/parse-public-id.pipe';
-import { UserRole } from '@cubiora/shared';
+import { UserRole, QueueCategory } from '@cubiora/shared';
 
 @Controller('tickets')
 export class TicketsController {
@@ -26,6 +27,32 @@ export class TicketsController {
   @Get('recent')
   async getRecentTickets(@CurrentUser() user: AuthenticatedUser) {
     const data = await this.ticketsService.getRecentTickets(user.id);
+    return {
+      success: true,
+      data,
+    };
+  }
+
+  @Roles(UserRole.ADMIN, UserRole.CASHIER)
+  @Get('history')
+  async getTicketHistory(
+    @Query('search') search?: string,
+    @Query('slaFilter') slaFilter?: string,
+    @Query('queueCategory') queueCategory?: QueueCategory,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit || '25', 10) || 25));
+
+    const data = await this.ticketsService.getTicketHistory({
+      search,
+      slaFilter,
+      queueCategory,
+      page: pageNum,
+      limit: limitNum,
+    });
+
     return {
       success: true,
       data,
@@ -151,6 +178,7 @@ export class TicketsController {
       expectedVersion,
       user.role,
       user.cubicleId,
+      dto,
     );
 
     return res.status(statusCode || HttpStatus.OK).json({

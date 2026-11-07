@@ -1,8 +1,14 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch } from '@nestjs/common';
 import { CubiclesService } from './cubicles.service';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
-import { UserRole, CubicleDailyPerformance, CubicleSnapshot } from '@cubiora/shared';
+import {
+  UserRole,
+  CubicleDailyPerformance,
+  CubicleSnapshot,
+  UpdateCubicleOperatorResponse,
+} from '@cubiora/shared';
+import { UpdateCubicleOperatorDto } from './dto/update-cubicle-operator.dto';
 
 @Controller('cubicles')
 export class CubiclesController {
@@ -41,5 +47,24 @@ export class CubiclesController {
       success: true,
       data,
     };
+  }
+
+  /**
+   * PATCH /api/v1/cubicles/:id/operator
+   * Actualiza el nombre del operador asignado a un cubículo.
+   * ADMIN y CASHIER pueden actualizar.
+   * Campo vacío '' borra el operador.
+   *
+   * NOTA: El campo operatorName no existe aún en el schema Prisma.
+   * TODO: campo pendiente de migración Prisma
+   */
+  @Roles(UserRole.ADMIN, UserRole.CASHIER)
+  @Patch(':id/operator')
+  async updateOperator(
+    @Param('id') id: string,
+    @Body() body: UpdateCubicleOperatorDto,
+  ): Promise<{ success: true; data: UpdateCubicleOperatorResponse }> {
+    const data = await this.cubiclesService.updateOperator(id, body.operatorName);
+    return { success: true, data };
   }
 }

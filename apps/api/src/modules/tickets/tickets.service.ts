@@ -14,16 +14,21 @@ import { ulid } from 'ulid';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '../../generated/prisma/client';
 import { CreateTicketDto } from './dto/create-ticket.dto';
+import { TicketCommandDto } from './dto/ticket-command.dto';
 import { PublicDisplayService } from '../public-display/public-display.service';
 import { CubiclesService } from '../cubicles/cubicles.service';
 import { OperationalTelemetryService } from '../operational-telemetry/operational-telemetry.service';
+import { WmsIntegrationService } from '../wms-integration/wms-integration.service';
 import {
   TicketStatus,
   CubicleStatus,
   QueueCategory,
+  DispensationResolution,
   UserRole,
   ApiErrorCode,
   CubicleSnapshot,
+  TicketHistoryResponse,
+  TicketHistoryItem,
 } from '@cubiora/shared';
 
 export const ALLOWED_OPERATIONAL_REASONS = [
@@ -53,6 +58,7 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     private readonly publicDisplayService: PublicDisplayService,
     private readonly cubiclesService: CubiclesService,
     @Optional() private readonly telemetryService?: OperationalTelemetryService,
+    @Optional() private readonly wmsIntegrationService?: WmsIntegrationService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -225,7 +231,14 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
 
       // Formato requerido: TUR-NNNNNN-XX
       const seqPadded = String(currentSequence).padStart(6, '0');
-      const suffix = resolvedCategory === QueueCategory.PREFERENTIAL ? 'PR' : 'GE';
+      let suffix = 'GE';
+      if (resolvedCategory === QueueCategory.PREFERENTIAL) {
+        suffix = 'PR';
+      } else if (resolvedCategory === QueueCategory.HIGH_COST) {
+        suffix = 'ES';
+      } else if (resolvedCategory === QueueCategory.BILLING) {
+        suffix = 'FA';
+      }
       const publicCode = `TUR-${seqPadded}-${suffix}`;
 
       const ticketInternalId = ulid();
@@ -240,6 +253,7 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
           publicCode,
           patientName: dto.patientName.trim(),
           patientDocument: dto.patientDocument?.trim() ?? null,
+          prescriptionBarcode: dto.prescriptionBarcode?.trim() ?? null,
           status: TicketStatus.PENDING,
           queueCategory: resolvedCategory,
           preferentialReason:
@@ -660,6 +674,17 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       void this.telemetryService.emitQueueUpdate();
     }
 
+    if (this.wmsIntegrationService) {
+      void this.wmsIntegrationService.notifyPrePickingOnCall({
+        ticketId: ticket.id,
+        publicCode: txResult.publicCode,
+        queueCategory: ticket.queueCategory,
+        cubicleCode: txResult.cubicleDisplayName || 'CUB-01',
+        prescriptionBarcode: ticket.prescriptionBarcode ?? null,
+        calledAt: now.toISOString(),
+      });
+    }
+
     const snapshot = await this.cubiclesService.buildCubicleSnapshot(txResult.updatedCubicleId);
 
     if (idempotencyKey) {
@@ -821,6 +846,7 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     expectedVersion?: number,
     actorUserRole?: UserRole,
     actorCubicleId?: string | null,
+    dto?: TicketCommandDto,
   ): Promise<{ statusCode: number; data: CubicleSnapshot }> {
     const ticket = await this.findTicket(ticketIdOrPublicId);
     await this.validateCashierCubicleAssignment(ticket.cubicleId, actorUserId, actorUserRole, actorCubicleId);
@@ -852,6 +878,17 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       });
     }
 
+    const resolution = dto?.resolution ?? DispensationResolution.TOTAL_DELIVERED;
+    if (resolution === DispensationResolution.PENDING_48H) {
+      if (!dto?.deliveryAddress?.trim() || !dto?.deliveryPhone?.trim()) {
+        throw new BadRequestException({
+          code: ApiErrorCode.REQUEST_INVALID,
+          message:
+            'Para radicar un medicamento pendiente (<= 48h) es obligatorio ingresar dirección de domicilio y teléfono de contacto (Resolución 1604/2013).',
+        });
+      }
+    }
+
     const cubicleId = ticket.cubicleId!;
     const now = new Date();
 
@@ -876,9 +913,43 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
         data: {
           status: TicketStatus.CLOSED,
           closedAt: now,
+          prescriptionBarcode: dto?.prescriptionCode?.trim() ?? null,
           version: { increment: 1 },
         },
       });
+
+      // 1.1 Registrar la dispensación farmacéutica (resolución legal / medicamentos pendientes)
+      const dispensationId = ulid();
+      const deadline =
+        resolution === DispensationResolution.PENDING_48H
+          ? new Date(now.getTime() + 48 * 60 * 60 * 1000)
+          : null;
+
+      try {
+        if ((tx as any).dispensationRecord) {
+          await (tx as any).dispensationRecord.create({
+            data: {
+              id: dispensationId,
+              ticketId: ticket.id,
+              cubicleId,
+              operatorUserId: actorUserId,
+              resolution,
+              prescriptionCode: dto?.prescriptionCode?.trim() ?? null,
+              mipresNumber: dto?.mipresNumber?.trim() ?? null,
+              itemsDeliveredCount: dto?.itemsDeliveredCount ?? 0,
+              itemsPendingCount:
+                dto?.itemsPendingCount ?? (resolution === DispensationResolution.PENDING_48H ? 1 : 0),
+              pendingDetailsJson: (dto?.pendingDetailsJson as any) ?? Prisma.JsonNull,
+              deliveryAddress: dto?.deliveryAddress?.trim() ?? null,
+              deliveryPhone: dto?.deliveryPhone?.trim() ?? null,
+              deliveryDeadline: deadline,
+              createdAt: now,
+            },
+          });
+        }
+      } catch (dispErr) {
+        this.logger.warn(`No se pudo crear dispensationRecord en cierre: ${(dispErr as Error).message}`);
+      }
 
       // 2. Historial de cierre
       await tx.ticketStatusHistory.create({
@@ -1272,6 +1343,146 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       cubicleDisplayName: t.cubicle?.displayName,
       createdAt: t.createdAt.toISOString(),
     }));
+  }
+
+  /**
+   * Consulta paginada del historial operativo y auditoría de turnos (SCR-ADM-003).
+   */
+  async getTicketHistory(params: {
+    search?: string | undefined;
+    slaFilter?: string | undefined;
+    queueCategory?: QueueCategory | undefined;
+    page: number;
+    limit: number;
+  }): Promise<TicketHistoryResponse> {
+    const { search, slaFilter, queueCategory, page, limit } = params;
+
+    const where: Prisma.TicketWhereInput = {
+      status: { in: [TicketStatus.CLOSED, TicketStatus.NO_SHOW, TicketStatus.CANCELLED] },
+    };
+
+    if (queueCategory) {
+      where.queueCategory = queueCategory;
+    }
+
+    if (search && search.trim().length > 0) {
+      const q = search.trim();
+      where.OR = [
+        { publicCode: { contains: q, mode: 'insensitive' } },
+        { patientName: { contains: q, mode: 'insensitive' } },
+        { patientDocument: { contains: q, mode: 'insensitive' } },
+        { prescriptionBarcode: { contains: q, mode: 'insensitive' } },
+      ];
+    }
+
+    let total = 0;
+    let tickets: any[] = [];
+
+    try {
+      if (this.prisma.ticket.count && this.prisma.ticket.findMany) {
+        [total, tickets] = await Promise.all([
+          this.prisma.ticket.count({ where }),
+          this.prisma.ticket.findMany({
+            where,
+            include: {
+              cubicle: {
+                include: {
+                  currentOperator: { select: { displayName: true } },
+                },
+              },
+              creator: { select: { displayName: true } },
+              dispensation: true,
+            },
+            orderBy: { closedAt: 'desc' },
+            skip: (page - 1) * limit,
+            take: limit,
+          }),
+        ]);
+      }
+    } catch (err) {
+      this.logger.warn(`Error al consultar historial de tickets en BD: ${(err as Error).message}`);
+    }
+
+    const items: TicketHistoryItem[] = tickets.map((t) => {
+      const serviceStarted = t.serviceStartedAt ? new Date(t.serviceStartedAt).getTime() : null;
+      const closed = t.closedAt ? new Date(t.closedAt).getTime() : null;
+      const created = new Date(t.createdAt).getTime();
+      const called = t.calledAt ? new Date(t.calledAt).getTime() : null;
+
+      const serviceDurationSeconds =
+        serviceStarted && closed ? Math.max(0, Math.round((closed - serviceStarted) / 1000)) : 0;
+      const waitingDurationSeconds =
+        called ? Math.max(0, Math.round((called - created) / 1000)) : 0;
+
+      // SLA nominal (umbral <= 720 s / 12 min)
+      const slaCompliant = serviceDurationSeconds <= 720 && t.status === TicketStatus.CLOSED;
+
+      const operatorName =
+        t.cubicle?.operatorName ||
+        t.cubicle?.currentOperator?.displayName ||
+        t.creator?.displayName ||
+        'Operador en Ventanilla';
+
+      const assignedStation = t.cubicle?.displayName || 'Cubículo General';
+      const cubicleCode = t.cubicle?.code || 'CUB-01';
+
+      const dispensationDto = t.dispensation
+        ? {
+            id: t.dispensation.id,
+            ticketId: t.dispensation.ticketId,
+            cubicleId: t.dispensation.cubicleId,
+            operatorUserId: t.dispensation.operatorUserId,
+            resolution: t.dispensation.resolution as DispensationResolution,
+            prescriptionCode: t.dispensation.prescriptionCode,
+            mipresNumber: t.dispensation.mipresNumber,
+            itemsDeliveredCount: t.dispensation.itemsDeliveredCount,
+            itemsPendingCount: t.dispensation.itemsPendingCount,
+            pendingDetailsJson: t.dispensation.pendingDetailsJson,
+            deliveryAddress: t.dispensation.deliveryAddress,
+            deliveryPhone: t.dispensation.deliveryPhone,
+            deliveryDeadline: t.dispensation.deliveryDeadline
+              ? new Date(t.dispensation.deliveryDeadline).toISOString()
+              : null,
+            createdAt: new Date(t.dispensation.createdAt).toISOString(),
+          }
+        : null;
+
+      return {
+        id: t.id,
+        publicId: t.publicId,
+        publicCode: t.publicCode,
+        patientName: t.patientName,
+        maskedDocument: t.patientDocument ? `${t.patientDocument.slice(0, 3)}***` : null,
+        status: t.status as TicketStatus,
+        queueCategory: (t.queueCategory as QueueCategory) || QueueCategory.GENERAL,
+        assignedStation,
+        cubicleCode,
+        operatorName,
+        serviceDurationSeconds,
+        waitingDurationSeconds,
+        slaCompliant,
+        createdAt: new Date(t.createdAt).toISOString(),
+        calledAt: t.calledAt ? new Date(t.calledAt).toISOString() : null,
+        serviceStartedAt: t.serviceStartedAt ? new Date(t.serviceStartedAt).toISOString() : null,
+        closedAt: t.closedAt ? new Date(t.closedAt).toISOString() : null,
+        dispensation: dispensationDto,
+      };
+    });
+
+    let filteredItems = items;
+    if (slaFilter === 'IN_NORM') {
+      filteredItems = items.filter((i) => i.slaCompliant);
+    } else if (slaFilter === 'EXCEEDED') {
+      filteredItems = items.filter((i) => !i.slaCompliant);
+    }
+
+    return {
+      items: filteredItems,
+      total,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    };
   }
 
   /**

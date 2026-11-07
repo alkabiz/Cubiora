@@ -23,8 +23,13 @@ export class CreateTicketDto {
   patientDocument?: string;
 
   @IsOptional()
-  @IsEnum(QueueCategory, { message: 'La categoría de cola debe ser GENERAL o PREFERENTIAL' })
+  @IsEnum(QueueCategory, { message: 'La categoría de cola debe ser un valor válido de QueueCategory' })
   queueCategory?: QueueCategory;
+
+  @IsOptional()
+  @IsString({ message: 'El código de barras de prescripción debe ser texto' })
+  @MaxLength(60, { message: 'El código de barras no puede exceder 60 caracteres' })
+  prescriptionBarcode?: string;
 
   @IsOptional()
   @IsString({ message: 'El motivo operacional debe ser texto' })

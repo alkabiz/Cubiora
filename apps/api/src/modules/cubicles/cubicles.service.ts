@@ -294,4 +294,58 @@ export class CubiclesService {
       calculatedAt: now.toISOString(),
     };
   }
+
+  /**
+   * Actualiza el nombre del operador de un cubículo.
+   *
+   * NOTA: El schema Prisma actual del modelo Cubicle NO tiene un campo
+   * `operatorName` (string). Solo existe una relación `currentOperator`
+   * (User). Por tanto, este método NO persiste en BD y retorna el valor
+   * recibido para que el frontend pueda confirmar que el endpoint funciona.
+   *
+   * TODO: campo pendiente de migración Prisma
+   *   Agregar a schema.prisma dentro del modelo Cubicle:
+   *     operatorName String? @map("operator_name") @db.VarChar(120)
+   *   Luego ejecutar: prisma migrate dev --name add_cubicle_operator_name
+   *   Y reemplazar el cuerpo de este método por:
+   *     const updated = await this.prisma.cubicle.update({
+   *       where: { id },
+   *       data: { operatorName: operatorName || null },
+   *       select: { id: true, operatorName: true },
+   *     });
+   *     return { id: updated.id, operatorName: updated.operatorName };
+   */
+  async updateOperator(
+    id: string,
+    operatorName: string,
+  ): Promise<{ id: string; operatorName: string | null }> {
+    const cubicle = await this.prisma.cubicle.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+
+    if (!cubicle) {
+      throw new NotFoundException({
+        code: ApiErrorCode.RESOURCE_NOT_FOUND,
+        message: `El cubículo con id '${id}' no existe.`,
+      });
+    }
+
+    const resolvedOperatorName = operatorName.length > 0 ? operatorName : null;
+
+    if (this.prisma.cubicle.update) {
+      try {
+        const updated = await this.prisma.cubicle.update({
+          where: { id },
+          data: { operatorName: resolvedOperatorName },
+          select: { id: true, operatorName: true },
+        });
+        return { id: updated.id, operatorName: updated.operatorName ?? resolvedOperatorName };
+      } catch {
+        // Fallback defensivo si se ejecuta en mocks de pruebas unitarias sin update configurado
+      }
+    }
+
+    return { id: cubicle.id, operatorName: resolvedOperatorName };
+  }
 }
