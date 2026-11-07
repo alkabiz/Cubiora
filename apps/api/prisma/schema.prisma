@@ -34,6 +34,15 @@ enum TicketStatus {
 enum QueueCategory {
   GENERAL
   PREFERENTIAL
+  HIGH_COST
+  BILLING
+}
+
+enum DispensationResolution {
+  TOTAL_DELIVERED
+  PENDING_48H
+  PRESCRIPTION_REJECTED
+  CANCELLED_BY_PATIENT
 }
 
 model User {
@@ -58,19 +67,22 @@ model User {
 }
 
 model Cubicle {
-  id          String        @id @db.VarChar(26)
-  code        String        @unique @db.VarChar(20)
-  displayName String        @map("display_name") @db.VarChar(50)
-  status      CubicleStatus @default(AVAILABLE)
-  active      Boolean       @default(true)
-  version     Int           @default(1)
-  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt   DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                String          @id @db.VarChar(26)
+  code              String          @unique @db.VarChar(20)
+  displayName       String          @map("display_name") @db.VarChar(50)
+  operatorName      String?         @map("operator_name") @db.VarChar(120)
+  status            CubicleStatus   @default(AVAILABLE)
+  active            Boolean         @default(true)
+  allowedCategories QueueCategory[] @default([GENERAL, PREFERENTIAL, HIGH_COST, BILLING]) @map("allowed_categories")
+  version           Int             @default(1)
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   currentOperator User?                 @relation("CubicleCurrentOperator")
   tickets         Ticket[]
   calls           TicketCall[]
   statusHistory   TicketStatusHistory[]
+  dispensations   DispensationRecord[]
 
   @@map("cubicles")
 }
@@ -84,35 +96,38 @@ model SystemSequence {
 }
 
 model Ticket {
-  id               String       @id @db.VarChar(26)
-  publicId         String       @unique @map("public_id") @db.VarChar(26)
-  sequenceNumber   BigInt       @unique @map("sequence_number")
-  publicCode       String       @unique @map("public_code") @db.VarChar(20)
-  patientName      String       @map("patient_name") @db.VarChar(100)
-  patientDocument  String?      @map("patient_document") @db.VarChar(30)
-  status           TicketStatus @default(PENDING)
-  queueCategory    QueueCategory @default(GENERAL) @map("queue_category")
-  preferentialReason String?    @map("preferential_reason") @db.VarChar(100)
-  cubicleId        String?      @map("cubicle_id") @db.VarChar(26)
-  createdBy        String       @map("created_by") @db.VarChar(26)
-  assignedAt       DateTime?    @map("assigned_at") @db.Timestamptz(3)
-  calledAt         DateTime?    @map("called_at") @db.Timestamptz(3)
-  serviceStartedAt DateTime?    @map("service_started_at") @db.Timestamptz(3)
-  closedAt         DateTime?    @map("closed_at") @db.Timestamptz(3)
-  terminalReason   String?      @map("terminal_reason") @db.VarChar(255)
-  version          Int          @default(1)
-  createdAt        DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt        DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id                  String        @id @db.VarChar(26)
+  publicId            String        @unique @map("public_id") @db.VarChar(26)
+  sequenceNumber      BigInt        @unique @map("sequence_number")
+  publicCode          String        @unique @map("public_code") @db.VarChar(20)
+  patientName         String        @map("patient_name") @db.VarChar(100)
+  patientDocument     String?       @map("patient_document") @db.VarChar(30)
+  prescriptionBarcode String?       @map("prescription_barcode") @db.VarChar(60)
+  status              TicketStatus  @default(PENDING)
+  queueCategory       QueueCategory @default(GENERAL) @map("queue_category")
+  preferentialReason  String?       @map("preferential_reason") @db.VarChar(100)
+  cubicleId           String?       @map("cubicle_id") @db.VarChar(26)
+  createdBy           String        @map("created_by") @db.VarChar(26)
+  assignedAt          DateTime?     @map("assigned_at") @db.Timestamptz(3)
+  calledAt            DateTime?     @map("called_at") @db.Timestamptz(3)
+  serviceStartedAt    DateTime?     @map("service_started_at") @db.Timestamptz(3)
+  closedAt            DateTime?     @map("closed_at") @db.Timestamptz(3)
+  terminalReason      String?       @map("terminal_reason") @db.VarChar(255)
+  version             Int           @default(1)
+  createdAt           DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   cubicle       Cubicle?              @relation(fields: [cubicleId], references: [id], onDelete: SetNull)
   creator       User                  @relation(fields: [createdBy], references: [id], onDelete: Restrict)
   calls         TicketCall[]
   statusHistory TicketStatusHistory[]
+  dispensation  DispensationRecord?
 
   @@index([status, sequenceNumber], name: "ix_tickets_status_sequence")
   @@index([status, queueCategory, sequenceNumber], name: "ix_tickets_status_category_sequence")
   @@index([cubicleId, status], name: "ix_tickets_cubicle_status")
   @@index([patientDocument, status], name: "ix_tickets_document_status")
+  @@index([prescriptionBarcode], name: "ix_tickets_prescription")
   @@index([createdBy], name: "ix_tickets_created_by")
   @@map("tickets")
 }
@@ -173,4 +188,27 @@ model IdempotencyKey {
   @@unique([actorUserId, operation, idempotencyKey], name: "uq_idempotency_key")
   @@index([expiresAt], name: "ix_idempotency_expiry")
   @@map("idempotency_keys")
+}
+
+model DispensationRecord {
+  id                  String                 @id @db.VarChar(26)
+  ticketId            String                 @unique @map("ticket_id") @db.VarChar(26)
+  cubicleId           String                 @map("cubicle_id") @db.VarChar(26)
+  operatorUserId      String                 @map("operator_user_id") @db.VarChar(26)
+  resolution          DispensationResolution @map("resolution")
+  prescriptionCode    String?                @map("prescription_code") @db.VarChar(60)
+  mipresNumber        String?                @map("mipres_number") @db.VarChar(60)
+  itemsDeliveredCount Int                    @default(0) @map("items_delivered_count")
+  itemsPendingCount   Int                    @default(0) @map("items_pending_count")
+  pendingDetailsJson  Json?                  @map("pending_details_json")
+  deliveryAddress     String?                @map("delivery_address") @db.VarChar(255)
+  deliveryPhone       String?                @map("delivery_phone") @db.VarChar(30)
+  deliveryDeadline    DateTime?              @map("delivery_deadline") @db.Timestamptz(3)
+  createdAt           DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  ticket  Ticket  @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  cubicle Cubicle @relation(fields: [cubicleId], references: [id], onDelete: Restrict)
+
+  @@index([resolution, deliveryDeadline], name: "ix_dispensations_pending_deadline")
+  @@map("dispensation_records")
 }
