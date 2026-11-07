@@ -13,6 +13,9 @@ const ReceptionPage = lazy(() =>
 const CashierPage = lazy(() =>
   import('../pages/cashier-page').then((m) => ({ default: m.CashierPage })),
 );
+const AdminOverviewPage = lazy(() =>
+  import('../pages/admin-overview-page').then((m) => ({ default: m.AdminOverviewPage })),
+);
 const AdminCubiclesPage = lazy(() =>
   import('../pages/admin-cubicles-page').then((m) => ({ default: m.AdminCubiclesPage })),
 );
@@ -121,7 +124,23 @@ export const appRoutes: RouteObject[] = [
             children: [
               {
                 index: true,
-                element: <Navigate to="/admin/cubiculos" replace />,
+                element: (
+                  <RouteWrapper>
+                    <ProtectedRoute allowedRoles={['ADMIN']}>
+                      <AdminOverviewPage />
+                    </ProtectedRoute>
+                  </RouteWrapper>
+                ),
+              },
+              {
+                path: 'supervision',
+                element: (
+                  <RouteWrapper>
+                    <ProtectedRoute allowedRoles={['ADMIN']}>
+                      <AdminOverviewPage />
+                    </ProtectedRoute>
+                  </RouteWrapper>
+                ),
               },
               {
                 path: 'cubiculos',
