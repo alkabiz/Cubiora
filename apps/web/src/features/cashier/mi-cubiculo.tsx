@@ -15,6 +15,7 @@ import {
 import type { CubicleActiveTicket } from '@cubiora/shared';
 import type { CubicleVisualStep, CubicleWorkspace } from './types';
 import { formatClockTime, formatDuration, waitingPatientsLabel } from './cubicle-view-model';
+import { useCashierHotkeys } from './use-cashier-hotkeys';
 
 export interface MiCubiculoProps {
   workspace: CubicleWorkspace;
@@ -68,17 +69,18 @@ const DOT_TONES: Record<BadgeTone, string> = {
   slate: 'bg-[#94A3B8]',
 };
 
+// Cumple WCAG 2.5.8 Target Size (Minimum, Nivel AA: 24×24 px); elevado a min-h-[40px]/[44px] como mejora ergonómica hospitalaria en ventanilla
 const PRIMARY_BUTTON =
-  'inline-flex w-full sm:w-auto items-center justify-center gap-2 px-6 py-3 rounded-lg bg-[#0F2942] hover:bg-[#0A1B2C] text-white font-bold text-sm transition-colors cursor-pointer shadow-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0EA5E9] disabled:cursor-not-allowed disabled:opacity-60';
+  'inline-flex w-full sm:w-auto items-center justify-center min-h-[44px] gap-2 px-6 py-3 rounded-lg bg-[#0F2942] hover:bg-[#0A1B2C] text-white font-bold text-sm transition-colors cursor-pointer shadow-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0EA5E9] disabled:cursor-not-allowed disabled:opacity-60';
 
 const PRIMARY_BLUE_BUTTON =
-  'inline-flex w-full sm:w-auto items-center justify-center gap-2 px-6 py-3 rounded-lg bg-[#0369A1] hover:bg-[#075985] text-white font-bold text-sm transition-colors cursor-pointer shadow-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0F2942] disabled:cursor-not-allowed disabled:opacity-60';
+  'inline-flex w-full sm:w-auto items-center justify-center min-h-[44px] gap-2 px-6 py-3 rounded-lg bg-[#0369A1] hover:bg-[#075985] text-white font-bold text-sm transition-colors cursor-pointer shadow-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0F2942] disabled:cursor-not-allowed disabled:opacity-60';
 
 const SECONDARY_BUTTON =
-  'inline-flex w-full sm:w-auto items-center justify-center gap-2 px-3.5 py-2 rounded text-xs font-semibold text-[#0F2942] bg-white hover:bg-[#F8FAFC] border border-[#CBD5E1] transition-colors cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0EA5E9] disabled:cursor-not-allowed disabled:opacity-60';
+  'inline-flex w-full sm:w-auto items-center justify-center min-h-[40px] gap-2 px-4 py-2.5 rounded text-xs font-semibold text-[#0F2942] bg-white hover:bg-[#F8FAFC] border border-[#CBD5E1] transition-colors cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0EA5E9] disabled:cursor-not-allowed disabled:opacity-60';
 
 const DANGER_BUTTON =
-  'inline-flex w-full sm:w-auto items-center justify-center gap-2 px-3.5 py-2 rounded text-xs font-semibold text-[#BA1A1A] hover:bg-[#FFDAD6]/30 transition-colors cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#BA1A1A] disabled:cursor-not-allowed disabled:opacity-60';
+  'inline-flex w-full sm:w-auto items-center justify-center min-h-[40px] gap-2 px-4 py-2.5 rounded text-xs font-semibold text-[#BA1A1A] hover:bg-[#FFDAD6]/30 transition-colors cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#BA1A1A] disabled:cursor-not-allowed disabled:opacity-60';
 
 function StatusBadge({ step }: { step: CubicleVisualStep }) {
   const config = BADGE_CONFIG[step];
@@ -303,6 +305,22 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
   const noShowModalOpen = step === 'CONFIRM_NO_SHOW' || step === 'PROCESSING_NO_SHOW';
   const isClosing = step === 'PROCESSING_CLOSE';
   const isMarkingNoShow = step === 'PROCESSING_NO_SHOW';
+
+  const canCall =
+    !workspace.actionsDisabled &&
+    (step === 'ASSIGNED' || step === 'CALLED' || step === 'CLOSED_NEXT' || step === 'NO_SHOW_NEXT');
+  const canStart = !workspace.actionsDisabled && step === 'CALLED';
+  const canClose = !workspace.actionsDisabled && (step === 'IN_SERVICE' || step === 'CONFIRM_CLOSE');
+
+  const { hotkeysEnabled, toggleHotkeys } = useCashierHotkeys({
+    onCall: () => void workspace.requestCall(),
+    onStartService: () => void workspace.requestStartService(),
+    onCloseTurn: () => workspace.requestClose(),
+    canCall,
+    canStart,
+    canClose,
+    isModalOpen: closeModalOpen || noShowModalOpen,
+  });
 
   const closeModal = (
     <Dialog.Root
@@ -623,6 +641,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
                 onClick={() => void workspace.requestCall()}
                 disabled={isCalling || workspace.actionsDisabled}
                 aria-busy={isCalling}
+                aria-keyshortcuts="Alt+Shift+N"
                 className={PRIMARY_BUTTON}
               >
                 {isCalling ? (
@@ -637,6 +656,11 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
                   <>
                     <PlayIcon className="w-4 h-4" aria-hidden="true" />
                     Llamar turno
+                    {hotkeysEnabled && (
+                      <kbd className="text-[10px] font-mono opacity-80 bg-white/20 px-1.5 py-0.5 rounded ml-1">
+                        Alt+Shift+N
+                      </kbd>
+                    )}
                   </>
                 )}
               </button>
@@ -676,6 +700,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
                 onClick={() => void workspace.requestStartService()}
                 disabled={isStarting || isConfirming || workspace.actionsDisabled}
                 aria-busy={isStarting}
+                aria-keyshortcuts="Alt+Shift+A"
                 className={PRIMARY_BLUE_BUTTON}
               >
                 {isStarting ? (
@@ -687,6 +712,11 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
                   <>
                     <ArrowRightIcon className="w-4 h-4" aria-hidden="true" />
                     Iniciar atención
+                    {hotkeysEnabled && (
+                      <kbd className="text-[10px] font-mono opacity-80 bg-white/20 px-1.5 py-0.5 rounded ml-1">
+                        Alt+Shift+A
+                      </kbd>
+                    )}
                   </>
                 )}
               </button>
@@ -758,10 +788,16 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
                 type="button"
                 onClick={workspace.requestClose}
                 disabled={isConfirming || isProcessingClose || workspace.actionsDisabled}
+                aria-keyshortcuts="Alt+Shift+F"
                 className={PRIMARY_BUTTON}
               >
                 <CheckIcon className="w-4 h-4" aria-hidden="true" />
                 Cerrar turno
+                {hotkeysEnabled && (
+                  <kbd className="text-[10px] font-mono opacity-80 bg-white/20 px-1.5 py-0.5 rounded ml-1">
+                    Alt+Shift+F
+                  </kbd>
+                )}
               </button>
 
               <div className="text-xs text-[#64748B]">
@@ -943,6 +979,24 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
       {!workspace.isOnline && workspace.snapshot && <OfflineBanner workspace={workspace} />}
 
       {renderBody()}
+
+      {/* Barra de atajos de teclado accesibles y ergonómicos (WCAG 2.1.4 Nivel A) */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-t border-[#F1F5F9] pt-3 text-xs text-[#475569]">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-semibold text-slate-700">Atajos rápidos:</span>
+          <span className="font-mono text-[11px] text-slate-600">
+            [Alt+Shift+N: Llamar] [Alt+Shift+A: Iniciar] [Alt+Shift+F: Cerrar]
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={toggleHotkeys}
+          className="text-xs text-[#0B5793] hover:text-[#084876] font-medium underline cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0B5793] rounded px-1 self-start sm:self-auto"
+          aria-label={hotkeysEnabled ? 'Desactivar atajos de teclado' : 'Activar atajos de teclado'}
+        >
+          {hotkeysEnabled ? 'Desactivar atajos' : 'Activar atajos'}
+        </button>
+      </div>
 
       {closeModal}
       {noShowModal}
