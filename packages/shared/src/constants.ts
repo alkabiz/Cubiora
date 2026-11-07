@@ -26,3 +26,17 @@ export const PUBLIC_ID_REGEX = /^[0-9A-HJ-KM-NP-TV-Z]{26}$|^[0-9a-f]{8}-[0-9a-f]
 export function isValidPublicId(id: unknown): id is string {
   return typeof id === 'string' && PUBLIC_ID_REGEX.test(id);
 }
+
+/**
+ * Diccionario institucional centralizado para nombres de estados operativos de cubículo en español.
+ * Garantiza consistencia en SCR-ADM-001, SCR-ADM-002 y SCR-CAJ-001.
+ */
+export const CUBICLE_STATUS_LABELS_ES = {
+  BUSY: 'ATENDIENDO',
+  EXCEEDED: 'SLA EXCEDIDO',
+  CALLING: 'LLAMANDO',
+  AVAILABLE: 'DISPONIBLE',
+  INACTIVE: 'INACTIVO',
+} as const;
+
+export type CubicleOperationalStatusCode = keyof typeof CUBICLE_STATUS_LABELS_ES;
