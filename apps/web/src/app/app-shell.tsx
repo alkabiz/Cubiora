@@ -113,12 +113,12 @@ const ShellLayout: React.FC = () => {
       </a>
 
       {/* Anuncios de conectividad para tecnologías de asistencia (WCAG 4.1.3 AA) */}
-      <div
-        role={isProlongedOffline ? 'alert' : 'status'}
-        aria-live={isProlongedOffline ? 'assertive' : 'polite'}
-        className="sr-only"
-      >
-        {connectionAnnouncement}
+      {/* Regiones vivas independientes y estables para evitar solapamiento entre status y alert */}
+      <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+        {!isProlongedOffline ? connectionAnnouncement : ''}
+      </div>
+      <div role="alert" aria-live="assertive" aria-atomic="true" className="sr-only">
+        {isProlongedOffline ? connectionAnnouncement : ''}
       </div>
 
       <AppNavbar

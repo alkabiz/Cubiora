@@ -1,9 +1,10 @@
 // ─── [SCR-ADM-002] Tests Unitarios de Configuración de Cubículos ──────────────
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { Theme } from '@radix-ui/themes';
 import { AdminCubiclesScreen } from './admin-cubicles-screen';
+import { apiClient } from '../../lib/api';
 
 // Mock de socket.io-client
 vi.mock('socket.io-client', () => {
@@ -18,6 +19,11 @@ vi.mock('socket.io-client', () => {
   };
 });
 
+// Mock de apiClient
+vi.mock('../../lib/api', () => ({
+  apiClient: vi.fn().mockResolvedValue({ success: true, data: { id: 'CUB-01', operatorName: 'Test' } }),
+}));
+
 const renderComponent = () => {
   return render(
     <Theme accentColor="teal" grayColor="slate">
@@ -29,6 +35,10 @@ const renderComponent = () => {
 };
 
 describe('[SCR-ADM-002] Administración · Configuración de Cubículos', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('1. Renderiza el Header superior con breadcrumbs, título principal y botón de regreso', () => {
     renderComponent();
 
@@ -145,7 +155,7 @@ describe('[SCR-ADM-002] Administración · Configuración de Cubículos', () => 
     expect(screen.getAllByText('Operativo en cola').length).toBe(5);
   });
 
-  it('8. Muestra retroalimentación accesible de guardado al modificar o desenfocar el campo (WCAG 4.1.3 AA)', () => {
+  it('8. Muestra retroalimentación accesible de guardado al modificar o desenfocar el campo (WCAG 4.1.3 AA)', async () => {
     vi.useFakeTimers();
     renderComponent();
 
@@ -158,22 +168,65 @@ describe('[SCR-ADM-002] Administración · Configuración de Cubículos', () => 
     });
     expect(screen.queryByText('Guardando…')).toBeNull();
 
-    // Avance tras los 600ms de debounce activa el estado
-    act(() => {
+    // Avance tras los 600ms de debounce activa el guardado
+    await act(async () => {
       vi.advanceTimersByTime(400);
     });
-    expect(screen.getByText('Guardando…')).toBeDefined();
+
+    expect(apiClient).toHaveBeenCalledWith(
+      '/cubicles/CUB-01/operator',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ operatorName: 'Dra. Elena Ramos' }),
+      }),
+    );
 
     vi.useRealTimers();
   });
 
-  it('9. Guarda inmediatamente al perder el foco (blur) sin esperar al temporizador de debounce', () => {
+  it('9. Guarda inmediatamente al perder el foco (blur) sin esperar al temporizador de debounce', async () => {
     renderComponent();
 
     const input = screen.getByDisplayValue('Lic. M. Arismendi') as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'Dr. Roberto Gómez' } });
-    fireEvent.blur(input);
 
-    expect(screen.getByText('Guardando…')).toBeDefined();
+    await act(async () => {
+      fireEvent.blur(input);
+    });
+
+    expect(apiClient).toHaveBeenCalledWith(
+      '/cubicles/CUB-01/operator',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ operatorName: 'Dr. Roberto Gómez' }),
+      }),
+    );
+  });
+
+  it('10. Muestra "Error al guardar" con botón de reintento que preserva el valor escrito ante fallo del servidor', async () => {
+    vi.mocked(apiClient).mockRejectedValueOnce(new Error('Network error'));
+    renderComponent();
+
+    const input = screen.getByDisplayValue('Lic. M. Arismendi') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'Lic. Fallo Conexión' } });
+
+    await act(async () => {
+      fireEvent.blur(input);
+    });
+
+    expect(screen.getByText('Error al guardar')).toBeDefined();
+    const retryBtn = screen.getByRole('button', { name: 'Reintentar' });
+    expect(retryBtn).toBeDefined();
+
+    // El input mantiene intacto el valor tipeado por el usuario
+    expect(input.value).toBe('Lic. Fallo Conexión');
+
+    // Al reintentar con éxito
+    vi.mocked(apiClient).mockResolvedValueOnce({ success: true, data: { id: 'CUB-01', operatorName: 'Lic. Fallo Conexión' } });
+    await act(async () => {
+      fireEvent.click(retryBtn);
+    });
+
+    expect(apiClient).toHaveBeenCalledTimes(2);
   });
 });

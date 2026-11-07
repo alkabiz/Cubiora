@@ -1,5 +1,6 @@
 // ─── SCR-ADM-001 · CMP-ADM-001 — Tipos de datos de telemetría operativa ───────
 import type {
+  BottleneckRecommendation,
   TelemetryDailyKpis,
   TelemetrySlaAlert,
 } from '@cubiora/shared';
@@ -70,6 +71,7 @@ export interface OperationalTelemetryHookResult {
   queue: QueuedTicket[];
   kpis: TelemetryDailyKpis;
   slaAlert: TelemetrySlaAlert;
+  bottleneckRecommendation?: BottleneckRecommendation | null;
   hourlyFlow: HourlyFlowEntry[];
   connectionStatus: ConnectionStatus;
   latencyMs: number;

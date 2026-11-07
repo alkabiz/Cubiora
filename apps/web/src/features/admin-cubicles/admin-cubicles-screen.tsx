@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { useOperationalTelemetry } from '../admin-overview/use-operational-telemetry';
 import { CubicleConfigCard } from './cubicle-config-card';
+import { apiClient } from '../../lib/api';
 import type { CubicleConfigurationItem, CubicleBadgeCode } from './types';
 import type { CubicleStation } from '../admin-overview/types';
 
@@ -91,8 +92,8 @@ export const AdminCubiclesScreen: React.FC = () => {
   useEffect(() => {
     if (!telemetryStations || telemetryStations.length === 0) return;
 
-    setCubicles((prev) =>
-      prev.map((item) => {
+    setCubicles((prev) => {
+      const updated = prev.map((item) => {
         const live = telemetryStations.find((s: CubicleStation) => s.id === item.id);
         if (!live) return item;
 
@@ -117,11 +118,48 @@ export const AdminCubiclesScreen: React.FC = () => {
           assignedPharmacist:
             item.assignedPharmacist || live.operatorName || 'Operador en Ventanilla',
         };
-      }),
-    );
+      });
+
+      const existingIds = new Set(prev.map((c) => c.id));
+      const extraItems: CubicleConfigurationItem[] = [];
+
+      for (const station of telemetryStations) {
+        if (!existingIds.has(station.id)) {
+          const liveBadge = mapTelemetryStatusToBadge(station.status);
+          const digits = station.name?.match(/\d+/)?.[0] ?? station.id.replace(/\D/g, '');
+          const numberCode = digits ? digits.padStart(2, '0') : station.id;
+          extraItems.push({
+            id: station.id,
+            numberCode,
+            name: station.name || `Cubículo ${numberCode}`,
+            moduleLabel: station.moduleCode ? `Módulo ${station.moduleCode}` : 'Módulo General',
+            badgeStatus: liveBadge,
+            assignedPharmacist: station.operatorName || 'Operador en Ventanilla',
+            slaThresholdMinutes: 12,
+            dailyProcessedCount: station.dailyProcessedCount || 0,
+            isEnabled: liveBadge !== 'INACTIVE',
+          });
+        }
+      }
+
+      return extraItems.length > 0 ? [...updated, ...extraItems] : updated;
+    });
   }, [telemetryStations]);
 
-  const handleUpdatePharmacist = (id: string, name: string) => {
+  const handleUpdatePharmacist = async (id: string, name: string, signal?: AbortSignal) => {
+    try {
+      await apiClient(`/cubicles/${encodeURIComponent(id)}/operator`, {
+        method: 'PATCH',
+        body: JSON.stringify({ operatorName: name }),
+        signal,
+      });
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        return;
+      }
+      throw err;
+    }
+
     setCubicles((prev) =>
       prev.map((c) => (c.id === id ? { ...c, assignedPharmacist: name } : c)),
     );

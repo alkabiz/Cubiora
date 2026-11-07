@@ -22,7 +22,7 @@ import { QueueItemCard } from './queue-item-card';
 import { KpiCard } from './kpi-card';
 import { useOperationalTelemetry, formatElapsedTime } from './use-operational-telemetry';
 import type { HourlyFlowEntry } from './types';
-import type { TelemetryDailyKpis, TelemetrySlaAlert } from '@cubiora/shared';
+import type { TelemetryDailyKpis, TelemetrySlaAlert, BottleneckRecommendation } from '@cubiora/shared';
 
 // ─── Banner de alerta SLA ─────────────────────────────────────────────────────
 interface SlaAlertBannerProps {
@@ -93,7 +93,7 @@ const SlaAlertBanner: React.FC<SlaAlertBannerProps> = ({ alert }) => {
 
       {/* Derecha */}
       <div className="text-right flex-shrink-0">
-        <span className="text-xs text-slate-500 block">SLA General:</span>
+        <span className="text-xs text-slate-700 font-medium block">SLA General:</span>
         <span className="text-sm font-mono font-bold text-slate-900">
           {alert.slaCompliancePercentage ?? 98.2}%
         </span>
@@ -117,6 +117,19 @@ const KpiSummaryGrid: React.FC<KpiSummaryGridProps> = ({ kpis }) => {
   const noShowPadded = String(kpis.noShowTodayCount).padStart(2, '0');
   const noShowRateStr = kpis.noShowRate !== null ? `${kpis.noShowRate}%` : '1.33%';
 
+  let waitText = '6m prom.';
+  let waitClass = 'text-blue-700';
+
+  if (kpis.averageWaitSeconds !== undefined && kpis.averageWaitSeconds !== null) {
+    const mins = Math.round(kpis.averageWaitSeconds / 60);
+    waitText = `${mins}m prom.`;
+    if (kpis.averageWaitSeconds > 1500) {
+      waitClass = 'text-red-600 bg-red-50 px-1.5 py-0.5 rounded font-extrabold';
+    } else if (kpis.averageWaitSeconds > 900) {
+      waitClass = 'animate-pulse text-amber-500 font-extrabold';
+    }
+  }
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
       {/* 1 — Turnos en espera */}
@@ -125,13 +138,13 @@ const KpiSummaryGrid: React.FC<KpiSummaryGridProps> = ({ kpis }) => {
         icon={<Users size={15} />}
         mainValue={waitingPadded}
         mainUnit="turnos"
-        secondaryValue={<span className="text-blue-700">6m prom.</span>}
+        secondaryValue={<span className={waitClass}>{waitText}</span>}
         secondaryLabel="Tiempo estimado"
         footer={
-          <div className="flex items-center gap-1.5 text-xs text-slate-500">
-            <TrendingDown size={12} className="text-emerald-600 flex-shrink-0" />
+          <div className="flex items-center gap-1.5 text-xs text-slate-600">
+            <TrendingDown size={12} className="text-emerald-700 flex-shrink-0" />
             <span>
-              <span className="text-emerald-600 font-semibold">-1.4 min</span> comparado a la hora
+              <span className="text-emerald-800 font-bold">-1.4 min</span> comparado a la hora
               anterior
             </span>
           </div>
@@ -168,11 +181,11 @@ const KpiSummaryGrid: React.FC<KpiSummaryGridProps> = ({ kpis }) => {
         icon={<CheckCircle2 size={15} />}
         mainValue={closedCountStr}
         mainUnit="atendidos"
-        secondaryValue={<span className="text-emerald-600">{slaComplianceStr}</span>}
+        secondaryValue={<span className="text-emerald-800 font-bold">{slaComplianceStr}</span>}
         secondaryLabel="SLA &lt; 8 min"
         footer={
-          <div className="flex items-center gap-1.5 text-xs text-slate-500">
-            <Timer size={12} className="text-slate-400 flex-shrink-0" />
+          <div className="flex items-center gap-1.5 text-xs text-slate-600">
+            <Timer size={12} className="text-slate-500 flex-shrink-0" />
             <span>Desviación estándar: ±42s</span>
           </div>
         }
@@ -184,11 +197,11 @@ const KpiSummaryGrid: React.FC<KpiSummaryGridProps> = ({ kpis }) => {
         icon={<UserX size={15} />}
         mainValue={noShowPadded}
         mainUnit="abandonos"
-        secondaryValue={<span className="text-red-600">{noShowRateStr}</span>}
+        secondaryValue={<span className="text-red-700 font-bold">{noShowRateStr}</span>}
         secondaryLabel="Tasa de abandono"
         footer={
-          <div className="flex items-center gap-1.5 text-xs text-slate-500">
-            <Activity size={12} className="text-slate-400 flex-shrink-0" />
+          <div className="flex items-center gap-1.5 text-xs text-slate-600">
+            <Activity size={12} className="text-slate-500 flex-shrink-0" />
             <span>Reingreso bloqueado por sistema</span>
           </div>
         }
@@ -230,7 +243,7 @@ const HourlyFlowWidget: React.FC<HourlyFlowWidgetProps> = ({ flow }) => {
     <div className="mt-4 bg-white border border-slate-200/80 rounded-xl p-4 shadow-xs">
       <div className="flex items-center justify-between mb-1">
         <span className="text-xs font-bold text-slate-800">Flujo de Carga por Hora</span>
-        <span className="text-xs text-slate-400">Turnos procesados / Hora de atención</span>
+        <span className="text-xs text-slate-600">Turnos procesados / Hora de atención</span>
       </div>
 
       {/* Barras */}
@@ -241,7 +254,7 @@ const HourlyFlowWidget: React.FC<HourlyFlowWidgetProps> = ({ flow }) => {
             <div key={entry.hour} className="flex flex-col items-center gap-1 flex-1">
               <span
                 className={`text-[10px] font-mono tabular-nums font-bold ${
-                  entry.isCurrentHour ? 'text-blue-700' : 'text-slate-400'
+                  entry.isCurrentHour ? 'text-blue-700' : 'text-slate-600'
                 }`}
               >
                 {entry.volume}
@@ -264,7 +277,7 @@ const HourlyFlowWidget: React.FC<HourlyFlowWidgetProps> = ({ flow }) => {
           <span
             key={entry.hour}
             className={`text-xs font-mono tabular-nums flex-1 text-center ${
-              entry.isCurrentHour ? 'font-bold text-blue-900' : 'text-slate-400'
+              entry.isCurrentHour ? 'font-bold text-blue-900' : 'text-slate-600'
             }`}
           >
             {entry.hour}
@@ -290,6 +303,42 @@ const FifoInfoCard: React.FC = () => (
   </div>
 );
 
+// ─── Tarjeta Prescriptiva de Cuello de Botella ────────────────────────────────
+interface BottleneckCardProps {
+  recommendation?: BottleneckRecommendation | null;
+}
+
+const BottleneckCard: React.FC<BottleneckCardProps> = ({ recommendation }) => {
+  if (!recommendation || !recommendation.detected) return null;
+
+  return (
+    <div
+      className="bg-amber-50/90 border border-amber-300 rounded-xl p-4 mt-4 shadow-xs"
+      data-testid="bottleneck-recommendation-card"
+    >
+      <div className="flex items-center gap-2 mb-1.5">
+        <AlertTriangle size={15} className="text-amber-700 flex-shrink-0 animate-pulse" />
+        <span className="text-xs font-bold text-amber-900 uppercase tracking-wide">
+          Cuello de Botella Detectado
+        </span>
+      </div>
+      <p className="text-xs text-amber-950 font-medium leading-relaxed">
+        {recommendation.message}
+      </p>
+      {recommendation.suggestedAction && (
+        <div className="mt-2.5 pt-2 border-t border-amber-200/80 flex items-start gap-2">
+          <span className="bg-amber-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider flex-shrink-0">
+            Acción Sugerida
+          </span>
+          <span className="text-xs text-amber-900 font-semibold">
+            {recommendation.suggestedAction}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── Componente principal SCR-ADM-001 ─────────────────────────────────────────
 export const AdminOverviewScreen: React.FC = () => {
   const {
@@ -297,6 +346,7 @@ export const AdminOverviewScreen: React.FC = () => {
     queue,
     kpis,
     slaAlert,
+    bottleneckRecommendation,
     hourlyFlow,
     connectionStatus,
     latencyMs,
@@ -305,6 +355,7 @@ export const AdminOverviewScreen: React.FC = () => {
   } = useOperationalTelemetry(true);
 
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [densityMode, setDensityMode] = useState<'standard' | 'compact'>('standard');
 
   const handleRefreshClick = () => {
     setIsRefreshing(true);
@@ -335,7 +386,7 @@ export const AdminOverviewScreen: React.FC = () => {
             <span className="text-slate-300">·</span>
             <span className="text-blue-600 font-semibold">CMP-ADM-001</span>
             <span className="text-slate-300">·</span>
-            <span className="text-slate-400">Supervisión Operativa en Tiempo Real</span>
+            <span className="text-slate-600 font-medium">Supervisión Operativa en Tiempo Real</span>
           </div>
 
           {/* Título + badge */}
@@ -373,7 +424,7 @@ export const AdminOverviewScreen: React.FC = () => {
             </span>
             <RefreshCw
               size={11}
-              className={`text-slate-400 transition-transform ${isRefreshing ? 'animate-spin text-blue-600' : ''}`}
+              className={`text-slate-600 transition-transform ${isRefreshing ? 'animate-spin text-blue-600' : ''}`}
             />
           </button>
 
@@ -421,22 +472,59 @@ export const AdminOverviewScreen: React.FC = () => {
           <div className="col-span-12 lg:col-span-8">
             {/* Encabezado de sección */}
             <div className="bg-white border border-slate-200/80 rounded-xl px-4 py-3 flex items-center justify-between flex-wrap gap-3 shadow-xs">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />
-                <span className="font-bold text-slate-900 text-sm">Estado de Cubículos</span>
-                <span className="text-xs text-slate-400">
-                  ({cubicles.length} Puestos Parametrizados)
-                </span>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />
+                  <span className="font-bold text-slate-900 text-sm">Estado de Cubículos</span>
+                  <span className="text-xs text-slate-600 font-medium">
+                    ({cubicles.length} Puestos Parametrizados)
+                  </span>
+                </div>
+
+                {/* Switcher de densidad de grilla */}
+                <div className="inline-flex rounded-lg border border-slate-200 p-0.5 bg-slate-50 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setDensityMode('standard')}
+                    aria-pressed={densityMode === 'standard'}
+                    className={`px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer ${
+                      densityMode === 'standard'
+                        ? 'bg-white text-slate-900 shadow-xs font-semibold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Estándar (2 col)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDensityMode('compact')}
+                    aria-pressed={densityMode === 'compact'}
+                    className={`px-2.5 py-1 rounded-md font-medium transition-colors cursor-pointer ${
+                      densityMode === 'compact'
+                        ? 'bg-white text-slate-900 shadow-xs font-semibold'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Compacta Mega-Centro (3-4 col)
+                  </button>
+                </div>
               </div>
+
               <StatusLegend />
             </div>
 
             {/* Grilla de cubículos */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            <div
+              className={`mt-4 ${
+                densityMode === 'compact'
+                  ? 'grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2.5'
+                  : 'grid grid-cols-1 md:grid-cols-2 gap-4'
+              }`}
+            >
               {cubicles.map((station) => (
                 <div
                   key={station.id}
-                  className={station.fullWidth ? 'md:col-span-2' : ''}
+                  className={densityMode === 'standard' && station.fullWidth ? 'md:col-span-2' : ''}
                 >
                   <CubicleCard station={station} />
                 </div>
@@ -469,6 +557,9 @@ export const AdminOverviewScreen: React.FC = () => {
 
             {/* Tarjeta FIFO */}
             <FifoInfoCard />
+
+            {/* Tarjeta Prescriptiva de Cuello de Botella */}
+            <BottleneckCard recommendation={bottleneckRecommendation} />
           </div>
         </div>
       </main>

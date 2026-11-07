@@ -1,17 +1,19 @@
 // ─── [SCR-ADM-003] Historial · Registro Operativo Diario — Tipos ─────────────
 
 export type SlaFilterOption = 'ALL' | 'IN_NORM' | 'EXCEEDED';
-export type AuditPriority = 'GENERAL' | 'PREFERENCIAL';
-export type AuditResultStatus = 'FINALIZADO' | 'ABANDONADO';
+export type AuditPriority = 'GENERAL' | 'PREFERENCIAL' | 'ALTO_COSTO' | 'FACTURACION';
+export type AuditResultStatus = 'FINALIZADO' | 'ABANDONADO' | 'PENDING_48H';
 
 export interface DailyAuditRecord {
   id: string;
   ticketCode: string; // ej. 'TUR-000119-L2'
   assignedStation: string; // ej. 'Cubículo 04'
   operatorName: string; // ej. 'Farm. S. Quintero'
-  priority: AuditPriority; // 'GENERAL' | 'PREFERENCIAL'
+  priority: AuditPriority; // 'GENERAL' | 'PREFERENCIAL' | 'ALTO_COSTO' | 'FACTURACION'
   serviceDurationSeconds: number;
   serviceDurationFormatted: string; // ej. '6m 52s'
   slaCompliant: boolean; // true -> 'Cumplido', false -> 'Excedido'
   resultStatus: AuditResultStatus;
+  dispensationResolution?: string | null;
+  prescriptionBarcode?: string | null;
 }

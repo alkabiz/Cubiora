@@ -6,7 +6,7 @@ import type { CubicleConfigurationItem, CubicleBadgeCode } from './types';
 
 interface CubicleConfigCardProps {
   item: CubicleConfigurationItem;
-  onUpdatePharmacist: (id: string, name: string) => Promise<void> | void;
+  onUpdatePharmacist: (id: string, name: string, signal?: AbortSignal) => Promise<void> | void;
   onToggleStatus: (id: string) => void;
 }
 
@@ -15,7 +15,7 @@ const BADGE_STYLES: Record<CubicleBadgeCode, string> = {
   EXCEEDED: 'bg-red-100/90 text-red-700',
   CALLING: 'bg-purple-50 text-purple-700',
   AVAILABLE: 'bg-emerald-50 text-emerald-700',
-  INACTIVE: 'bg-slate-100 text-slate-500',
+  INACTIVE: 'bg-slate-200 text-slate-800',
 };
 
 export const CubicleConfigCard: React.FC<CubicleConfigCardProps> = ({
@@ -28,10 +28,13 @@ export const CubicleConfigCard: React.FC<CubicleConfigCardProps> = ({
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clearStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSavedValueRef = useRef(item.assignedPharmacist);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const isFocusedRef = useRef(false);
 
   // Sincronizar si cambia desde telemetría externa sin sobreescribir edición activa
+  // ni peticiones en curso (resolución de conflicto con snapshot)
   useEffect(() => {
-    if (saveStatus !== 'saving' && saveStatus !== 'error') {
+    if (!isFocusedRef.current && saveStatus !== 'saving' && saveStatus !== 'error') {
       setInputValue(item.assignedPharmacist);
       lastSavedValueRef.current = item.assignedPharmacist;
     }
@@ -43,21 +46,39 @@ export const CubicleConfigCard: React.FC<CubicleConfigCardProps> = ({
       if (trimmed === lastSavedValueRef.current) {
         return;
       }
+
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
         debounceTimerRef.current = null;
       }
 
+      // Cancelar petición anterior en vuelo si existiera para evitar condiciones de carrera (AbortController)
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
       setSaveStatus('saving');
       try {
-        await onUpdatePharmacist(item.id, trimmed);
+        await onUpdatePharmacist(item.id, trimmed, controller.signal);
+
+        // Si fue cancelada mientras esperaba la respuesta, no sobreescribir estado
+        if (controller.signal.aborted) {
+          return;
+        }
+
         lastSavedValueRef.current = trimmed;
         setSaveStatus('saved');
+
         if (clearStatusTimerRef.current) clearTimeout(clearStatusTimerRef.current);
         clearStatusTimerRef.current = setTimeout(() => {
           setSaveStatus('idle');
         }, 2000);
       } catch {
+        if (controller.signal.aborted) {
+          return;
+        }
         setSaveStatus('error');
       }
     },
@@ -77,7 +98,12 @@ export const CubicleConfigCard: React.FC<CubicleConfigCardProps> = ({
     }, 600);
   };
 
+  const handleFocus = () => {
+    isFocusedRef.current = true;
+  };
+
   const handleBlur = () => {
+    isFocusedRef.current = false;
     if (inputValue.trim() !== lastSavedValueRef.current) {
       void executeSave(inputValue);
     }
@@ -87,6 +113,7 @@ export const CubicleConfigCard: React.FC<CubicleConfigCardProps> = ({
     return () => {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
       if (clearStatusTimerRef.current) clearTimeout(clearStatusTimerRef.current);
+      if (abortControllerRef.current) abortControllerRef.current.abort();
     };
   }, []);
 
@@ -133,6 +160,7 @@ export const CubicleConfigCard: React.FC<CubicleConfigCardProps> = ({
               type="text"
               value={inputValue}
               onChange={handleChange}
+              onFocus={handleFocus}
               onBlur={handleBlur}
               className={`w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#0B5793] focus:border-[#0B5793] transition-colors ${
                 item.isEnabled ? 'text-slate-900' : 'text-slate-700'
@@ -217,4 +245,3 @@ export const CubicleConfigCard: React.FC<CubicleConfigCardProps> = ({
     </div>
   );
 };
-

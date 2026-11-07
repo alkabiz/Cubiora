@@ -112,7 +112,7 @@ export const CubicleCard: React.FC<CubicleCardProps> = React.memo(({ station }) 
           <span className="text-xs font-semibold text-slate-700 truncate">{station.name}</span>
         </div>
         {/* Módulo badge */}
-        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-500 ml-2 flex-shrink-0">
+        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700 ml-2 flex-shrink-0">
           {station.moduleCode}
         </span>
       </div>
@@ -156,19 +156,19 @@ export const CubicleCard: React.FC<CubicleCardProps> = React.memo(({ station }) 
           <span
             className={`text-xs truncate ${
               isInactive
-                ? 'text-slate-400 italic'
+                ? 'text-slate-600 italic'
                 : station.status === 'SLA_EXCEDIDO'
-                  ? 'text-red-600'
+                  ? 'text-red-700 font-semibold'
                   : station.status === 'LLAMANDO'
-                    ? 'text-purple-600'
-                    : 'text-slate-500'
+                    ? 'text-purple-700 font-semibold'
+                    : 'text-slate-700'
             }`}
           >
             {station.statusFooterText}
           </span>
         </div>
         {/* Footer derecho — turnos del día */}
-        <span className="text-[11px] font-mono text-slate-400 flex-shrink-0 ml-2">
+        <span className="text-[11px] font-mono text-slate-600 flex-shrink-0 ml-2">
           {station.dailyProcessedCount} turnos hoy
         </span>
       </div>

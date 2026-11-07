@@ -11,6 +11,7 @@ import {
   type TelemetryQueuedTicket,
   type TelemetryDailyKpis,
   type TelemetrySlaAlert,
+  type BottleneckRecommendation,
 } from '@cubiora/shared';
 import type {
   CubicleStation,
@@ -269,6 +270,7 @@ export function useOperationalTelemetry(enabled = true): OperationalTelemetryHoo
   const [queue, setQueue] = useState<QueuedTicket[]>(FALLBACK_QUEUE);
   const [kpis, setKpis] = useState<TelemetryDailyKpis>(FALLBACK_KPIS);
   const [slaAlert, setSlaAlert] = useState<TelemetrySlaAlert>(FALLBACK_SLA_ALERT);
+  const [bottleneckRecommendation, setBottleneckRecommendation] = useState<BottleneckRecommendation | null>(null);
   const [hourlyFlow, setHourlyFlow] = useState<HourlyFlowEntry[]>(FALLBACK_HOURLY_FLOW);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
   const [latencyMs, setLatencyMs] = useState<number>(18);
@@ -320,6 +322,9 @@ export function useOperationalTelemetry(enabled = true): OperationalTelemetryHoo
       if (snapshot.slaAlert) {
         setSlaAlert(snapshot.slaAlert);
       }
+      if (snapshot.bottleneckRecommendation !== undefined) {
+        setBottleneckRecommendation(snapshot.bottleneckRecommendation ?? null);
+      }
       if (snapshot.hourlyFlow) {
         const currentHour = `${String(new Date().getHours()).padStart(2, '0')}:00`;
         setHourlyFlow(
@@ -357,6 +362,9 @@ export function useOperationalTelemetry(enabled = true): OperationalTelemetryHoo
       }
       if (payload.slaAlert) {
         setSlaAlert(payload.slaAlert);
+      }
+      if (payload.bottleneckRecommendation !== undefined) {
+        setBottleneckRecommendation(payload.bottleneckRecommendation ?? null);
       }
     });
 
@@ -494,6 +502,7 @@ export function useOperationalTelemetry(enabled = true): OperationalTelemetryHoo
     queue,
     kpis,
     slaAlert,
+    bottleneckRecommendation,
     hourlyFlow,
     connectionStatus,
     latencyMs,

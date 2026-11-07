@@ -39,7 +39,7 @@ export const QueueItemCard: React.FC<QueueItemCardProps> = React.memo(({ ticket 
 
       {/* ── Fila inferior ── */}
       <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100">
-        <span className="text-[11px] font-mono text-slate-400">
+        <span className="text-[11px] font-mono text-slate-600">
           Emisión: {ticket.issuedAt}
         </span>
         <span className="text-[11px] font-mono text-slate-600 font-semibold tabular-nums">

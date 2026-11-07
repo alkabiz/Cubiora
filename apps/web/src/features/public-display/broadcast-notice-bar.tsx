@@ -22,7 +22,7 @@ export const BroadcastNoticeBar: React.FC<BroadcastNoticeBarProps> = ({ notice }
       <span>
         Por favor tenga a la mano su orden y fórmula médica al acercarse al cubículo asignado.
       </span>
-      <span className="font-mono text-slate-500">
+      <span className="font-mono text-slate-300">
         Cubiora · Sistema de Gestión de Turnos
       </span>
     </footer>

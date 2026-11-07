@@ -1,4 +1,9 @@
 // ─── [SCR-PUB-001] ActiveCallHero — Zona Hero de Anuncio de Turno Activo ──────
+// WCAG 2.3.3 / best-practice: animaciones respetan prefers-reduced-motion
+// La clase `motion-safe:transition-all` aplica transición solo cuando el usuario
+// NO ha solicitado reducción de movimiento (prefers-reduced-motion: no-preference).
+// La clase `motion-reduce:transition-none` anula la transición si prefers-reduced-motion: reduce.
+// El flash visual (ring + sombra) permanece como cambio de estado perceptible sin animación.
 import React from 'react';
 import type { PublicTicketCall } from './types';
 
@@ -17,7 +22,7 @@ export const ActiveCallHero: React.FC<ActiveCallHeroProps> = ({
       aria-label="Turno llamado actualmente"
       aria-live="assertive"
       aria-atomic="true"
-      className={`col-span-12 lg:col-span-8 flex flex-col items-center justify-center text-center p-8 sm:p-12 rounded-3xl relative overflow-hidden transition-all duration-500 ${
+      className={`col-span-12 lg:col-span-8 flex flex-col items-center justify-center text-center p-8 sm:p-12 rounded-3xl relative overflow-hidden motion-safe:transition-all motion-safe:duration-500 motion-reduce:transition-none ${
         isFlashing
           ? 'ring-4 ring-emerald-400/60 bg-[#06203A] shadow-[0_0_80px_-10px_rgba(16,185,129,0.35)]'
           : 'bg-[#041527] border-2 border-emerald-500/40 shadow-[0_0_60px_-15px_rgba(16,185,129,0.2)]'

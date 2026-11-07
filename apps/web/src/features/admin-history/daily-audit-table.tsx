@@ -71,6 +71,14 @@ export const DailyAuditTable: React.FC<DailyAuditTableProps> = ({ records, pageS
                         <Star className="w-3 h-3 text-purple-700 fill-purple-700/20" aria-hidden="true" />
                         PREFERENCIAL
                       </span>
+                    ) : record.priority === 'ALTO_COSTO' ? (
+                      <span className="inline-flex items-center gap-1 bg-purple-50 border border-purple-300 text-purple-900 font-mono text-[11px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider">
+                        Alto Costo
+                      </span>
+                    ) : record.priority === 'FACTURACION' ? (
+                      <span className="inline-flex items-center gap-1 bg-blue-50 border border-blue-200 text-blue-800 font-mono text-[11px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider">
+                        Facturación
+                      </span>
                     ) : (
                       <span className="font-mono text-xs font-medium text-slate-600 tracking-wide uppercase">
                         GENERAL
@@ -100,7 +108,11 @@ export const DailyAuditTable: React.FC<DailyAuditTableProps> = ({ records, pageS
 
                   {/* 7. Resultado */}
                   <td className="py-4 px-6 text-right whitespace-nowrap">
-                    {record.resultStatus === 'FINALIZADO' ? (
+                    {record.resultStatus === 'PENDING_48H' ? (
+                      <span className="bg-amber-50 text-amber-900 border border-amber-300 font-mono text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md">
+                        Pendiente 48h
+                      </span>
+                    ) : record.resultStatus === 'FINALIZADO' ? (
                       <span className="bg-blue-50/90 text-blue-800 font-mono text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md">
                         FINALIZADO
                       </span>
