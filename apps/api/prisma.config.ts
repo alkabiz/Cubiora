@@ -8,7 +8,8 @@ dotenv.config({ path: path.resolve(process.cwd(), '.env.development.local') });
 dotenv.config({ path: path.resolve(process.cwd(), 'apps/api/.env.development.local') });
 dotenv.config({ path: path.resolve(__dirname, '.env.development.local') });
 
-const connectionUrl = process.env.DIRECT_URL ?? process.env.DATABASE_URL;
+const rawDirectUrl = process.env.DIRECT_URL?.trim();
+const connectionUrl = rawDirectUrl && rawDirectUrl.length > 0 ? rawDirectUrl : process.env.DATABASE_URL;
 
 if (!connectionUrl) {
   throw new Error(

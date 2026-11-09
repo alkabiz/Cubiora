@@ -168,7 +168,7 @@ const envSchema = z
       });
     }
 
-    if (data.DIRECT_URL) {
+    if (data.DIRECT_URL && data.DIRECT_URL.trim() !== '') {
       try {
         assertDatabaseUrlSecurity(data.DIRECT_URL, 'DIRECT_URL', data.NODE_ENV);
       } catch (err) {
