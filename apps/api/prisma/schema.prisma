@@ -45,6 +45,32 @@ enum DispensationResolution {
   CANCELLED_BY_PATIENT
 }
 
+enum FacilityStatus {
+  ACTIVE
+  MAINTENANCE
+  INACTIVE
+}
+
+enum PharmacistOperationalRole {
+  TITULAR
+  ADJUNTO
+  DISPENSADOR
+  GUARDIA
+}
+
+enum WorkShift {
+  MORNING
+  AFTERNOON
+  NIGHT
+  ROTATING
+}
+
+enum PharmacistStatus {
+  ACTIVE
+  ON_LEAVE
+  INACTIVE
+}
+
 model User {
   id           String   @id @db.VarChar(26)
   publicId     String   @unique @map("public_id") @db.VarChar(26)
@@ -57,13 +83,34 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  cubicle         Cubicle?              @relation("CubicleCurrentOperator", fields: [cubicleId], references: [id], onDelete: SetNull)
-  statusHistory   TicketStatusHistory[]
-  callsMade       TicketCall[]
-  ticketsCreated  Ticket[]
-  idempotencyKeys IdempotencyKey[]
+  cubicle           Cubicle?              @relation("CubicleCurrentOperator", fields: [cubicleId], references: [id], onDelete: SetNull)
+  pharmacistProfile Pharmacist?
+  statusHistory     TicketStatusHistory[]
+  callsMade         TicketCall[]
+  ticketsCreated    Ticket[]
+  idempotencyKeys   IdempotencyKey[]
 
   @@map("users")
+}
+
+model Facility {
+  id                   String         @id @db.VarChar(26)
+  code                 String         @unique @db.VarChar(30)
+  name                 String         @db.VarChar(120)
+  address              String         @db.VarChar(200)
+  city                 String         @db.VarChar(80)
+  phone                String         @db.VarChar(50)
+  openingHours         String         @map("opening_hours") @db.VarChar(80)
+  enabledCubiclesCount Int            @default(4) @map("enabled_cubicles_count")
+  status               FacilityStatus @default(ACTIVE)
+  isPrimary            Boolean        @default(false) @map("is_primary")
+  createdAt            DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  cubicles    Cubicle[]
+  pharmacists Pharmacist[]
+
+  @@map("facilities")
 }
 
 model Cubicle {
@@ -74,17 +121,47 @@ model Cubicle {
   status            CubicleStatus   @default(AVAILABLE)
   active            Boolean         @default(true)
   allowedCategories QueueCategory[] @default([GENERAL, PREFERENTIAL, HIGH_COST, BILLING]) @map("allowed_categories")
+  facilityId        String?         @map("facility_id") @db.VarChar(26)
   version           Int             @default(1)
   createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
+  facility        Facility?             @relation(fields: [facilityId], references: [id], onDelete: SetNull)
   currentOperator User?                 @relation("CubicleCurrentOperator")
+  pharmacists     Pharmacist[]
   tickets         Ticket[]
   calls           TicketCall[]
   statusHistory   TicketStatusHistory[]
   dispensations   DispensationRecord[]
 
+  @@index([facilityId], name: "ix_cubicles_facility")
   @@map("cubicles")
+}
+
+model Pharmacist {
+  id              String                    @id @db.VarChar(26)
+  fullName        String                    @map("full_name") @db.VarChar(120)
+  licenseNumber   String                    @unique @map("license_number") @db.VarChar(40)
+  operationalRole PharmacistOperationalRole @default(TITULAR) @map("operational_role")
+  shift           WorkShift                 @default(MORNING)
+  status          PharmacistStatus          @default(ACTIVE)
+  email           String                    @unique @db.VarChar(120)
+  phone           String                    @db.VarChar(40)
+  dispatchesCount Int                       @default(0) @map("dispatches_count")
+  facilityId      String?                   @map("facility_id") @db.VarChar(26)
+  cubicleId       String?                   @map("cubicle_id") @db.VarChar(26)
+  userId          String?                   @unique @map("user_id") @db.VarChar(26)
+  createdAt       DateTime                  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime                  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  facility Facility? @relation(fields: [facilityId], references: [id], onDelete: SetNull)
+  cubicle  Cubicle?  @relation(fields: [cubicleId], references: [id], onDelete: SetNull)
+  user     User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([facilityId], name: "ix_pharmacists_facility")
+  @@index([cubicleId], name: "ix_pharmacists_cubicle")
+  @@index([status], name: "ix_pharmacists_status")
+  @@map("pharmacists")
 }
 
 model SystemSequence {

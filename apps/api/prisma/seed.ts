@@ -7,6 +7,10 @@ import {
   TicketStatus,
   DispensationResolution,
   UserRole,
+  FacilityStatus,
+  PharmacistOperationalRole,
+  WorkShift,
+  PharmacistStatus,
 } from '../src/generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
@@ -64,7 +68,99 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
   console.log('🌱 Iniciando seed de desarrollo para Cubiora (Topología Audifarma PMV)...');
 
-  // 1. Cubículos parametrizados (Topología Audifarma PMV)
+  // 0. Sedes Hospitalarias y Puntos de Dispensación (SCR-ADM-005)
+  const existingPrimaryFacility = await prisma.facility.findFirst({
+    where: { isPrimary: true },
+    select: { id: true, code: true },
+  });
+
+  const facilitiesData = [
+    {
+      code: 'SEDE-CEN-01',
+      name: 'Punto de Dispensación Central',
+      address: 'Av. Córdoba 2351, Pabellón A (Planta Baja)',
+      city: 'CABA',
+      phone: '+54 11 4964-8000 (Int. 142)',
+      openingHours: '07:00 a 20:00 hs',
+      enabledCubiclesCount: 5,
+      status: FacilityStatus.ACTIVE,
+      isPrimary: true,
+    },
+    {
+      code: 'SEDE-NOR-02',
+      name: 'Centro Ambulatorio Norte',
+      address: 'Av. Libertador 6420',
+      city: 'CABA',
+      phone: '+54 11 4789-3100',
+      openingHours: '07:30 a 19:00 hs',
+      enabledCubiclesCount: 3,
+      status: FacilityStatus.ACTIVE,
+      isPrimary: false,
+    },
+    {
+      code: 'SEDE-SUR-03',
+      name: 'Guardia y Dispensación Sur',
+      address: 'Av. Pavón 1890',
+      city: 'Avellaneda',
+      phone: '+54 11 4208-7500',
+      openingHours: '00:00 a 24:00 hs',
+      enabledCubiclesCount: 4,
+      status: FacilityStatus.ACTIVE,
+      isPrimary: false,
+    },
+    {
+      code: 'SEDE-OES-04',
+      name: 'Anexo Polivalente Oeste',
+      address: 'Av. Gaona 3100',
+      city: 'Ramos Mejía',
+      phone: '+54 11 4658-4210',
+      openingHours: '08:00 a 18:00 hs',
+      enabledCubiclesCount: 2,
+      status: FacilityStatus.MAINTENANCE,
+      isPrimary: false,
+    },
+  ];
+
+  const facilityIds = new Map<string, string>();
+  for (const facility of facilitiesData) {
+    const resolvedPrimary = existingPrimaryFacility
+      ? existingPrimaryFacility.code === facility.code
+      : facility.isPrimary;
+
+    const persisted = await prisma.facility.upsert({
+      where: { code: facility.code },
+      update: {
+        name: facility.name,
+        address: facility.address,
+        city: facility.city,
+        phone: facility.phone,
+        openingHours: facility.openingHours,
+        enabledCubiclesCount: facility.enabledCubiclesCount,
+        status: facility.status,
+      },
+      create: {
+        id: ulid(),
+        code: facility.code,
+        name: facility.name,
+        address: facility.address,
+        city: facility.city,
+        phone: facility.phone,
+        openingHours: facility.openingHours,
+        enabledCubiclesCount: facility.enabledCubiclesCount,
+        status: facility.status,
+        isPrimary: resolvedPrimary,
+      },
+    });
+    facilityIds.set(persisted.code, persisted.id);
+  }
+  console.log('✅ 4 Sedes hospitalarias aseguradas (SEDE-CEN-01 .. SEDE-OES-04)');
+
+  // 1. Cubículos parametrizados (Topología Audifarma PMV + Sedes)
+  const centralFacilityId = facilityIds.get('SEDE-CEN-01') ?? null;
+  const northFacilityId = facilityIds.get('SEDE-NOR-02') ?? null;
+  const southFacilityId = facilityIds.get('SEDE-SUR-03') ?? null;
+  const westFacilityId = facilityIds.get('SEDE-OES-04') ?? null;
+
   const cubiclesData = [
     {
       code: 'CUB-01',
@@ -73,6 +169,7 @@ async function main() {
       status: CubicleStatus.AVAILABLE,
       active: true,
       allowedCategories: [QueueCategory.PREFERENTIAL, QueueCategory.GENERAL],
+      facilityId: centralFacilityId,
     },
     {
       code: 'CUB-02',
@@ -81,6 +178,7 @@ async function main() {
       status: CubicleStatus.AVAILABLE,
       active: true,
       allowedCategories: [QueueCategory.GENERAL, QueueCategory.PREFERENTIAL],
+      facilityId: centralFacilityId,
     },
     {
       code: 'CUB-03',
@@ -89,6 +187,7 @@ async function main() {
       status: CubicleStatus.AVAILABLE,
       active: true,
       allowedCategories: [QueueCategory.GENERAL, QueueCategory.BILLING],
+      facilityId: centralFacilityId,
     },
     {
       code: 'CUB-04',
@@ -97,14 +196,100 @@ async function main() {
       status: CubicleStatus.AVAILABLE,
       active: true,
       allowedCategories: [QueueCategory.HIGH_COST, QueueCategory.PREFERENTIAL],
+      facilityId: centralFacilityId,
     },
     {
       code: 'CUB-05',
       displayName: 'Cubículo 05',
-      operatorName: 'Farm. Auxiliar Guardia',
+      operatorName: null,
       status: CubicleStatus.INACTIVE,
       active: false,
       allowedCategories: [QueueCategory.GENERAL, QueueCategory.HIGH_COST],
+      facilityId: centralFacilityId,
+    },
+    // Ventanillas Sede Norte (SEDE-NOR-02)
+    {
+      code: 'NOR-CUB-01',
+      displayName: 'Cubículo 01',
+      operatorName: 'Lic. V. Benítez',
+      status: CubicleStatus.AVAILABLE,
+      active: true,
+      allowedCategories: [QueueCategory.GENERAL, QueueCategory.PREFERENTIAL],
+      facilityId: northFacilityId,
+    },
+    {
+      code: 'NOR-CUB-02',
+      displayName: 'Cubículo 02',
+      operatorName: null,
+      status: CubicleStatus.AVAILABLE,
+      active: true,
+      allowedCategories: [QueueCategory.GENERAL, QueueCategory.BILLING],
+      facilityId: northFacilityId,
+    },
+    {
+      code: 'NOR-CUB-03',
+      displayName: 'Cubículo 03',
+      operatorName: null,
+      status: CubicleStatus.AVAILABLE,
+      active: true,
+      allowedCategories: [QueueCategory.GENERAL],
+      facilityId: northFacilityId,
+    },
+    // Ventanillas Sede Sur (SEDE-SUR-03)
+    {
+      code: 'SUR-CUB-01',
+      displayName: 'Cubículo 01',
+      operatorName: 'Lic. D. Carrizo',
+      status: CubicleStatus.AVAILABLE,
+      active: true,
+      allowedCategories: [QueueCategory.GENERAL, QueueCategory.PREFERENTIAL],
+      facilityId: southFacilityId,
+    },
+    {
+      code: 'SUR-CUB-02',
+      displayName: 'Cubículo 02',
+      operatorName: 'Farm. Auxiliar Guardia',
+      status: CubicleStatus.AVAILABLE,
+      active: true,
+      allowedCategories: [QueueCategory.GENERAL, QueueCategory.HIGH_COST],
+      facilityId: southFacilityId,
+    },
+    {
+      code: 'SUR-CUB-03',
+      displayName: 'Cubículo 03',
+      operatorName: null,
+      status: CubicleStatus.AVAILABLE,
+      active: true,
+      allowedCategories: [QueueCategory.GENERAL],
+      facilityId: southFacilityId,
+    },
+    {
+      code: 'SUR-CUB-04',
+      displayName: 'Cubículo 04',
+      operatorName: null,
+      status: CubicleStatus.AVAILABLE,
+      active: true,
+      allowedCategories: [QueueCategory.GENERAL],
+      facilityId: southFacilityId,
+    },
+    // Ventanillas Sede Oeste (SEDE-OES-04 — en mantenimiento)
+    {
+      code: 'OES-CUB-01',
+      displayName: 'Cubículo 01',
+      operatorName: null,
+      status: CubicleStatus.INACTIVE,
+      active: false,
+      allowedCategories: [QueueCategory.GENERAL],
+      facilityId: westFacilityId,
+    },
+    {
+      code: 'OES-CUB-02',
+      displayName: 'Cubículo 02',
+      operatorName: null,
+      status: CubicleStatus.INACTIVE,
+      active: false,
+      allowedCategories: [QueueCategory.GENERAL],
+      facilityId: westFacilityId,
     },
   ];
 
@@ -118,6 +303,7 @@ async function main() {
         status: cubicle.status,
         active: cubicle.active,
         allowedCategories: cubicle.allowedCategories,
+        facilityId: cubicle.facilityId,
       },
       create: {
         id: ulid(),
@@ -127,11 +313,12 @@ async function main() {
         status: cubicle.status,
         active: cubicle.active,
         allowedCategories: cubicle.allowedCategories,
+        facilityId: cubicle.facilityId,
       },
     });
     cubicleIds.set(persisted.code, persisted.id);
   }
-  console.log('✅ 5 Cubículos asegurados (CUB-01 .. CUB-05) con allowedCategories y operatorName');
+  console.log('✅ Cubículos asegurados (CUB-01..CUB-05 vinculados a SEDE-CEN-01 y ventanillas de red)');
 
   // 2. Usuarios de prueba para desarrollo local con publicId e id ULID válidos
   const salt = await bcrypt.genSalt(10);
@@ -217,6 +404,151 @@ async function main() {
     userIds.set(persisted.username, persisted.id);
   }
   console.log('✅ Usuarios de prueba asegurados con asignación a cubículos CUB-01..CUB-04');
+
+  // 2b. Farmacéuticos registrados vinculados a sedes y cubículos (SCR-ADM-004)
+  const pharmacistsData = [
+    {
+      fullName: 'Lic. R. Mendoza',
+      licenseNumber: 'MN-4812',
+      operationalRole: PharmacistOperationalRole.TITULAR,
+      facilityCode: 'SEDE-CEN-01',
+      shift: WorkShift.MORNING,
+      cubicleCode: 'CUB-03',
+      status: PharmacistStatus.ACTIVE,
+      dispatchesCount: 142,
+      email: 'r.mendoza@cubiora.hospital',
+      phone: '+54 11 4964-8103',
+      username: 'cajero',
+    },
+    {
+      fullName: 'Lic. M. Arismendi',
+      licenseNumber: 'MN-3914',
+      operationalRole: PharmacistOperationalRole.TITULAR,
+      facilityCode: 'SEDE-CEN-01',
+      shift: WorkShift.MORNING,
+      cubicleCode: 'CUB-01',
+      status: PharmacistStatus.ACTIVE,
+      dispatchesCount: 188,
+      email: 'm.arismendi@cubiora.hospital',
+      phone: '+54 11 4964-8101',
+      username: 'cajero1',
+    },
+    {
+      fullName: 'Farm. J. Duarte',
+      licenseNumber: 'MP-8921',
+      operationalRole: PharmacistOperationalRole.ADJUNTO,
+      facilityCode: 'SEDE-CEN-01',
+      shift: WorkShift.AFTERNOON,
+      cubicleCode: 'CUB-02',
+      status: PharmacistStatus.ACTIVE,
+      dispatchesCount: 96,
+      email: 'j.duarte@cubiora.hospital',
+      phone: '+54 11 4964-8102',
+      username: 'cajero2',
+    },
+    {
+      fullName: 'Farm. S. Quintero',
+      licenseNumber: 'MN-7230',
+      operationalRole: PharmacistOperationalRole.DISPENSADOR,
+      facilityCode: 'SEDE-CEN-01',
+      shift: WorkShift.ROTATING,
+      cubicleCode: 'CUB-04',
+      status: PharmacistStatus.ACTIVE,
+      dispatchesCount: 115,
+      email: 's.quintero@cubiora.hospital',
+      phone: '+54 11 4964-8104',
+      username: 'cajero4',
+    },
+    {
+      fullName: 'Lic. V. Benítez',
+      licenseNumber: 'MN-6109',
+      operationalRole: PharmacistOperationalRole.TITULAR,
+      facilityCode: 'SEDE-NOR-02',
+      shift: WorkShift.MORNING,
+      cubicleCode: 'NOR-CUB-01',
+      status: PharmacistStatus.ACTIVE,
+      dispatchesCount: 130,
+      email: 'v.benitez@cubiora.hospital',
+      phone: '+54 11 4789-3101',
+      username: null,
+    },
+    {
+      fullName: 'Farm. C. Paoli',
+      licenseNumber: 'MP-5542',
+      operationalRole: PharmacistOperationalRole.ADJUNTO,
+      facilityCode: 'SEDE-NOR-02',
+      shift: WorkShift.AFTERNOON,
+      cubicleCode: null,
+      status: PharmacistStatus.ON_LEAVE,
+      dispatchesCount: 84,
+      email: 'c.paoli@cubiora.hospital',
+      phone: '+54 11 4789-3102',
+      username: null,
+    },
+    {
+      fullName: 'Lic. D. Carrizo',
+      licenseNumber: 'MN-9041',
+      operationalRole: PharmacistOperationalRole.GUARDIA,
+      facilityCode: 'SEDE-SUR-03',
+      shift: WorkShift.NIGHT,
+      cubicleCode: 'SUR-CUB-01',
+      status: PharmacistStatus.ACTIVE,
+      dispatchesCount: 162,
+      email: 'd.carrizo@cubiora.hospital',
+      phone: '+54 11 4208-7501',
+      username: null,
+    },
+    {
+      fullName: 'Farm. Auxiliar Guardia',
+      licenseNumber: 'MN-0042',
+      operationalRole: PharmacistOperationalRole.GUARDIA,
+      facilityCode: 'SEDE-SUR-03',
+      shift: WorkShift.ROTATING,
+      cubicleCode: 'SUR-CUB-02',
+      status: PharmacistStatus.ACTIVE,
+      dispatchesCount: 90,
+      email: 'guardia.aux@cubiora.hospital',
+      phone: '+54 11 4208-7502',
+      username: null,
+    },
+  ];
+
+  for (const pharm of pharmacistsData) {
+    const facilityId = facilityIds.get(pharm.facilityCode) ?? null;
+    const cubicleId = pharm.cubicleCode ? (cubicleIds.get(pharm.cubicleCode) ?? null) : null;
+    const userId = pharm.username ? (userIds.get(pharm.username) ?? null) : null;
+
+    await prisma.pharmacist.upsert({
+      where: { licenseNumber: pharm.licenseNumber },
+      update: {
+        fullName: pharm.fullName,
+        operationalRole: pharm.operationalRole,
+        shift: pharm.shift,
+        status: pharm.status,
+        email: pharm.email,
+        phone: pharm.phone,
+        dispatchesCount: pharm.dispatchesCount,
+        facilityId,
+        cubicleId,
+        userId,
+      },
+      create: {
+        id: ulid(),
+        fullName: pharm.fullName,
+        licenseNumber: pharm.licenseNumber,
+        operationalRole: pharm.operationalRole,
+        shift: pharm.shift,
+        status: pharm.status,
+        email: pharm.email,
+        phone: pharm.phone,
+        dispatchesCount: pharm.dispatchesCount,
+        facilityId,
+        cubicleId,
+        userId,
+      },
+    });
+  }
+  console.log('✅ 8 Farmacéuticos registrados asegurados y sincronizados con sedes y cubículos');
 
   const defaultCreatorId = userIds.get('recepcion') ?? userIds.get('receptor') ?? userIds.get('admin')!;
   const now = new Date();
