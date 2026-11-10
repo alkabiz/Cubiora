@@ -297,8 +297,12 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
           const cubicleRows = await tx.$queryRaw<Array<{ id: string; display_name: string }>>`
             SELECT c.id, c.display_name 
             FROM cubicles c
+            LEFT JOIN facilities f ON f.id = c.facility_id
             LEFT JOIN tickets t ON t.cubicle_id = c.id AND t.status IN ('ASSIGNED', 'CALLED', 'IN_SERVICE')
-            WHERE c.status = 'AVAILABLE' AND c.active = true AND t.id IS NULL
+            WHERE c.status = 'AVAILABLE'
+              AND c.active = true
+              AND t.id IS NULL
+              AND (c.facility_id IS NULL OR f.is_primary = true)
             ORDER BY c.code ASC 
             LIMIT 1 
             FOR UPDATE OF c SKIP LOCKED
@@ -312,6 +316,7 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
             where: {
               status: CubicleStatus.AVAILABLE,
               active: true,
+              OR: [{ facilityId: null }, { facility: { isPrimary: true } }],
               tickets: {
                 none: {
                   status: {

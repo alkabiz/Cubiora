@@ -51,12 +51,9 @@ export class CubiclesController {
 
   /**
    * PATCH /api/v1/cubicles/:id/operator
-   * Actualiza el nombre del operador asignado a un cubículo.
+   * Actualiza el operador asignado a un cubículo (texto o farmacéutico vinculado).
    * ADMIN y CASHIER pueden actualizar.
    * Campo vacío '' borra el operador.
-   *
-   * NOTA: El campo operatorName no existe aún en el schema Prisma.
-   * TODO: campo pendiente de migración Prisma
    */
   @Roles(UserRole.ADMIN, UserRole.CASHIER)
   @Patch(':id/operator')
@@ -64,7 +61,14 @@ export class CubiclesController {
     @Param('id') id: string,
     @Body() body: UpdateCubicleOperatorDto,
   ): Promise<{ success: true; data: UpdateCubicleOperatorResponse }> {
-    const data = await this.cubiclesService.updateOperator(id, body.operatorName);
+    const data =
+      body.pharmacistId !== undefined
+        ? await this.cubiclesService.updateOperator(
+            id,
+            body.operatorName,
+            body.pharmacistId,
+          )
+        : await this.cubiclesService.updateOperator(id, body.operatorName);
     return { success: true, data };
   }
 }

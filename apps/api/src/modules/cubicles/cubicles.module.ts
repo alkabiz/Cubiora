@@ -1,9 +1,12 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { CubiclesController } from './cubicles.controller';
+import { AdminCubiclesController } from './admin-cubicles.controller';
 import { CubiclesService } from './cubicles.service';
+import { OperationalTelemetryModule } from '../operational-telemetry/operational-telemetry.module';
 
 @Module({
-  controllers: [CubiclesController],
+  imports: [forwardRef(() => OperationalTelemetryModule)],
+  controllers: [CubiclesController, AdminCubiclesController],
   providers: [CubiclesService],
   exports: [CubiclesService],
 })

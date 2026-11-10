@@ -13,6 +13,8 @@ import { AuditModule } from './modules/audit/audit.module';
 import { CashierMetricsModule } from './modules/cashier-metrics/cashier-metrics.module';
 import { OperationalTelemetryModule } from './modules/operational-telemetry/operational-telemetry.module';
 import { WmsIntegrationModule } from './modules/wms-integration/wms-integration.module';
+import { PharmacistsModule } from './modules/pharmacists/pharmacists.module';
+import { FacilitiesModule } from './modules/facilities/facilities.module';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 import { AuthGuard } from './common/guards/auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -37,6 +39,8 @@ import { RolesGuard } from './common/guards/roles.guard';
     CashierMetricsModule,
     OperationalTelemetryModule,
     WmsIntegrationModule,
+    PharmacistsModule,
+    FacilitiesModule,
   ],
   providers: [
     {

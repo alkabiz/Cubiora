@@ -1,4 +1,4 @@
-import { IsString, MaxLength, Matches } from 'class-validator';
+import { IsOptional, IsString, MaxLength, Matches } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 /**
@@ -17,9 +17,21 @@ export class UpdateCubicleOperatorDto {
     typeof value === 'string' ? value.trim() : value,
   )
   @MaxLength(120)
-  @Matches(/^[a-zA-ZÀ-ÿ\s.\-]*$/, {
+  @Matches(/^[a-zA-ZÀ-ÿ\s.-]*$/, {
     message:
       'operatorName solo puede contener letras, espacios, puntos y guiones.',
   })
   operatorName!: string;
+
+  /**
+   * Identificador opcional del farmacéutico registrado a vincular con este cubículo.
+   * Enviar null o vacío para desvincular al farmacéutico asignado.
+   */
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() || null : value,
+  )
+  @IsString()
+  @MaxLength(26)
+  pharmacistId?: string | null;
 }
