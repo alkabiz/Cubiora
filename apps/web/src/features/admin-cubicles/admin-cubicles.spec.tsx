@@ -1,10 +1,22 @@
 // ─── [SCR-ADM-002] Tests Unitarios de Configuración de Cubículos ──────────────
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import { Theme } from '@radix-ui/themes';
+import {
+  CubicleStatus,
+  FacilityStatus,
+  PharmacistOperationalRole,
+  PharmacistStatus,
+  QueueCategory,
+  WorkShift,
+  type AdminCubicleConfigDto,
+  type FacilityDto,
+  type PharmacistDto,
+} from '@cubiora/shared';
 import { AdminCubiclesScreen } from './admin-cubicles-screen';
-import { apiClient } from '../../lib/api';
+import { apiClient, ApiClientError } from '../../lib/api';
 
 // Mock de socket.io-client
 vi.mock('socket.io-client', () => {
@@ -19,40 +31,324 @@ vi.mock('socket.io-client', () => {
   };
 });
 
-// Mock de apiClient
-vi.mock('../../lib/api', () => ({
-  apiClient: vi.fn().mockResolvedValue({ success: true, data: { id: 'CUB-01', operatorName: 'Test' } }),
-}));
+// Mock de apiClient preservando unwrapApiData y ApiClientError reales
+vi.mock('../../lib/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../lib/api')>();
+  return {
+    ...actual,
+    apiClient: vi.fn(),
+  };
+});
+
+const MOCK_FACILITY: FacilityDto = {
+  id: 'fac-cen-01',
+  code: 'SEDE-CEN-01',
+  name: 'Punto de Dispensación Central',
+  address: 'Av. Córdoba 2351',
+  city: 'CABA',
+  phone: '+54 11 4964-8000',
+  openingHours: '07:00 a 20:00 hs',
+  enabledCubiclesCount: 5,
+  status: FacilityStatus.ACTIVE,
+  isPrimary: true,
+  cubiclesCount: 5,
+  pharmacistsCount: 4,
+  cubicles: [],
+  pharmacists: [],
+};
+
+const MOCK_PHARMACISTS: PharmacistDto[] = [
+  {
+    id: 'pharm-cub-01',
+    userId: null,
+    fullName: 'Lic. M. Arismendi',
+    licenseNumber: 'MN-3914',
+    operationalRole: PharmacistOperationalRole.TITULAR,
+    facilityId: 'fac-cen-01',
+    facilityName: 'Punto de Dispensación Central',
+    facilityCode: 'SEDE-CEN-01',
+    defaultCubicleId: 'CUB-01',
+    defaultCubicleName: 'Cubículo 01',
+    shift: WorkShift.MORNING,
+    status: PharmacistStatus.ACTIVE,
+    email: 'm.arismendi@cubiora.hospital',
+    phone: '+54 11 4964-8001',
+    dispatchesCount: 188,
+  },
+  {
+    id: 'pharm-cub-02',
+    userId: null,
+    fullName: 'Farm. J. Duarte',
+    licenseNumber: 'MP-8921',
+    operationalRole: PharmacistOperationalRole.ADJUNTO,
+    facilityId: 'fac-cen-01',
+    facilityName: 'Punto de Dispensación Central',
+    facilityCode: 'SEDE-CEN-01',
+    defaultCubicleId: 'CUB-02',
+    defaultCubicleName: 'Cubículo 02',
+    shift: WorkShift.AFTERNOON,
+    status: PharmacistStatus.ACTIVE,
+    email: 'j.duarte@cubiora.hospital',
+    phone: '+54 11 4964-8002',
+    dispatchesCount: 96,
+  },
+  {
+    id: 'pharm-cub-03',
+    userId: null,
+    fullName: 'Lic. R. Mendoza',
+    licenseNumber: 'MN-4812',
+    operationalRole: PharmacistOperationalRole.TITULAR,
+    facilityId: 'fac-cen-01',
+    facilityName: 'Punto de Dispensación Central',
+    facilityCode: 'SEDE-CEN-01',
+    defaultCubicleId: 'CUB-03',
+    defaultCubicleName: 'Cubículo 03',
+    shift: WorkShift.MORNING,
+    status: PharmacistStatus.ACTIVE,
+    email: 'r.mendoza@cubiora.hospital',
+    phone: '+54 11 4964-8003',
+    dispatchesCount: 142,
+  },
+  {
+    id: 'pharm-cub-04',
+    userId: null,
+    fullName: 'Farm. S. Quintero',
+    licenseNumber: 'MN-7230',
+    operationalRole: PharmacistOperationalRole.DISPENSADOR,
+    facilityId: 'fac-cen-01',
+    facilityName: 'Punto de Dispensación Central',
+    facilityCode: 'SEDE-CEN-01',
+    defaultCubicleId: 'CUB-04',
+    defaultCubicleName: 'Cubículo 04',
+    shift: WorkShift.ROTATING,
+    status: PharmacistStatus.ACTIVE,
+    email: 's.quintero@cubiora.hospital',
+    phone: '+54 11 4964-8004',
+    dispatchesCount: 115,
+  },
+];
+
+function createInitialCubicleDtos(): AdminCubicleConfigDto[] {
+  return [
+    {
+      id: 'CUB-01',
+      code: 'CUB-01',
+      displayName: 'Cubículo 01',
+      operatorName: 'Lic. M. Arismendi',
+      status: CubicleStatus.BUSY,
+      active: true,
+      allowedCategories: [QueueCategory.GENERAL],
+      facilityId: 'fac-cen-01',
+      facilityCode: 'SEDE-CEN-01',
+      facilityName: 'Punto de Dispensación Central',
+      pharmacistId: 'pharm-cub-01',
+      pharmacistName: 'Lic. M. Arismendi',
+      pharmacistLicenseNumber: 'MN-3914',
+      dailyCompletedCount: 38,
+      slaThresholdSeconds: 720,
+      version: 1,
+    },
+    {
+      id: 'CUB-02',
+      code: 'CUB-02',
+      displayName: 'Cubículo 02',
+      operatorName: 'Farm. J. Duarte',
+      status: CubicleStatus.RESERVED,
+      active: true,
+      allowedCategories: [QueueCategory.GENERAL],
+      facilityId: 'fac-cen-01',
+      facilityCode: 'SEDE-CEN-01',
+      facilityName: 'Punto de Dispensación Central',
+      pharmacistId: 'pharm-cub-02',
+      pharmacistName: 'Farm. J. Duarte',
+      pharmacistLicenseNumber: 'MP-8921',
+      dailyCompletedCount: 34,
+      slaThresholdSeconds: 720,
+      version: 1,
+    },
+    {
+      id: 'CUB-03',
+      code: 'CUB-03',
+      displayName: 'Cubículo 03',
+      operatorName: 'Lic. R. Mendoza',
+      status: CubicleStatus.CALLING,
+      active: true,
+      allowedCategories: [QueueCategory.PREFERENTIAL],
+      facilityId: 'fac-cen-01',
+      facilityCode: 'SEDE-CEN-01',
+      facilityName: 'Punto de Dispensación Central',
+      pharmacistId: 'pharm-cub-03',
+      pharmacistName: 'Lic. R. Mendoza',
+      pharmacistLicenseNumber: 'MN-4812',
+      dailyCompletedCount: 41,
+      slaThresholdSeconds: 720,
+      version: 1,
+    },
+    {
+      id: 'CUB-04',
+      code: 'CUB-04',
+      displayName: 'Cubículo 04',
+      operatorName: 'Farm. S. Quintero',
+      status: CubicleStatus.AVAILABLE,
+      active: true,
+      allowedCategories: [QueueCategory.GENERAL],
+      facilityId: 'fac-cen-01',
+      facilityCode: 'SEDE-CEN-01',
+      facilityName: 'Punto de Dispensación Central',
+      pharmacistId: 'pharm-cub-04',
+      pharmacistName: 'Farm. S. Quintero',
+      pharmacistLicenseNumber: 'MN-7230',
+      dailyCompletedCount: 35,
+      slaThresholdSeconds: 720,
+      version: 1,
+    },
+    {
+      id: 'CUB-05',
+      code: 'CUB-05',
+      displayName: 'Cubículo 05',
+      operatorName: null,
+      status: CubicleStatus.INACTIVE,
+      active: false,
+      allowedCategories: [QueueCategory.GENERAL],
+      facilityId: 'fac-cen-01',
+      facilityCode: 'SEDE-CEN-01',
+      facilityName: 'Punto de Dispensación Central',
+      pharmacistId: null,
+      pharmacistName: null,
+      pharmacistLicenseNumber: null,
+      dailyCompletedCount: 0,
+      slaThresholdSeconds: 720,
+      version: 1,
+    },
+  ];
+}
+
+interface MockControlOptions {
+  failNextAssignError?: Error;
+  failNextStatusError?: Error;
+}
+
+function setupDefaultApiMock(ctrl: MockControlOptions = {}) {
+  const cubicleStore = createInitialCubicleDtos();
+
+  vi.mocked(apiClient).mockImplementation(async (endpoint: string, options?: RequestInit) => {
+    if (endpoint.startsWith('/admin/facilities')) {
+      return { success: true, data: [MOCK_FACILITY] };
+    }
+    if (endpoint.startsWith('/admin/pharmacists')) {
+      return {
+        success: true,
+        data: {
+          items: MOCK_PHARMACISTS,
+          metrics: {
+            totalRegistered: MOCK_PHARMACISTS.length,
+            activeToday: MOCK_PHARMACISTS.length,
+            onLeaveCount: 0,
+            totalDispatches: 541,
+            averageServiceMinutes: 6.4,
+            assignedFacilitiesCount: 1,
+          },
+        },
+      };
+    }
+    if (endpoint === '/admin/cubicles' || endpoint.startsWith('/admin/cubicles?')) {
+      return { success: true, data: cubicleStore.map((c) => ({ ...c })) };
+    }
+    if (endpoint.includes('/assign-pharmacist')) {
+      if (ctrl.failNextAssignError) {
+        const err = ctrl.failNextAssignError;
+        ctrl.failNextAssignError = undefined;
+        throw err;
+      }
+      const cubId = endpoint.split('/')[3];
+      const body = JSON.parse(String(options?.body ?? '{}')) as {
+        pharmacistId: string | null;
+        operatorName?: string;
+      };
+      const target = cubicleStore.find((c) => c.id === cubId);
+      const prof = MOCK_PHARMACISTS.find((p) => p.id === body.pharmacistId);
+      if (target) {
+        for (const c of cubicleStore) {
+          if (body.pharmacistId && c.pharmacistId === body.pharmacistId) {
+            c.pharmacistId = null;
+            c.pharmacistName = null;
+            c.pharmacistLicenseNumber = null;
+            c.operatorName = null;
+          }
+        }
+        target.pharmacistId = body.pharmacistId;
+        target.pharmacistName = prof?.fullName ?? null;
+        target.pharmacistLicenseNumber = prof?.licenseNumber ?? null;
+        target.operatorName = prof?.fullName ?? (body.operatorName || null);
+      }
+      return { success: true, data: target ? { ...target } : {} };
+    }
+    if (endpoint.includes('/status')) {
+      if (ctrl.failNextStatusError) {
+        const err = ctrl.failNextStatusError;
+        ctrl.failNextStatusError = undefined;
+        throw err;
+      }
+      const cubId = endpoint.split('/')[3];
+      const body = JSON.parse(String(options?.body ?? '{}')) as { active: boolean };
+      const target = cubicleStore.find((c) => c.id === cubId);
+      if (target) {
+        target.active = body.active;
+        target.status = body.active ? CubicleStatus.AVAILABLE : CubicleStatus.INACTIVE;
+      }
+      return { success: true, data: target ? { ...target } : {} };
+    }
+    return { success: true, data: {} };
+  });
+
+  return ctrl;
+}
+
+async function selectRadixOption(trigger: HTMLElement, optionName: RegExp | string) {
+  fireEvent.keyDown(trigger, { key: 'Enter', code: 'Enter' });
+  const listbox = await screen.findByRole('listbox');
+  const option = within(listbox).getByRole('option', { name: optionName });
+  fireEvent.click(option);
+}
 
 const renderComponent = () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, staleTime: 0 } },
+  });
   return render(
-    <Theme accentColor="teal" grayColor="slate">
-      <MemoryRouter>
-        <AdminCubiclesScreen />
-      </MemoryRouter>
-    </Theme>,
+    <QueryClientProvider client={client}>
+      <Theme accentColor="teal" grayColor="slate">
+        <MemoryRouter>
+          <AdminCubiclesScreen />
+        </MemoryRouter>
+      </Theme>
+    </QueryClientProvider>,
   );
 };
 
 describe('[SCR-ADM-002] Administración · Configuración de Cubículos', () => {
+  let mockCtrl: MockControlOptions;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    mockCtrl = setupDefaultApiMock();
   });
 
-  it('1. Renderiza el Header superior con breadcrumbs, título principal y botón de regreso', () => {
+  it('1. Renderiza Header con sede activa y accesos a Farmacéuticos y Sedes', async () => {
     renderComponent();
 
-    // Breadcrumb
     expect(screen.getByText('SCR-ADM-002')).toBeDefined();
     expect(screen.getByText('Parametrización de Puestos y Ventanillas')).toBeDefined();
-
-    // Título Principal
     expect(
       screen.getByText('[SCR-ADM-002] Administración · Configuración de Cubículos'),
     ).toBeDefined();
-
-    // Botón secundario Volver al Panel General
+    expect(screen.getByRole('link', { name: /Directorio de Farmacéuticos/i })).toBeDefined();
+    expect(screen.getByRole('link', { name: /Cambiar Sede/i })).toBeDefined();
     expect(screen.getByText('← Volver al Panel General')).toBeDefined();
+
+    await waitFor(() => {
+      expect(screen.getByText(/Punto de Dispensación Central \(SEDE-CEN-01\)/i)).toBeDefined();
+    });
   });
 
   it('2. Renderiza los 5 cubículos con sus nombres, números y módulos', () => {
@@ -64,20 +360,18 @@ describe('[SCR-ADM-002] Administración · Configuración de Cubículos', () => 
     expect(screen.getByText('Cubículo 04')).toBeDefined();
     expect(screen.getByText('Cubículo 05')).toBeDefined();
 
-    // Números de estación
     expect(screen.getByText('01')).toBeDefined();
     expect(screen.getByText('02')).toBeDefined();
     expect(screen.getByText('03')).toBeDefined();
     expect(screen.getByText('04')).toBeDefined();
     expect(screen.getByText('05')).toBeDefined();
 
-    // Módulos
     expect(screen.getAllByText('Módulo MOD-A').length).toBe(2);
     expect(screen.getAllByText('Módulo MOD-B').length).toBe(2);
     expect(screen.getByText('Módulo MOD-C')).toBeDefined();
   });
 
-  it('3. Renderiza los 5 badges semánticos de estado unificados en español institucional', () => {
+  it('3. Renderiza los badges semánticos de estado y métricas iniciales', () => {
     renderComponent();
 
     expect(screen.getByText('ATENDIENDO')).toBeDefined();
@@ -85,22 +379,8 @@ describe('[SCR-ADM-002] Administración · Configuración de Cubículos', () => 
     expect(screen.getByText('LLAMANDO')).toBeDefined();
     expect(screen.getByText('DISPONIBLE')).toBeDefined();
     expect(screen.getByText('INACTIVO')).toBeDefined();
-  });
 
-  it('4. Renderiza los valores iniciales de Farmacéutico Asignado, Umbral SLA y Turnos atendidos hoy', () => {
-    renderComponent();
-
-    // Inputs de farmacéutico asignado
-    expect(screen.getByDisplayValue('Lic. M. Arismendi')).toBeDefined();
-    expect(screen.getByDisplayValue('Farm. J. Duarte')).toBeDefined();
-    expect(screen.getByDisplayValue('Lic. R. Mendoza')).toBeDefined();
-    expect(screen.getByDisplayValue('Farm. S. Quintero')).toBeDefined();
-    expect(screen.getByDisplayValue('Farm. Auxiliar Guardia')).toBeDefined();
-
-    // Umbrales SLA
     expect(screen.getAllByText('12 min').length).toBe(5);
-
-    // Contadores de turnos
     expect(screen.getByText('38 turnos')).toBeDefined();
     expect(screen.getByText('34 turnos')).toBeDefined();
     expect(screen.getByText('41 turnos')).toBeDefined();
@@ -108,125 +388,150 @@ describe('[SCR-ADM-002] Administración · Configuración de Cubículos', () => 
     expect(screen.getByText('0 turnos')).toBeDefined();
   });
 
-  it('5. Permite editar el input de Farmacéutico Asignado y actualiza el estado local', () => {
+  it('4. Asigna un farmacéutico registrado desde el Selector y llama a PATCH /admin/cubicles/:id/assign-pharmacist', async () => {
     renderComponent();
 
-    const input = screen.getByDisplayValue('Lic. M. Arismendi') as HTMLInputElement;
-    fireEvent.change(input, { target: { value: 'Dra. Carolina Méndez' } });
+    await waitFor(() => {
+      expect(screen.getByText(/Matrícula MN-3914/i)).toBeDefined();
+    });
 
-    expect(screen.getByDisplayValue('Dra. Carolina Méndez')).toBeDefined();
-    expect(screen.queryByDisplayValue('Lic. M. Arismendi')).toBeNull();
+    const triggerCub1 = screen.getByRole('combobox', {
+      name: /Farmacéutico Asignado para Cubículo 01/i,
+    });
+    await selectRadixOption(triggerCub1, /Lic\. R\. Mendoza/i);
+
+    await waitFor(() => {
+      expect(apiClient).toHaveBeenCalledWith(
+        '/admin/cubicles/CUB-01/assign-pharmacist',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({
+            pharmacistId: 'pharm-cub-03',
+            operatorName: 'Lic. R. Mendoza',
+          }),
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Guardado')).toBeDefined();
+    });
   });
 
-  it('6. Desactiva un cubículo activo al pulsar "Desactivar": pasa a INACTIVO, Deshabilitado y botón Habilitar', () => {
+  it('5. Permite desasignar eligiendo "Sin farmacéutico asignado"', async () => {
     renderComponent();
 
-    // Cubículo 01 está activo inicialmente con botón "Desactivar" y footer "Operativo en cola"
-    expect(screen.getByText('ATENDIENDO')).toBeDefined();
+    await waitFor(() => {
+      expect(screen.getByText(/Matrícula MN-3914/i)).toBeDefined();
+    });
+
+    const triggerCub1 = screen.getByRole('combobox', {
+      name: /Farmacéutico Asignado para Cubículo 01/i,
+    });
+    await selectRadixOption(triggerCub1, /Sin farmacéutico asignado/i);
+
+    await waitFor(() => {
+      expect(apiClient).toHaveBeenCalledWith(
+        '/admin/cubicles/CUB-01/assign-pharmacist',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({
+            pharmacistId: null,
+            operatorName: '',
+          }),
+        }),
+      );
+    });
+  });
+
+  it('6. Desactiva y habilita un cubículo llamando a PATCH /admin/cubicles/:id/status', async () => {
+    renderComponent();
+
+    await waitFor(() => {
+      expect(screen.getByText(/Matrícula MN-3914/i)).toBeDefined();
+    });
+
     const deactivateButtons = screen.getAllByRole('button', { name: /Desactivar/i });
     expect(deactivateButtons.length).toBe(4);
 
-    // Desactivar Cubículo 01
     fireEvent.click(deactivateButtons[0]!);
 
-    // Ahora el Cubículo 01 debe pasar a INACTIVO
-    expect(screen.queryByText('ATENDIENDO')).toBeNull();
-    expect(screen.getAllByText('INACTIVO').length).toBe(2); // CUB-01 y CUB-05
+    await waitFor(() => {
+      expect(apiClient).toHaveBeenCalledWith(
+        '/admin/cubicles/CUB-01/status',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({ active: false }),
+        }),
+      );
+    });
 
-    // Debe haber 2 botones "Habilitar" (CUB-01 y CUB-05) y 3 "Desactivar"
-    expect(screen.getAllByRole('button', { name: /Habilitar/i }).length).toBe(2);
-    expect(screen.getAllByRole('button', { name: /Desactivar/i }).length).toBe(3);
-    expect(screen.getAllByText('Deshabilitado').length).toBe(2);
-  });
+    await waitFor(() => {
+      expect(screen.queryByText('ATENDIENDO')).toBeNull();
+      expect(screen.getAllByText('INACTIVO').length).toBe(2);
+    });
 
-  it('7. Habilita un cubículo inactivo al pulsar "Habilitar": pasa a DISPONIBLE, Operativo en cola y botón Desactivar', () => {
-    renderComponent();
-
-    // Cubículo 05 está inactivo con botón "Habilitar" y footer "Deshabilitado"
-    const enableButton = screen.getByRole('button', { name: /Habilitar/i });
-    expect(enableButton).toBeDefined();
-
+    const enableButton = screen.getAllByRole('button', { name: /Habilitar/i })[0]!;
     fireEvent.click(enableButton);
 
-    // Cubículo 05 pasa a DISPONIBLE y Operativo en cola
-    expect(screen.getAllByText('DISPONIBLE').length).toBe(2); // CUB-04 y CUB-05
-    expect(screen.queryByRole('button', { name: /Habilitar/i })).toBeNull();
-    expect(screen.getAllByRole('button', { name: /Desactivar/i }).length).toBe(5);
-    expect(screen.getAllByText('Operativo en cola').length).toBe(5);
+    await waitFor(() => {
+      expect(apiClient).toHaveBeenCalledWith(
+        '/admin/cubicles/CUB-01/status',
+        expect.objectContaining({
+          method: 'PATCH',
+          body: JSON.stringify({ active: true }),
+        }),
+      );
+    });
   });
 
-  it('8. Muestra retroalimentación accesible de guardado al modificar o desenfocar el campo (WCAG 4.1.3 AA)', async () => {
-    vi.useFakeTimers();
+  it('7. Revierte el cambio de estado y muestra alerta si el servidor responde 409 conflicto', async () => {
     renderComponent();
 
-    const input = screen.getByDisplayValue('Lic. M. Arismendi') as HTMLInputElement;
-    fireEvent.change(input, { target: { value: 'Dra. Elena Ramos' } });
-
-    // Avance de tiempo inferior a 600ms no dispara aún el guardado
-    act(() => {
-      vi.advanceTimersByTime(300);
-    });
-    expect(screen.queryByText('Guardando…')).toBeNull();
-
-    // Avance tras los 600ms de debounce activa el guardado
-    await act(async () => {
-      vi.advanceTimersByTime(400);
+    await waitFor(() => {
+      expect(screen.getByText(/Matrícula MN-3914/i)).toBeDefined();
     });
 
-    expect(apiClient).toHaveBeenCalledWith(
-      '/cubicles/CUB-01/operator',
-      expect.objectContaining({
-        method: 'PATCH',
-        body: JSON.stringify({ operatorName: 'Dra. Elena Ramos' }),
-      }),
+    mockCtrl.failNextStatusError = new ApiClientError(
+      'STATE_CONFLICT',
+      'No se puede desactivar el cubículo mientras tenga un turno activo.',
+      409,
     );
 
-    vi.useRealTimers();
+    const deactivateButtons = screen.getAllByRole('button', { name: /Desactivar/i });
+    fireEvent.click(deactivateButtons[0]!);
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeDefined();
+      expect(
+        screen.getByText(/No se puede desactivar el cubículo mientras tenga un turno activo/i),
+      ).toBeDefined();
+    });
   });
 
-  it('9. Guarda inmediatamente al perder el foco (blur) sin esperar al temporizador de debounce', async () => {
+  it('8. Muestra "Error al guardar" con botón Reintentar si falla la asignación de farmacéutico', async () => {
     renderComponent();
 
-    const input = screen.getByDisplayValue('Lic. M. Arismendi') as HTMLInputElement;
-    fireEvent.change(input, { target: { value: 'Dr. Roberto Gómez' } });
-
-    await act(async () => {
-      fireEvent.blur(input);
+    await waitFor(() => {
+      expect(screen.getByText(/Matrícula MN-3914/i)).toBeDefined();
     });
 
-    expect(apiClient).toHaveBeenCalledWith(
-      '/cubicles/CUB-01/operator',
-      expect.objectContaining({
-        method: 'PATCH',
-        body: JSON.stringify({ operatorName: 'Dr. Roberto Gómez' }),
-      }),
-    );
-  });
+    mockCtrl.failNextAssignError = new Error('Network error');
 
-  it('10. Muestra "Error al guardar" con botón de reintento que preserva el valor escrito ante fallo del servidor', async () => {
-    vi.mocked(apiClient).mockRejectedValueOnce(new Error('Network error'));
-    renderComponent();
+    const triggerCub1 = screen.getByRole('combobox', {
+      name: /Farmacéutico Asignado para Cubículo 01/i,
+    });
+    await selectRadixOption(triggerCub1, /Farm\. J\. Duarte/i);
 
-    const input = screen.getByDisplayValue('Lic. M. Arismendi') as HTMLInputElement;
-    fireEvent.change(input, { target: { value: 'Lic. Fallo Conexión' } });
-
-    await act(async () => {
-      fireEvent.blur(input);
+    await waitFor(() => {
+      expect(screen.getByText('Error al guardar')).toBeDefined();
     });
 
-    expect(screen.getByText('Error al guardar')).toBeDefined();
     const retryBtn = screen.getByRole('button', { name: 'Reintentar' });
-    expect(retryBtn).toBeDefined();
+    fireEvent.click(retryBtn);
 
-    // El input mantiene intacto el valor tipeado por el usuario
-    expect(input.value).toBe('Lic. Fallo Conexión');
-
-    // Al reintentar con éxito
-    vi.mocked(apiClient).mockResolvedValueOnce({ success: true, data: { id: 'CUB-01', operatorName: 'Lic. Fallo Conexión' } });
-    await act(async () => {
-      fireEvent.click(retryBtn);
+    await waitFor(() => {
+      expect(screen.getByText('Guardado')).toBeDefined();
     });
-
-    expect(apiClient).toHaveBeenCalledTimes(2);
   });
 });

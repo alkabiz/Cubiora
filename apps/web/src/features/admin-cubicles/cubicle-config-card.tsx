@@ -1,13 +1,30 @@
 // ─── [SCR-ADM-002] CubicleConfigCard — Tarjeta de Configuración de Cubículo ────
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Power, CheckCircle2, RefreshCw } from 'lucide-react';
-import { CUBICLE_STATUS_LABELS_ES } from '@cubiora/shared';
-import type { CubicleConfigurationItem, CubicleBadgeCode } from './types';
+import { Select } from '@radix-ui/themes';
+import {
+  CUBICLE_STATUS_LABELS_ES,
+  PHARMACIST_ROLE_SHORT_LABELS_ES,
+  PharmacistStatus,
+} from '@cubiora/shared';
+import type {
+  CubicleConfigurationItem,
+  CubicleBadgeCode,
+  PharmacistSelectOption,
+} from './types';
+
+export const UNASSIGNED_CUBICLE_PHARMACIST = '__UNASSIGNED__';
 
 interface CubicleConfigCardProps {
   item: CubicleConfigurationItem;
-  onUpdatePharmacist: (id: string, name: string, signal?: AbortSignal) => Promise<void> | void;
-  onToggleStatus: (id: string) => void;
+  pharmacists: PharmacistSelectOption[];
+  onAssignPharmacist: (
+    cubicleId: string,
+    pharmacistId: string | null,
+    operatorName: string,
+    signal?: AbortSignal,
+  ) => Promise<void> | void;
+  onToggleStatus: (id: string) => Promise<void> | void;
 }
 
 const BADGE_STYLES: Record<CubicleBadgeCode, string> = {
@@ -20,55 +37,66 @@ const BADGE_STYLES: Record<CubicleBadgeCode, string> = {
 
 export const CubicleConfigCard: React.FC<CubicleConfigCardProps> = ({
   item,
-  onUpdatePharmacist,
+  pharmacists,
+  onAssignPharmacist,
   onToggleStatus,
 }) => {
-  const [inputValue, setInputValue] = useState(item.assignedPharmacist);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const clearStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastSavedValueRef = useRef(item.assignedPharmacist);
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const isFocusedRef = useRef(false);
-
-  // Sincronizar si cambia desde telemetría externa sin sobreescribir edición activa
-  // ni peticiones en curso (resolución de conflicto con snapshot)
-  useEffect(() => {
-    if (!isFocusedRef.current && saveStatus !== 'saving' && saveStatus !== 'error') {
-      setInputValue(item.assignedPharmacist);
-      lastSavedValueRef.current = item.assignedPharmacist;
+  const resolvedInitialSelection = useMemo(() => {
+    if (item.pharmacistId) {
+      return item.pharmacistId;
     }
-  }, [item.assignedPharmacist, saveStatus]);
+    if (item.assignedPharmacist.trim().length > 0) {
+      const matched = pharmacists.find(
+        (p) => p.fullName.toLowerCase() === item.assignedPharmacist.trim().toLowerCase(),
+      );
+      if (matched) return matched.id;
+    }
+    return UNASSIGNED_CUBICLE_PHARMACIST;
+  }, [item.pharmacistId, item.assignedPharmacist, pharmacists]);
 
-  const executeSave = useCallback(
-    async (val: string) => {
-      const trimmed = val.trim();
-      if (trimmed === lastSavedValueRef.current) {
-        return;
-      }
+  const [selectedValue, setSelectedValue] = useState<string>(resolvedInitialSelection);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const clearStatusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSavedValueRef = useRef<string>(resolvedInitialSelection);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-        debounceTimerRef.current = null;
-      }
+  // Lista de opciones: profesionales activos de la sede + el asignado actual si aplica
+  const selectablePharmacists = useMemo(() => {
+    const active = pharmacists.filter(
+      (p) => p.status === PharmacistStatus.ACTIVE || p.id === selectedValue || p.id === item.pharmacistId,
+    );
+    return active;
+  }, [pharmacists, selectedValue, item.pharmacistId]);
 
-      // Cancelar petición anterior en vuelo si existiera para evitar condiciones de carrera (AbortController)
+  useEffect(() => {
+    if (saveStatus !== 'saving' && saveStatus !== 'error') {
+      setSelectedValue(resolvedInitialSelection);
+      lastSavedValueRef.current = resolvedInitialSelection;
+    }
+  }, [resolvedInitialSelection, saveStatus]);
+
+  const executeAssign = useCallback(
+    async (nextSelection: string) => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
       }
       const controller = new AbortController();
       abortControllerRef.current = controller;
 
+      const pharmacistId =
+        nextSelection === UNASSIGNED_CUBICLE_PHARMACIST ? null : nextSelection;
+      const chosenPharmacist = pharmacistId
+        ? pharmacists.find((p) => p.id === pharmacistId)
+        : undefined;
+      const operatorName = chosenPharmacist?.fullName ?? '';
+
       setSaveStatus('saving');
       try {
-        await onUpdatePharmacist(item.id, trimmed, controller.signal);
+        await onAssignPharmacist(item.id, pharmacistId, operatorName, controller.signal);
 
-        // Si fue cancelada mientras esperaba la respuesta, no sobreescribir estado
-        if (controller.signal.aborted) {
-          return;
-        }
+        if (controller.signal.aborted) return;
 
-        lastSavedValueRef.current = trimmed;
+        lastSavedValueRef.current = nextSelection;
         setSaveStatus('saved');
 
         if (clearStatusTimerRef.current) clearTimeout(clearStatusTimerRef.current);
@@ -76,46 +104,28 @@ export const CubicleConfigCard: React.FC<CubicleConfigCardProps> = ({
           setSaveStatus('idle');
         }, 2000);
       } catch {
-        if (controller.signal.aborted) {
-          return;
-        }
+        if (controller.signal.aborted) return;
         setSaveStatus('error');
       }
     },
-    [item.id, onUpdatePharmacist],
+    [item.id, onAssignPharmacist, pharmacists],
   );
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const nextVal = e.target.value;
-    setInputValue(nextVal);
-
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-    }
-    // Debounce de 600 ms según directiva
-    debounceTimerRef.current = setTimeout(() => {
-      void executeSave(nextVal);
-    }, 600);
-  };
-
-  const handleFocus = () => {
-    isFocusedRef.current = true;
-  };
-
-  const handleBlur = () => {
-    isFocusedRef.current = false;
-    if (inputValue.trim() !== lastSavedValueRef.current) {
-      void executeSave(inputValue);
+  const handleSelectChange = (nextVal: string) => {
+    setSelectedValue(nextVal);
+    if (nextVal !== lastSavedValueRef.current) {
+      void executeAssign(nextVal);
     }
   };
 
   useEffect(() => {
     return () => {
-      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
       if (clearStatusTimerRef.current) clearTimeout(clearStatusTimerRef.current);
       if (abortControllerRef.current) abortControllerRef.current.abort();
     };
   }, []);
+
+  const currentPharmacist = pharmacists.find((p) => p.id === selectedValue);
 
   return (
     <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-2xs flex flex-col justify-between">
@@ -155,20 +165,38 @@ export const CubicleConfigCard: React.FC<CubicleConfigCardProps> = ({
             >
               Farmacéutico Asignado:
             </label>
-            <input
-              id={`operator-${item.id}`}
-              type="text"
-              value={inputValue}
-              onChange={handleChange}
-              onFocus={handleFocus}
-              onBlur={handleBlur}
-              className={`w-full bg-white border border-slate-300 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#0B5793] focus:border-[#0B5793] transition-colors ${
-                item.isEnabled ? 'text-slate-900' : 'text-slate-700'
-              }`}
-            />
+            <Select.Root value={selectedValue} onValueChange={handleSelectChange}>
+              <Select.Trigger
+                id={`operator-${item.id}`}
+                aria-label={`Farmacéutico Asignado para ${item.name}`}
+                placeholder="Sin farmacéutico asignado"
+                className="w-full bg-white"
+              />
+              <Select.Content>
+                <Select.Item value={UNASSIGNED_CUBICLE_PHARMACIST}>
+                  Sin farmacéutico asignado
+                </Select.Item>
+                {selectablePharmacists.map((pharmacist) => (
+                  <Select.Item key={pharmacist.id} value={pharmacist.id}>
+                    {`${pharmacist.fullName} (${pharmacist.licenseNumber} · ${PHARMACIST_ROLE_SHORT_LABELS_ES[pharmacist.operationalRole]})`}
+                  </Select.Item>
+                ))}
+              </Select.Content>
+            </Select.Root>
+
+            {currentPharmacist && (
+              <p className="text-[11px] font-mono text-slate-600 mt-1">
+                Matrícula {currentPharmacist.licenseNumber} ·{' '}
+                {PHARMACIST_ROLE_SHORT_LABELS_ES[currentPharmacist.operationalRole]}
+              </p>
+            )}
 
             {/* Estado de guardado accesible (WCAG 4.1.3 Nivel AA) */}
-            <div role="status" aria-live="polite" className="h-4 text-[11px] flex items-center gap-1.5 mt-1.5">
+            <div
+              role="status"
+              aria-live="polite"
+              className="h-4 text-[11px] flex items-center gap-1.5 mt-1.5"
+            >
               {saveStatus === 'saving' && (
                 <span className="text-blue-700 flex items-center gap-1 font-medium">
                   <RefreshCw className="w-3 h-3 animate-spin" aria-hidden="true" />
@@ -186,7 +214,7 @@ export const CubicleConfigCard: React.FC<CubicleConfigCardProps> = ({
                   <span>Error al guardar</span>
                   <button
                     type="button"
-                    onClick={() => void executeSave(inputValue)}
+                    onClick={() => void executeAssign(selectedValue)}
                     className="text-xs text-blue-700 underline font-semibold ml-1 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-700"
                   >
                     Reintentar
@@ -225,7 +253,7 @@ export const CubicleConfigCard: React.FC<CubicleConfigCardProps> = ({
         {item.isEnabled ? (
           <button
             type="button"
-            onClick={() => onToggleStatus(item.id)}
+            onClick={() => void onToggleStatus(item.id)}
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 min-h-[36px] rounded-lg border border-slate-300 bg-white hover:bg-red-50 hover:border-red-300 text-red-700 text-xs font-semibold transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0B5793] focus-visible:ring-offset-2"
           >
             <Power className="w-3.5 h-3.5 text-red-600" aria-hidden="true" />
@@ -234,7 +262,7 @@ export const CubicleConfigCard: React.FC<CubicleConfigCardProps> = ({
         ) : (
           <button
             type="button"
-            onClick={() => onToggleStatus(item.id)}
+            onClick={() => void onToggleStatus(item.id)}
             className="inline-flex items-center gap-1.5 px-4 py-1.5 min-h-[36px] rounded-lg bg-[#2F6F5E] hover:bg-[#25584B] text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0B5793] focus-visible:ring-offset-2"
           >
             <Power className="w-3.5 h-3.5 text-white" aria-hidden="true" />
