@@ -27,6 +27,13 @@ export function isValidPublicId(id: unknown): id is string {
   return typeof id === 'string' && PUBLIC_ID_REGEX.test(id);
 }
 
+import {
+  FacilityStatus,
+  PharmacistOperationalRole,
+  PharmacistStatus,
+  WorkShift,
+} from './enums.js';
+
 /**
  * Diccionario institucional centralizado para nombres de estados operativos de cubículo en español.
  * Garantiza consistencia en SCR-ADM-001, SCR-ADM-002 y SCR-CAJ-001.
@@ -40,3 +47,49 @@ export const CUBICLE_STATUS_LABELS_ES = {
 } as const;
 
 export type CubicleOperationalStatusCode = keyof typeof CUBICLE_STATUS_LABELS_ES;
+
+/** Etiquetas institucionales para estados de sede hospitalaria (SCR-ADM-005). */
+export const FACILITY_STATUS_LABELS_ES: Record<FacilityStatus, string> = {
+  [FacilityStatus.ACTIVE]: 'Activa / En operación',
+  [FacilityStatus.MAINTENANCE]: 'Mantenimiento',
+  [FacilityStatus.INACTIVE]: 'Inactiva',
+};
+
+/** Etiquetas institucionales para rol operacional del farmacéutico (SCR-ADM-004). */
+export const PHARMACIST_ROLE_LABELS_ES: Record<PharmacistOperationalRole, string> = {
+  [PharmacistOperationalRole.TITULAR]: 'Farmacéutico Titular',
+  [PharmacistOperationalRole.ADJUNTO]: 'Adjunto',
+  [PharmacistOperationalRole.DISPENSADOR]: 'Dispensador',
+  [PharmacistOperationalRole.GUARDIA]: 'Guardia',
+};
+
+/** Etiquetas cortas de rol operacional para badges y tablas compactas. */
+export const PHARMACIST_ROLE_SHORT_LABELS_ES: Record<PharmacistOperationalRole, string> = {
+  [PharmacistOperationalRole.TITULAR]: 'Titular',
+  [PharmacistOperationalRole.ADJUNTO]: 'Adjunto',
+  [PharmacistOperationalRole.DISPENSADOR]: 'Dispensador',
+  [PharmacistOperationalRole.GUARDIA]: 'Guardia',
+};
+
+/** Etiquetas descriptivas con rango horario para turnos de trabajo (SCR-ADM-004). */
+export const WORK_SHIFT_LABELS_ES: Record<WorkShift, string> = {
+  [WorkShift.MORNING]: 'Mañana (07:00 a 14:00)',
+  [WorkShift.AFTERNOON]: 'Tarde (14:00 a 20:00)',
+  [WorkShift.NIGHT]: 'Noche (20:00 a 07:00)',
+  [WorkShift.ROTATING]: 'Rotativo',
+};
+
+/** Etiquetas cortas de turno horario para columnas de tabla. */
+export const WORK_SHIFT_SHORT_LABELS_ES: Record<WorkShift, string> = {
+  [WorkShift.MORNING]: 'Mañana',
+  [WorkShift.AFTERNOON]: 'Tarde',
+  [WorkShift.NIGHT]: 'Noche',
+  [WorkShift.ROTATING]: 'Rotativo',
+};
+
+/** Etiquetas de estado operativo del farmacéutico (SCR-ADM-004). */
+export const PHARMACIST_STATUS_LABELS_ES: Record<PharmacistStatus, string> = {
+  [PharmacistStatus.ACTIVE]: 'ACTIVO',
+  [PharmacistStatus.ON_LEAVE]: 'LICENCIA',
+  [PharmacistStatus.INACTIVE]: 'INACTIVO',
+};

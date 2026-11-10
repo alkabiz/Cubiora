@@ -90,3 +90,45 @@ export enum ApiErrorCode {
   INTERNAL_ERROR = 'INTERNAL_ERROR',
   DEPENDENCY_UNAVAILABLE = 'DEPENDENCY_UNAVAILABLE',
 }
+
+/**
+ * Estados operativos de una sede / punto de dispensación hospitalaria.
+ * @see [SCR-ADM-005] Gestión de Sedes y Usuarios Asociados
+ */
+export enum FacilityStatus {
+  ACTIVE = 'ACTIVE',
+  MAINTENANCE = 'MAINTENANCE',
+  INACTIVE = 'INACTIVE',
+}
+
+/**
+ * Roles operacionales de los profesionales farmacéuticos registrados.
+ * @see [SCR-ADM-004] Gestión de Farmacéuticos Registrados
+ */
+export enum PharmacistOperationalRole {
+  TITULAR = 'TITULAR',
+  ADJUNTO = 'ADJUNTO',
+  DISPENSADOR = 'DISPENSADOR',
+  GUARDIA = 'GUARDIA',
+}
+
+/**
+ * Turnos horarios de servicio asignables al personal farmacéutico.
+ * @see [SCR-ADM-004] Gestión de Farmacéuticos Registrados
+ */
+export enum WorkShift {
+  MORNING = 'MORNING',
+  AFTERNOON = 'AFTERNOON',
+  NIGHT = 'NIGHT',
+  ROTATING = 'ROTATING',
+}
+
+/**
+ * Estados de habilitación operativa de un farmacéutico registrado.
+ * @see [SCR-ADM-004] Gestión de Farmacéuticos Registrados
+ */
+export enum PharmacistStatus {
+  ACTIVE = 'ACTIVE',
+  ON_LEAVE = 'ON_LEAVE',
+  INACTIVE = 'INACTIVE',
+}

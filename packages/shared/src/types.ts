@@ -12,7 +12,16 @@
  * @see RF-005 — Pantalla Pública de Llamados
  * @see apps/web/src/features/display
  */
-import { CubicleStatus, TicketStatus, QueueCategory, DispensationResolution } from './enums.js';
+import {
+  CubicleStatus,
+  TicketStatus,
+  QueueCategory,
+  DispensationResolution,
+  FacilityStatus,
+  PharmacistOperationalRole,
+  WorkShift,
+  PharmacistStatus,
+} from './enums.js';
 
 export interface PublicCall {
   /** Código único del turno en formato TUR-XXXXXX-YY (ej: TUR-000123-A7) */
@@ -128,10 +137,10 @@ export interface ApiResponse<T> {
  * Petición para actualizar el operador de un cubículo.
  * Campo vacío '' borra el operador asignado.
  * @see PATCH /api/v1/cubicles/:id/operator
- * TODO: campo pendiente de migración Prisma (operatorName en tabla cubicles)
  */
 export interface UpdateCubicleOperatorRequest {
   operatorName: string;
+  pharmacistId?: string | null | undefined;
 }
 
 /**
@@ -141,6 +150,7 @@ export interface UpdateCubicleOperatorRequest {
 export interface UpdateCubicleOperatorResponse {
   id: string;
   operatorName: string | null;
+  pharmacistId?: string | null | undefined;
 }
 
 /**
@@ -214,4 +224,227 @@ export interface TicketHistoryResponse {
   page: number;
   limit: number;
   totalPages: number;
+}
+
+// ─── [SCR-ADM-004] & [SCR-ADM-005] Contratos de Sedes y Farmacéuticos ────────
+
+/**
+ * Resumen de ventanilla física / cubículo perteneciente a una sede.
+ * @see [SCR-ADM-005] Gestión de Sedes y Usuarios Asociados
+ */
+export interface FacilityCubicleSummaryDto {
+  id: string;
+  code: string;
+  shortCode: string;
+  displayName: string;
+  status: CubicleStatus;
+  active: boolean;
+  operatorName: string | null;
+  assignedPharmacistId?: string | null | undefined;
+}
+
+/**
+ * Resumen de profesional farmacéutico asociado a una sede hospitalaria.
+ * @see [SCR-ADM-005] Gestión de Sedes y Usuarios Asociados
+ */
+export interface FacilityAssignedPharmacistSummaryDto {
+  id: string;
+  fullName: string;
+  licenseNumber: string;
+  operationalRole: PharmacistOperationalRole;
+  shift: WorkShift;
+  status: PharmacistStatus;
+  defaultCubicleId: string | null;
+  defaultCubicleName: string | null;
+}
+
+/**
+ * Contrato completo de una sede o punto de dispensación.
+ * @see GET /api/v1/admin/facilities
+ */
+export interface FacilityDto {
+  id: string;
+  code: string;
+  name: string;
+  address: string;
+  city: string;
+  phone: string;
+  openingHours: string;
+  enabledCubiclesCount: number;
+  status: FacilityStatus;
+  isPrimary: boolean;
+  cubiclesCount: number;
+  pharmacistsCount: number;
+  cubicles: FacilityCubicleSummaryDto[];
+  pharmacists: FacilityAssignedPharmacistSummaryDto[];
+  createdAt?: string | undefined;
+  updatedAt?: string | undefined;
+}
+
+/**
+ * Perfil completo de un profesional farmacéutico registrado.
+ * @see GET /api/v1/admin/pharmacists
+ */
+export interface PharmacistDto {
+  id: string;
+  userId: string | null;
+  fullName: string;
+  licenseNumber: string;
+  operationalRole: PharmacistOperationalRole;
+  facilityId: string | null;
+  facilityName: string | null;
+  facilityCode: string | null;
+  defaultCubicleId: string | null;
+  defaultCubicleName: string | null;
+  shift: WorkShift;
+  status: PharmacistStatus;
+  email: string;
+  phone: string;
+  dispatchesCount: number;
+  createdAt?: string | undefined;
+  updatedAt?: string | undefined;
+}
+
+/**
+ * Resumen KPI de personal farmacéutico registrado para [SCR-ADM-004].
+ */
+export interface PharmacistMetricsSummaryDto {
+  totalRegistered: number;
+  activeToday: number;
+  onLeaveCount: number;
+  totalDispatches: number;
+  averageServiceMinutes: number;
+  assignedFacilitiesCount: number;
+}
+
+/**
+ * Respuesta combinada de listado y métricas para GET /api/v1/admin/pharmacists.
+ */
+export interface PharmacistsListResponseDto {
+  items: PharmacistDto[];
+  metrics: PharmacistMetricsSummaryDto;
+}
+
+/**
+ * DTO para registrar un nuevo farmacéutico.
+ * @see POST /api/v1/admin/pharmacists
+ */
+export interface CreatePharmacistDto {
+  fullName: string;
+  licenseNumber: string;
+  operationalRole: PharmacistOperationalRole;
+  facilityId?: string | null | undefined;
+  cubicleId?: string | null | undefined;
+  defaultCubicleId?: string | null | undefined;
+  shift: WorkShift;
+  status?: PharmacistStatus | undefined;
+  email: string;
+  phone: string;
+  userId?: string | null | undefined;
+  dispatchesCount?: number | undefined;
+}
+
+/**
+ * DTO para editar los datos de un farmacéutico registrado.
+ * @see PATCH /api/v1/admin/pharmacists/:id
+ */
+export interface UpdatePharmacistDto {
+  fullName?: string | undefined;
+  licenseNumber?: string | undefined;
+  operationalRole?: PharmacistOperationalRole | undefined;
+  facilityId?: string | null | undefined;
+  cubicleId?: string | null | undefined;
+  defaultCubicleId?: string | null | undefined;
+  shift?: WorkShift | undefined;
+  status?: PharmacistStatus | undefined;
+  email?: string | undefined;
+  phone?: string | undefined;
+  userId?: string | null | undefined;
+}
+
+/**
+ * DTO para conmutación rápida de estado operativo de un farmacéutico.
+ * @see PATCH /api/v1/admin/pharmacists/:id/status
+ */
+export interface UpdatePharmacistStatusDto {
+  status: PharmacistStatus;
+}
+
+/**
+ * DTO para registrar una nueva sede hospitalaria.
+ * @see POST /api/v1/admin/facilities
+ */
+export interface CreateFacilityDto {
+  code: string;
+  name: string;
+  address: string;
+  city: string;
+  phone: string;
+  openingHours: string;
+  enabledCubiclesCount?: number | undefined;
+  status?: FacilityStatus | undefined;
+  isPrimary?: boolean | undefined;
+}
+
+/**
+ * DTO para actualizar la información técnica de una sede.
+ * @see PATCH /api/v1/admin/facilities/:id
+ */
+export interface UpdateFacilityDto {
+  code?: string | undefined;
+  name?: string | undefined;
+  address?: string | undefined;
+  city?: string | undefined;
+  phone?: string | undefined;
+  openingHours?: string | undefined;
+  enabledCubiclesCount?: number | undefined;
+  status?: FacilityStatus | undefined;
+  isPrimary?: boolean | undefined;
+}
+
+/**
+ * DTO para asociar o reasignar un farmacéutico a una sede (y cubículo opcional).
+ * @see POST /api/v1/admin/facilities/:id/assign-pharmacist
+ */
+export interface AssignPharmacistToFacilityDto {
+  pharmacistId: string;
+  cubicleId?: string | null | undefined;
+}
+
+/**
+ * Configuración administrativa completa de un cubículo para [SCR-ADM-002].
+ * @see GET /api/v1/admin/cubicles
+ */
+export interface AdminCubicleConfigDto {
+  id: string;
+  code: string;
+  displayName: string;
+  operatorName: string | null;
+  status: CubicleStatus;
+  active: boolean;
+  allowedCategories: QueueCategory[];
+  facilityId: string | null;
+  facilityCode: string | null;
+  facilityName: string | null;
+  pharmacistId: string | null;
+  pharmacistName: string | null;
+  pharmacistLicenseNumber: string | null;
+  dailyCompletedCount: number;
+  slaThresholdSeconds: number;
+  version: number;
+}
+
+/**
+ * DTO para asignar o desasignar un farmacéutico registrado a un cubículo desde SCR-ADM-002.
+ */
+export interface AssignCubiclePharmacistDto {
+  pharmacistId: string | null;
+  operatorName?: string | undefined;
+}
+
+/**
+ * DTO para habilitar o desactivar un cubículo desde SCR-ADM-002.
+ */
+export interface UpdateAdminCubicleStatusDto {
+  active: boolean;
 }
