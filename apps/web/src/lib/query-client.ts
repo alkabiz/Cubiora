@@ -1,4 +1,5 @@
-import { QueryClient } from '@tanstack/react-query';
+import { useContext } from 'react';
+import { QueryClient, QueryClientContext } from '@tanstack/react-query';
 
 export const queryClient = new QueryClient({
   defaultOptions: {
@@ -9,3 +10,24 @@ export const queryClient = new QueryClient({
     },
   },
 });
+
+/**
+ * Devuelve el QueryClient activo del árbol (si existe QueryClientProvider) o
+ * el cliente singleton por defecto, evitando errores en pruebas unitarias sin Provider.
+ */
+export function useResolvedQueryClient(): QueryClient {
+  const contextClient = useContext(QueryClientContext);
+  return contextClient ?? queryClient;
+}
+
+export const adminQueryKeys = {
+  all: ['admin'] as const,
+  pharmacists: (filters?: {
+    search?: string;
+    facilityId?: string;
+    operationalRole?: string;
+    status?: string;
+  }) => ['admin', 'pharmacists', filters ?? {}] as const,
+  facilities: () => ['admin', 'facilities'] as const,
+  cubicles: (facilityId?: string) => ['admin', 'cubicles', facilityId ?? 'primary'] as const,
+};

@@ -55,3 +55,23 @@ export async function apiClient<T>(
 
   return response.json();
 }
+
+export interface WrappedApiResponse<T> {
+  success?: boolean;
+  data?: T;
+}
+
+/**
+ * Extrae `data` desde respuestas envueltas `{ success: true, data }` o devuelve el payload directo.
+ */
+export function unwrapApiData<T>(payload: WrappedApiResponse<T> | T): T {
+  if (
+    payload !== null &&
+    typeof payload === 'object' &&
+    'data' in payload &&
+    (payload as WrappedApiResponse<T>).data !== undefined
+  ) {
+    return (payload as WrappedApiResponse<T>).data as T;
+  }
+  return payload as T;
+}
