@@ -54,6 +54,12 @@ function resolveCurrentDayRange(now: Date): { start: Date; end: Date } {
   return { start, end };
 }
 
+/**
+ * Alias de tipo borrado al compilar con SWC/TypeScript para evitar que
+ * `design:paramtypes` evalúe en carga de módulo la clase en referencia circular (TDZ).
+ */
+type WrapperType<T> = T;
+
 @Injectable()
 export class CubiclesService {
   private readonly logger = new Logger(CubiclesService.name);
@@ -62,7 +68,7 @@ export class CubiclesService {
     private readonly prisma: PrismaService,
     @Optional()
     @Inject(forwardRef(() => OperationalTelemetryService))
-    private readonly telemetryService?: OperationalTelemetryService,
+    private readonly telemetryService?: WrapperType<OperationalTelemetryService>,
   ) {}
 
   private async emitTelemetrySafe(cubicleIds: Array<string | null | undefined>): Promise<void> {

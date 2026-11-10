@@ -65,6 +65,12 @@ function formatTimeHms(date: Date): string {
   ].join(':');
 }
 
+/**
+ * Alias de tipo borrado al compilar con SWC/TypeScript para evitar que
+ * `design:paramtypes` evalúe en carga de módulo la clase en referencia circular (TDZ).
+ */
+type WrapperType<T> = T;
+
 @Injectable()
 export class OperationalTelemetryService {
   private readonly logger = new Logger(OperationalTelemetryService.name);
@@ -84,7 +90,7 @@ export class OperationalTelemetryService {
     private readonly prisma: PrismaService,
     @Optional()
     @Inject(forwardRef(() => CubiclesService))
-    private readonly cubiclesService?: CubiclesService,
+    private readonly cubiclesService?: WrapperType<CubiclesService>,
   ) {}
 
   /**

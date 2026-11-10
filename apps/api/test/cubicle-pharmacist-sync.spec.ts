@@ -9,6 +9,7 @@ import { CubiclesModule } from '../src/modules/cubicles/cubicles.module';
 import { CubiclesService } from '../src/modules/cubicles/cubicles.service';
 import { AdminCubiclesController } from '../src/modules/cubicles/admin-cubicles.controller';
 import { OperationalTelemetryModule } from '../src/modules/operational-telemetry/operational-telemetry.module';
+import { OperationalTelemetryService } from '../src/modules/operational-telemetry/operational-telemetry.service';
 import { PharmacistsModule } from '../src/modules/pharmacists/pharmacists.module';
 import { FacilitiesModule } from '../src/modules/facilities/facilities.module';
 
@@ -80,9 +81,20 @@ describe('[SCR-ADM-002 <-> 004 <-> 005] Sincronización de Cubículos con Farmac
       .compile();
 
     const cubiclesService = moduleRef.get(CubiclesService);
+    const telemetryService = moduleRef.get(OperationalTelemetryService);
     const adminCtrl = moduleRef.get(AdminCubiclesController);
     expect(cubiclesService).toBeDefined();
+    expect(telemetryService).toBeDefined();
     expect(adminCtrl).toBeDefined();
+    expect(
+      (cubiclesService as unknown as { telemetryService?: OperationalTelemetryService })
+        .telemetryService,
+    ).toBeInstanceOf(OperationalTelemetryService);
+    expect(
+      (telemetryService as unknown as { cubiclesService?: CubiclesService }).cubiclesService,
+    ).toBeInstanceOf(CubiclesService);
+
+    await moduleRef.close();
   });
 
   it('getAdminCubicles lista cubículos de la sede primaria con farmacéutico asignado y conteo diario', async () => {
