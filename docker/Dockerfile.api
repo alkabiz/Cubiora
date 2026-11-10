@@ -1,49 +1,60 @@
-# ─── Dockerfile.api (NestJS + Prisma + PostgreSQL) ───────────────────────────
+# syntax=docker/dockerfile:1.7
+# ─── Dockerfile.api (NestJS + Prisma 7 + PostgreSQL) ─────────────────────────
 FROM node:22-alpine AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable
+
+# Habilitar corepack y fijar el binario de pnpm en la capa base una sola vez
+RUN corepack enable && corepack prepare pnpm@12.11.2 --activate
 
 WORKDIR /app
 
-# ─── Etapa 1: Dependencias ────────────────────────────────────────────────────
-FROM base AS dependencies
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
-COPY packages/shared/package.json ./packages/shared/
-COPY apps/api/package.json ./apps/api/
-
-RUN pnpm install --frozen-lockfile
-
-# ─── Etapa 2: Compilación ─────────────────────────────────────────────────────
+# ─── Etapa 1: Builder (Instalación con caché BuildKit + Compilación) ─────────
 FROM base AS builder
+ENV CI="true"
 ENV DIRECT_URL="postgresql://cubiora_build:cubiora_build@localhost:5432/cubiora_build"
 ENV DATABASE_URL="postgresql://cubiora_build:cubiora_build@localhost:5432/cubiora_build"
 
-COPY --from=dependencies /app/node_modules ./node_modules
-COPY --from=dependencies /app/packages/shared/node_modules ./packages/shared/node_modules
-COPY --from=dependencies /app/apps/api/node_modules ./apps/api/node_modules
+# 1. Copiar solo manifiestos para maximizar el acierto de caché de capas Docker
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY packages/shared/package.json ./packages/shared/
+COPY apps/api/package.json ./apps/api/
 
-COPY . .
+# 2. Instalar solo el grafo de api y shared reutilizando la caché persistente en el host
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+    pnpm install --filter api... --frozen-lockfile
 
-RUN pnpm --filter @cubiora/shared build
-RUN pnpm --filter api prisma:generate
-RUN pnpm --filter api build
+# 3. Copiar el código fuente y compilar en un solo paso sin re-invocar red
+COPY tsconfig*.json ./
+COPY packages/shared ./packages/shared
+COPY apps/api ./apps/api
 
-# ─── Etapa 3: Runner de Producción ────────────────────────────────────────────
+RUN pnpm --filter @cubiora/shared build && \
+    pnpm --filter api prisma:generate && \
+    pnpm --filter api build
+
+# 4. Aislar dependencias de producción limpias (prisma y tsx permanecen por dependencies)
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+    rm -rf node_modules apps/api/node_modules packages/shared/node_modules && \
+    pnpm --filter api... install --prod --frozen-lockfile
+
+# ─── Etapa 2: Runner de Producción ───────────────────────────────────────────
 FROM base AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
 ENV PORT=3000
 
-# Copiar archivos base de monorepo pnpm para resolución de dependencias y scripts
+# Copiar únicamente el workspace de api y shared (sin devDependencies ni artefactos de web)
 COPY --from=builder /app/package.json /app/pnpm-workspace.yaml /app/pnpm-lock.yaml ./
 COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/packages/shared ./packages/shared
+COPY --from=builder /app/packages/shared/package.json ./packages/shared/package.json
+COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
 COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
 COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
 COPY --from=builder /app/apps/api/prisma.config.ts ./apps/api/prisma.config.ts
+COPY --from=builder /app/apps/api/src/generated ./apps/api/src/generated
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 
 # Copiar script de entrada para migraciones y arranque

@@ -1,31 +1,34 @@
+# syntax=docker/dockerfile:1.7
 # ─── Dockerfile.web (React 19 + Vite + Nginx) ────────────────────────────────
-FROM node:22-alpine AS base
+FROM node:22-alpine AS builder
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable
+ENV CI="true"
+
+# Fijar pnpm 12.11.2 una sola vez en la capa base
+RUN corepack enable && corepack prepare pnpm@12.11.2 --activate
 
 WORKDIR /app
 
-# ─── Etapa 1: Dependencias ────────────────────────────────────────────────────
-FROM base AS dependencies
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
+# 1. Copiar manifiestos del workspace web + shared
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
 COPY packages/shared/package.json ./packages/shared/
 COPY apps/web/package.json ./apps/web/
 
-RUN pnpm install --frozen-lockfile
+# 2. Instalar exclusivamente dependencias de web y shared usando caché persistente de BuildKit
+RUN --mount=type=cache,id=pnpm-store,target=/pnpm/store \
+    pnpm install --filter web... --frozen-lockfile
 
-# ─── Etapa 2: Compilación ─────────────────────────────────────────────────────
-FROM base AS builder
-COPY --from=dependencies /app/node_modules ./node_modules
-COPY --from=dependencies /app/packages/shared/node_modules ./packages/shared/node_modules
-COPY --from=dependencies /app/apps/web/node_modules ./apps/web/node_modules
+# 3. Copiar solo el código de shared y web (cambios en apps/api no invalidan el caché de web)
+COPY tsconfig*.json ./
+COPY packages/shared ./packages/shared
+COPY apps/web ./apps/web
 
-COPY . .
+# 4. Compilar shared y web en una sola capa
+RUN pnpm --filter @cubiora/shared build && \
+    pnpm --filter web build
 
-RUN pnpm --filter @cubiora/shared build
-RUN pnpm --filter web build
-
-# ─── Etapa 3: Servidor Nginx Final ────────────────────────────────────────────
+# ─── Etapa 2: Servidor Nginx Final ───────────────────────────────────────────
 FROM nginx:stable-alpine AS runner
 
 # Copiar artefactos estáticos de React compilados

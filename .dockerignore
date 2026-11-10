@@ -10,10 +10,10 @@ node_modules
 .gitignore
 
 # Build outputs & caches
-dist
-build
+**/dist
+**/build
 .turbo
-coverage
+**/coverage
 
 # Testing & E2E artifacts
 test-results
