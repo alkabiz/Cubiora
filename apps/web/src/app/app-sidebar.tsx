@@ -62,6 +62,11 @@ const NavigationLink: React.FC<{
     >
       <Icon className="app-sidebar-link-icon" aria-hidden="true" />
       <span className="app-sidebar-link-label">{item.label}</span>
+      {!collapsed && item.code && (
+        <span className="app-sidebar-link-code" aria-hidden="true">
+          {item.code}
+        </span>
+      )}
     </Link>
   );
 

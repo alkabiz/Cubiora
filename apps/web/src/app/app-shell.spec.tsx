@@ -243,20 +243,57 @@ describe('Shell de aplicación Cubiora', () => {
     });
   });
 
-  it('ADMIN ve Cubículos e Historial, sin módulos operativos', () => {
+  it('ADMIN ve Cubículos, Farmacéuticos, Sedes y Usuarios e Historial, sin módulos operativos', async () => {
     setUser('ADMIN');
-    window.fetch = vi.fn(async () => unauthorizedResponse());
+    window.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/admin/facilities')) {
+        return okResponse([
+          {
+            id: 'fac_01',
+            code: 'SEDE-CEN-01',
+            name: 'Punto de Dispensación Central',
+            address: 'Av. Córdoba 2351',
+            city: 'CABA',
+            phone: '+54 11 4964-8000',
+            openingHours: '07:00 a 20:00 hs',
+            enabledCubiclesCount: 5,
+            status: 'ACTIVE',
+            isPrimary: true,
+            cubiclesCount: 5,
+            pharmacistsCount: 4,
+            cubicles: [],
+            pharmacists: [],
+          },
+        ]);
+      }
+      return unauthorizedResponse();
+    });
     renderShellAt('/admin/cubiculos');
 
     const nav = getMainNavigation();
     expect(
       within(nav).getByRole('link', { name: 'Cubículos' }).getAttribute('aria-current'),
     ).toBe('page');
+    expect(within(nav).getByRole('link', { name: 'Farmacéuticos' }).getAttribute('href')).toBe(
+      '/admin/farmaceuticos',
+    );
+    expect(within(nav).getByRole('link', { name: 'Sedes y Usuarios' }).getAttribute('href')).toBe(
+      '/admin/sedes',
+    );
     expect(within(nav).getByRole('link', { name: 'Historial' })).toBeDefined();
     expect(within(nav).queryByRole('link', { name: 'Generar turno' })).toBeNull();
     expect(within(nav).queryByRole('link', { name: 'Mi cubículo' })).toBeNull();
 
     expect(screen.getByText('SCR-ADM-002 · Administración')).toBeDefined();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('link', {
+          name: /Sede primaria activa: Punto de Dispensación Central \(SEDE-CEN-01\)/i,
+        }),
+      ).toBeDefined();
+    });
   });
 
   it('el elemento activo cambia con la ruta y el shell conserva la navegación accesible', () => {

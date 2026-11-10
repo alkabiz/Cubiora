@@ -27,6 +27,7 @@
 import { describe, it, expect } from 'vitest';
 import { render } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Theme } from '@radix-ui/themes';
 import React from 'react';
 import axe from 'axe-core';
@@ -36,6 +37,8 @@ import { ReceptionPage } from '../pages/reception-page';
 import { CashierPage } from '../pages/cashier-page';
 import { AdminOverviewScreen } from '../features/admin-overview/admin-overview-screen';
 import { AdminCubiclesScreen } from '../features/admin-cubicles/admin-cubicles-screen';
+import { AdminPharmacistsScreen } from '../features/admin-pharmacists/admin-pharmacists-screen';
+import { AdminFacilitiesScreen } from '../features/admin-facilities/admin-facilities-screen';
 import { AdminHistoryScreen } from '../features/admin-history/admin-history-screen';
 import { PublicDisplayScreen } from '../features/public-display/public-display-screen';
 import { AuthProvider } from '../context/auth-context';
@@ -51,12 +54,17 @@ const JSDOM_UNRELIABLE_RULES = [
 
 describe('[JSDOM] Semántica ARIA — Verificación de estructura accesible (no contraste)', () => {
   const renderWithProviders = (ui: React.ReactElement) => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
     return render(
-      <Theme accentColor="teal" grayColor="slate">
-        <AuthProvider>
-          <MemoryRouter>{ui}</MemoryRouter>
-        </AuthProvider>
-      </Theme>,
+      <QueryClientProvider client={client}>
+        <Theme accentColor="teal" grayColor="slate">
+          <AuthProvider>
+            <MemoryRouter>{ui}</MemoryRouter>
+          </AuthProvider>
+        </Theme>
+      </QueryClientProvider>,
     );
   };
 
@@ -118,6 +126,18 @@ describe('[JSDOM] Semántica ARIA — Verificación de estructura accesible (no 
     const { container } = renderWithProviders(<AdminCubiclesScreen />);
     const violations = await runAxeSemantics(container, 'AdminCubiclesScreen');
     expect(violations, `Violaciones semánticas en AdminCubiclesScreen: ${violations.map((v) => v.id).join(', ')}`).toHaveLength(0);
+  });
+
+  it('AdminPharmacistsScreen: sin violaciones semánticas ARIA', async () => {
+    const { container } = renderWithProviders(<AdminPharmacistsScreen />);
+    const violations = await runAxeSemantics(container, 'AdminPharmacistsScreen');
+    expect(violations, `Violaciones semánticas en AdminPharmacistsScreen: ${violations.map((v) => v.id).join(', ')}`).toHaveLength(0);
+  });
+
+  it('AdminFacilitiesScreen: sin violaciones semánticas ARIA', async () => {
+    const { container } = renderWithProviders(<AdminFacilitiesScreen />);
+    const violations = await runAxeSemantics(container, 'AdminFacilitiesScreen');
+    expect(violations, `Violaciones semánticas en AdminFacilitiesScreen: ${violations.map((v) => v.id).join(', ')}`).toHaveLength(0);
   });
 
   it('AdminHistoryScreen: sin violaciones semánticas ARIA', async () => {

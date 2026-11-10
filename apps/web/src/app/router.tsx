@@ -19,6 +19,16 @@ const AdminOverviewPage = lazy(() =>
 const AdminCubiclesPage = lazy(() =>
   import('../pages/admin-cubicles-page').then((m) => ({ default: m.AdminCubiclesPage })),
 );
+const AdminPharmacistsPage = lazy(() =>
+  import('../pages/admin-pharmacists-page').then((m) => ({
+    default: m.AdminPharmacistsPage,
+  })),
+);
+const AdminFacilitiesPage = lazy(() =>
+  import('../pages/admin-facilities-page').then((m) => ({
+    default: m.AdminFacilitiesPage,
+  })),
+);
 const AdminHistoryPage = lazy(() =>
   import('../pages/admin-history-page').then((m) => ({ default: m.AdminHistoryPage })),
 );
@@ -148,6 +158,26 @@ export const appRoutes: RouteObject[] = [
                   <RouteWrapper>
                     <ProtectedRoute allowedRoles={['ADMIN']}>
                       <AdminCubiclesPage />
+                    </ProtectedRoute>
+                  </RouteWrapper>
+                ),
+              },
+              {
+                path: 'farmaceuticos',
+                element: (
+                  <RouteWrapper>
+                    <ProtectedRoute allowedRoles={['ADMIN']}>
+                      <AdminPharmacistsPage />
+                    </ProtectedRoute>
+                  </RouteWrapper>
+                ),
+              },
+              {
+                path: 'sedes',
+                element: (
+                  <RouteWrapper>
+                    <ProtectedRoute allowedRoles={['ADMIN']}>
+                      <AdminFacilitiesPage />
                     </ProtectedRoute>
                   </RouteWrapper>
                 ),

@@ -5,6 +5,7 @@ import {
   GridIcon,
   PlusCircledIcon,
 } from '@radix-ui/react-icons';
+import { Building2, Users } from 'lucide-react';
 
 export type AppRole = 'RECEPTION' | 'CASHIER' | 'ADMIN';
 
@@ -13,6 +14,7 @@ export interface NavigationItem {
   path: string;
   icon: React.ElementType;
   allowedRoles: AppRole[];
+  code?: string;
 }
 
 export const APP_NAVIGATION: NavigationItem[] = [
@@ -33,12 +35,28 @@ export const APP_NAVIGATION: NavigationItem[] = [
     path: '/admin/cubiculos',
     icon: GridIcon,
     allowedRoles: ['ADMIN'],
+    code: 'SCR-ADM-002',
+  },
+  {
+    label: 'Farmacéuticos',
+    path: '/admin/farmaceuticos',
+    icon: Users,
+    allowedRoles: ['ADMIN'],
+    code: 'SCR-ADM-004',
+  },
+  {
+    label: 'Sedes y Usuarios',
+    path: '/admin/sedes',
+    icon: Building2,
+    allowedRoles: ['ADMIN'],
+    code: 'SCR-ADM-005',
   },
   {
     label: 'Historial',
     path: '/admin/historial',
     icon: ClockIcon,
     allowedRoles: ['ADMIN'],
+    code: 'SCR-ADM-003',
   },
 ];
 

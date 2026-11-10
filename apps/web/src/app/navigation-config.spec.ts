@@ -22,13 +22,26 @@ describe('Configuración de navegación por rol', () => {
     expect(items.map((item) => item.path)).toEqual(['/cajero']);
   });
 
-  it('ADMIN recibe Cubículos e Historial, sin módulos operativos', () => {
+  it('ADMIN recibe Cubículos, Farmacéuticos, Sedes y Usuarios e Historial, sin módulos operativos', () => {
     const items = getNavigationForRole('ADMIN');
 
-    expect(items.map((item) => item.label)).toEqual(['Cubículos', 'Historial']);
+    expect(items.map((item) => item.label)).toEqual([
+      'Cubículos',
+      'Farmacéuticos',
+      'Sedes y Usuarios',
+      'Historial',
+    ]);
     expect(items.map((item) => item.path)).toEqual([
       '/admin/cubiculos',
+      '/admin/farmaceuticos',
+      '/admin/sedes',
       '/admin/historial',
+    ]);
+    expect(items.map((item) => item.code)).toEqual([
+      'SCR-ADM-002',
+      'SCR-ADM-004',
+      'SCR-ADM-005',
+      'SCR-ADM-003',
     ]);
     expect(items.some((item) => item.label === 'Generar turno')).toBe(false);
     expect(items.some((item) => item.label === 'Mi cubículo')).toBe(false);
@@ -43,10 +56,10 @@ describe('Configuración de navegación por rol', () => {
     const adminItem = getNavigationForRole('ADMIN')[0];
 
     expect(adminItem).toBeDefined();
-    expect(isNavigationItemActive(adminItem, '/admin/cubiculos')).toBe(true);
-    expect(isNavigationItemActive(adminItem, '/admin/cubiculos/03')).toBe(true);
-    expect(isNavigationItemActive(adminItem, '/admin/historial')).toBe(false);
-    expect(isNavigationItemActive(adminItem, '/recepcion')).toBe(false);
+    expect(isNavigationItemActive(adminItem!, '/admin/cubiculos')).toBe(true);
+    expect(isNavigationItemActive(adminItem!, '/admin/cubiculos/03')).toBe(true);
+    expect(isNavigationItemActive(adminItem!, '/admin/historial')).toBe(false);
+    expect(isNavigationItemActive(adminItem!, '/recepcion')).toBe(false);
   });
 
   it('define la ruta inicial y el contexto de sección por rol', () => {

@@ -10,7 +10,9 @@ import {
   Tooltip,
 } from '@radix-ui/themes';
 import { ExitIcon, HamburgerMenuIcon } from '@radix-ui/react-icons';
+import { Building2 } from 'lucide-react';
 import type { AuthUser } from '../context/auth-context';
+import { useFacilitiesQuery } from '../features/admin-facilities/api';
 import {
   DEFAULT_ROUTE_BY_ROLE,
   ROLE_CONTEXT_LABEL,
@@ -77,6 +79,14 @@ export const AppNavbar: React.FC<AppNavbarProps> = ({
   const homePath = role ? DEFAULT_ROUTE_BY_ROLE[role] : '/login';
   const initials = getInitials(user?.displayName, user?.username);
 
+  const facilitiesQuery = useFacilitiesQuery({
+    enabled: role === 'ADMIN',
+    retry: false,
+  });
+  const facilitiesList = Array.isArray(facilitiesQuery.data) ? facilitiesQuery.data : [];
+  const primaryFacility =
+    facilitiesList.find((facility) => facility.isPrimary) ?? facilitiesList[0] ?? null;
+
   return (
     <header className="app-navbar">
       <div className="app-navbar-left">
@@ -115,6 +125,19 @@ export const AppNavbar: React.FC<AppNavbarProps> = ({
         >
           {roleContext}
         </Badge>
+
+        {role === 'ADMIN' && primaryFacility && (
+          <Link
+            to="/admin/sedes"
+            className="app-primary-facility-pill"
+            aria-label={`Sede primaria activa: ${primaryFacility.name} (${primaryFacility.code})`}
+          >
+            <Building2 size={13} aria-hidden="true" />
+            <span className="app-primary-facility-text">
+              Sede Primaria Activa: <strong>{primaryFacility.code}</strong>
+            </span>
+          </Link>
+        )}
       </div>
 
       <div className="app-navbar-center">
