@@ -45,17 +45,17 @@ const SlaAlertBanner: React.FC<SlaAlertBannerProps> = ({
 
   if (!alert.isActive) {
     return (
-      <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-3.5 flex items-center justify-between gap-4">
+      <div className="bg-[#008f7a]/10 border border-[#008f7a] rounded-xl p-3.5 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-emerald-100 flex-shrink-0">
-            <CheckCircle2 size={16} className="text-emerald-700" />
+          <div className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-white border border-[#008f7a] flex-shrink-0">
+            <CheckCircle2 size={16} className="text-[#008f7a]" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider">
+              <span className="text-xs font-bold text-[#0f172a] uppercase tracking-wider">
                 DIAGNÓSTICO OPERATIVO:
               </span>
-              <span className="bg-emerald-600 text-white text-[11px] font-bold px-2 py-0.5 rounded">
+              <span className="bg-[#008f7a] text-[#020617] text-[11px] font-bold px-2 py-0.5 rounded">
                 {isLoaded ? 'OPERACIÓN NOMINAL' : 'SINCRONIZANDO'}
               </span>
             </div>
@@ -140,7 +140,7 @@ const KpiSummaryGrid: React.FC<KpiSummaryGridProps> = ({ kpis, slaThresholdSecon
       : null;
 
   let waitText = '—';
-  let waitClass = 'text-blue-700';
+  let waitClass = 'text-[#2c73d2]';
 
   if (kpis.averageWaitSeconds !== undefined && kpis.averageWaitSeconds !== null) {
     const mins = Math.round(kpis.averageWaitSeconds / 60);
@@ -190,7 +190,7 @@ const KpiSummaryGrid: React.FC<KpiSummaryGridProps> = ({ kpis, slaThresholdSecon
           <div className="space-y-1">
             <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
               <div
-                className="h-full bg-[#0F766E] rounded-full transition-all duration-500"
+                className="h-full bg-[#2c73d2] rounded-full transition-all duration-500"
                 style={{ width: `${Math.min(100, Math.max(0, activePercent))}%` }}
               />
             </div>
@@ -204,7 +204,7 @@ const KpiSummaryGrid: React.FC<KpiSummaryGridProps> = ({ kpis, slaThresholdSecon
         icon={<CheckCircle2 size={15} />}
         mainValue={closedCountStr}
         mainUnit="atendidos"
-        secondaryValue={<span className="text-emerald-800 font-bold">{slaComplianceStr}</span>}
+        secondaryValue={<span className="text-[#0f172a] font-bold">{slaComplianceStr}</span>}
         secondaryLabel={slaTargetMins !== null ? `SLA ≤ ${slaTargetMins} min` : 'Cumplimiento SLA'}
         footer={
           <div className="flex items-center gap-1.5 text-xs text-slate-600">
@@ -241,13 +241,13 @@ const KpiSummaryGrid: React.FC<KpiSummaryGridProps> = ({ kpis, slaThresholdSecon
 const StatusLegend: React.FC = () => (
   <div className="flex items-center gap-3 text-xs text-slate-600 flex-wrap">
     <span className="flex items-center gap-1">
-      <span className="text-blue-600">●</span> Atendiendo
+      <span className="text-[#0081cf]">●</span> Atendiendo
     </span>
     <span className="flex items-center gap-1">
-      <span className="text-purple-600">●</span> Llamando
+      <span className="text-[#008e9b]">●</span> Llamando
     </span>
     <span className="flex items-center gap-1">
-      <span className="text-emerald-500">●</span> Disponible
+      <span className="text-[#008f7a]">●</span> Disponible
     </span>
     <span className="flex items-center gap-1">
       <span className="text-red-600">●</span> SLA Excedido
@@ -287,14 +287,14 @@ const HourlyFlowWidget: React.FC<HourlyFlowWidgetProps> = ({ flow }) => {
                 <div key={entry.hour} className="flex flex-col items-center gap-1 flex-1">
                   <span
                     className={`text-[11px] font-mono tabular-nums font-bold ${
-                      entry.isCurrentHour ? 'text-blue-700' : 'text-slate-600'
+                      entry.isCurrentHour ? 'text-[#2c73d2]' : 'text-slate-600'
                     }`}
                   >
                     {entry.volume}
                   </span>
                   <div
                     className={`w-full rounded-t-sm transition-all duration-300 ${
-                      entry.isCurrentHour ? 'bg-blue-500' : 'bg-slate-200'
+                      entry.isCurrentHour ? 'bg-[#0081cf]' : 'bg-slate-200'
                     }`}
                     style={{ height: `${heightPct}%`, minHeight: '4px' }}
                     title={`${entry.hour} — ${entry.volume} turnos`}
@@ -310,7 +310,7 @@ const HourlyFlowWidget: React.FC<HourlyFlowWidgetProps> = ({ flow }) => {
               <span
                 key={entry.hour}
                 className={`text-xs font-mono tabular-nums flex-1 text-center ${
-                  entry.isCurrentHour ? 'font-bold text-blue-900' : 'text-slate-600'
+                  entry.isCurrentHour ? 'font-bold text-[#2c73d2]' : 'text-slate-600'
                 }`}
               >
                 {entry.hour}
@@ -327,7 +327,7 @@ const HourlyFlowWidget: React.FC<HourlyFlowWidgetProps> = ({ flow }) => {
 const FifoInfoCard: React.FC = () => (
   <div className="bg-slate-50/90 border border-slate-200/80 rounded-xl p-4 mt-4">
     <div className="flex items-center gap-2 mb-1.5">
-      <Cpu size={14} className="text-blue-700 flex-shrink-0" />
+      <Cpu size={14} className="text-[#2c73d2] flex-shrink-0" />
       <span className="text-xs font-bold text-slate-800">Algoritmo de Asignación FIFO</span>
     </div>
     <p className="text-xs text-slate-600 leading-relaxed">
@@ -436,12 +436,12 @@ export const AdminOverviewScreen: React.FC = () => {
         type="button"
         onClick={handleRefreshClick}
         title="Estado de conexión WebSocket. Clic para solicitar snapshot actualizado"
-        className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-500 rounded-full px-3 py-1.5 min-h-[36px] text-xs hover:bg-slate-100 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-2"
+        className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-500 rounded-full px-3 py-1.5 min-h-[36px] text-xs hover:bg-slate-100 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2] focus-visible:ring-offset-2"
       >
         <span
           className={`w-2 h-2 rounded-full flex-shrink-0 ${
             connectionStatus === 'connected'
-              ? 'bg-blue-500 motion-safe:animate-pulse'
+              ? 'bg-[#008f7a] motion-safe:animate-pulse'
               : connectionStatus === 'connecting'
                 ? 'bg-amber-500 motion-safe:animate-pulse'
                 : 'bg-red-500'
@@ -453,7 +453,7 @@ export const AdminOverviewScreen: React.FC = () => {
         </span>
         <RefreshCw
           size={11}
-          className={`text-slate-600 transition-transform ${isRefreshing ? 'motion-safe:animate-spin text-blue-600' : ''}`}
+          className={`text-slate-600 transition-transform ${isRefreshing ? 'motion-safe:animate-spin text-[#2c73d2]' : ''}`}
         />
       </button>
 
@@ -461,7 +461,7 @@ export const AdminOverviewScreen: React.FC = () => {
       <button
         type="button"
         onClick={handleBroadcastClick}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[36px] text-xs font-bold text-white bg-[#0F172A] rounded-lg hover:bg-slate-800 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-2"
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[36px] text-xs font-bold text-white bg-[#2c73d2] rounded-lg hover:shadow-[inset_0_0_0_100vmax_rgba(2,6,23,0.14)] transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2] focus-visible:ring-offset-2"
       >
         <Megaphone size={13} aria-hidden="true" />
         Aviso General
@@ -478,7 +478,7 @@ export const AdminOverviewScreen: React.FC = () => {
           titleBadge={
             <span
               title={facilityName ?? undefined}
-              className="bg-teal-50 text-teal-800 border border-teal-200 text-xs font-mono px-2 py-0.5 rounded flex-shrink-0"
+              className="bg-[#2c73d2]/12 text-[#0f172a] border border-[#2c73d2] text-xs font-mono px-2 py-0.5 rounded flex-shrink-0"
             >
               {facilityBadgeText}
             </span>
@@ -508,7 +508,7 @@ export const AdminOverviewScreen: React.FC = () => {
             role="status"
             className={`rounded-xl px-4 py-2.5 text-xs font-medium border ${
               noticeFeedback.type === 'success'
-                ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                ? 'bg-[#008f7a]/12 border-[#008f7a] text-[#0f172a]'
                 : 'bg-red-50 border-red-200 text-red-900'
             }`}
           >
@@ -534,7 +534,7 @@ export const AdminOverviewScreen: React.FC = () => {
             <div className="bg-white border border-slate-200/80 rounded-xl px-4 py-3 flex items-center justify-between flex-wrap gap-3 shadow-xs">
               <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />
+                  <span className="w-2 h-2 rounded-full bg-[#2c73d2] flex-shrink-0" />
                   <span className="font-bold text-slate-900 text-sm">Estado de Cubículos</span>
                   <span className="text-xs text-slate-600 font-medium">
                     ({cubicles.length} Puestos Parametrizados)

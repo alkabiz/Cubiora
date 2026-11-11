@@ -327,21 +327,21 @@ export const AdminCubiclesScreen: React.FC = () => {
       )}
       <Link
         to="/admin/farmaceuticos"
-        className="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-500 rounded-lg px-3.5 py-2 min-h-[36px] text-xs font-semibold shadow-2xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-2"
+        className="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-500 rounded-lg px-3.5 py-2 min-h-[36px] text-xs font-semibold shadow-2xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2] focus-visible:ring-offset-2"
       >
         <Users size={13} aria-hidden="true" />
         Directorio de Farmacéuticos
       </Link>
       <Link
         to="/admin/sedes"
-        className="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-500 rounded-lg px-3.5 py-2 min-h-[36px] text-xs font-semibold shadow-2xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-2"
+        className="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-500 rounded-lg px-3.5 py-2 min-h-[36px] text-xs font-semibold shadow-2xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2] focus-visible:ring-offset-2"
       >
         <Building2 size={13} aria-hidden="true" />
         Cambiar Sede
       </Link>
       <Link
         to="/admin"
-        className="inline-flex items-center bg-white hover:bg-slate-50 text-slate-700 border border-slate-500 rounded-lg px-3.5 py-2 min-h-[36px] text-xs font-semibold shadow-2xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-2"
+        className="inline-flex items-center bg-white hover:bg-slate-50 text-slate-700 border border-slate-500 rounded-lg px-3.5 py-2 min-h-[36px] text-xs font-semibold shadow-2xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2] focus-visible:ring-offset-2"
       >
         ← Volver al Panel General
       </Link>
@@ -355,7 +355,7 @@ export const AdminCubiclesScreen: React.FC = () => {
           section="Administración · Parametrización de Puestos"
           eyebrowBadge={
             activeFacility ? (
-              <Badge size="1" variant="soft" color="teal">
+              <Badge size="1" variant="soft">
                 <Building2 size={11} aria-hidden="true" />
                 {activeFacility.name} ({activeFacility.code})
               </Badge>

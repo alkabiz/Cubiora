@@ -32,10 +32,10 @@ interface UsersManagementPanelProps {
   facilities: FacilityDto[];
 }
 
-const ROLE_BADGE_COLOR: Record<UserRole, 'purple' | 'teal' | 'blue'> = {
-  [UserRole.ADMIN]: 'purple',
-  [UserRole.CASHIER]: 'teal',
-  [UserRole.RECEPTION]: 'blue',
+const ROLE_BADGE_CLASS: Record<UserRole, string> = {
+  [UserRole.ADMIN]: '!bg-[#2c73d2]/12 !text-[#0f172a] !border !border-[#2c73d2] !shadow-none',
+  [UserRole.CASHIER]: '!bg-[#0081cf]/12 !text-[#0f172a] !border !border-[#0081cf] !shadow-none',
+  [UserRole.RECEPTION]: '!bg-[#0089ba]/12 !text-[#0f172a] !border !border-[#0089ba] !shadow-none',
 };
 
 export const UsersManagementPanel: React.FC<UsersManagementPanelProps> = ({ facilities }) => {
@@ -145,7 +145,7 @@ export const UsersManagementPanel: React.FC<UsersManagementPanelProps> = ({ faci
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-200">
         <div>
           <div className="flex items-center gap-2">
-            <ShieldCheck size={16} className="text-teal-700" aria-hidden="true" />
+            <ShieldCheck size={16} className="text-[#2c73d2]" aria-hidden="true" />
             <h2 className="text-base font-bold text-slate-900">
               Cuentas Operativas del Sistema ({users.length})
             </h2>
@@ -157,7 +157,6 @@ export const UsersManagementPanel: React.FC<UsersManagementPanelProps> = ({ faci
 
         <Button
           type="button"
-          color="teal"
           size="2"
           onClick={handleOpenCreate}
           className="min-h-[36px] cursor-pointer"
@@ -168,7 +167,12 @@ export const UsersManagementPanel: React.FC<UsersManagementPanelProps> = ({ faci
       </div>
 
       {feedback && (
-        <Callout.Root color="teal" role="status" aria-live="polite">
+        <Callout.Root
+          color="gray"
+          role="status"
+          aria-live="polite"
+          className="!bg-[#008f7a]/12 !border !border-[#008f7a] !text-[#0f172a]"
+        >
           <Callout.Text>{feedback}</Callout.Text>
         </Callout.Root>
       )}
@@ -194,7 +198,7 @@ export const UsersManagementPanel: React.FC<UsersManagementPanelProps> = ({ faci
             <button
               type="button"
               onClick={() => void usersQuery.refetch()}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[32px] rounded bg-white border border-red-300 text-xs font-semibold text-red-800 hover:bg-red-50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[32px] rounded bg-white border border-red-300 text-xs font-semibold text-red-800 hover:bg-red-50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2]"
             >
               <RefreshCw size={12} aria-hidden="true" />
               Reintentar
@@ -219,7 +223,7 @@ export const UsersManagementPanel: React.FC<UsersManagementPanelProps> = ({ faci
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Buscar por usuario, nombre o cubículo..."
-            className="w-full bg-[#F8FAFC] border border-slate-500 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 placeholder:text-slate-600 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#0F766E] focus:border-[#0F766E]"
+            className="w-full bg-[#F8FAFC] border border-slate-500 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 placeholder:text-slate-600 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#2c73d2] focus:border-[#2c73d2]"
           />
         </div>
 
@@ -287,7 +291,12 @@ export const UsersManagementPanel: React.FC<UsersManagementPanelProps> = ({ faci
                     </td>
 
                     <td className="py-3 px-4 whitespace-nowrap">
-                      <Badge size="1" variant="soft" color={ROLE_BADGE_COLOR[user.role]}>
+                      <Badge
+                        size="1"
+                        variant="soft"
+                        color="gray"
+                        className={ROLE_BADGE_CLASS[user.role]}
+                      >
                         {USER_ROLE_LABELS_ES[user.role] ?? user.role}
                       </Badge>
                     </td>
@@ -305,7 +314,16 @@ export const UsersManagementPanel: React.FC<UsersManagementPanelProps> = ({ faci
                     </td>
 
                     <td className="py-3 px-4 whitespace-nowrap">
-                      <Badge size="1" variant="soft" color={user.active ? 'green' : 'gray'}>
+                      <Badge
+                        size="1"
+                        variant="soft"
+                        color="gray"
+                        className={
+                          user.active
+                            ? '!bg-[#008f7a]/12 !text-[#0f172a] !border !border-[#008f7a] !shadow-none'
+                            : undefined
+                        }
+                      >
                         {user.active ? 'Activa' : 'Inactiva'}
                       </Badge>
                     </td>
@@ -329,7 +347,6 @@ export const UsersManagementPanel: React.FC<UsersManagementPanelProps> = ({ faci
                           type="button"
                           size="1"
                           variant="soft"
-                          color="blue"
                           onClick={() => setResetTarget(user)}
                           aria-label={`Restablecer contraseña de ${user.username}`}
                           className="min-h-[32px] cursor-pointer"
@@ -342,11 +359,15 @@ export const UsersManagementPanel: React.FC<UsersManagementPanelProps> = ({ faci
                           type="button"
                           size="1"
                           variant="soft"
-                          color={user.active ? 'red' : 'teal'}
+                          color={user.active ? 'red' : 'gray'}
                           disabled={updateMutation.isPending}
                           onClick={() => void handleToggleActive(user)}
                           aria-label={`${user.active ? 'Desactivar' : 'Activar'} cuenta ${user.username}`}
-                          className="min-h-[32px] cursor-pointer"
+                          className={`min-h-[32px] cursor-pointer ${
+                            !user.active
+                              ? '!bg-[#008f7a]/12 !text-[#0f172a] !border !border-[#008f7a] !shadow-none'
+                              : ''
+                          }`}
                         >
                           <Power size={12} aria-hidden="true" />
                           {user.active ? 'Desactivar' : 'Activar'}

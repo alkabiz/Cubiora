@@ -192,7 +192,6 @@ export const AssignPharmacistDialog: React.FC<AssignPharmacistDialogProps> = ({
             </Dialog.Close>
             <Button
               type="submit"
-              color="teal"
               disabled={isSubmitting || pharmacists.length === 0}
             >
               {isSubmitting ? 'Asociando…' : 'Confirmar Asociación'}

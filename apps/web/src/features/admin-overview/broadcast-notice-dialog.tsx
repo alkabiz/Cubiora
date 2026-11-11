@@ -165,7 +165,7 @@ export const BroadcastNoticeDialog: React.FC<BroadcastNoticeDialogProps> = ({
                 Cancelar
               </Button>
             </Dialog.Close>
-            <Button type="submit" color="teal" disabled={isSubmitting}>
+            <Button type="submit" disabled={isSubmitting}>
               <Megaphone size={14} aria-hidden="true" />
               Emitir aviso en sala
             </Button>

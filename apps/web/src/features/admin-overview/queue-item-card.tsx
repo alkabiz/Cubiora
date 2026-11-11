@@ -13,7 +13,7 @@ export const QueueItemCard: React.FC<QueueItemCardProps> = React.memo(({ ticket 
   return (
     <article
       className={`bg-white rounded-xl p-3.5 border shadow-[0_1px_3px_rgb(0_0_0/0.06)] ${
-        isPreferential ? 'border-purple-200' : 'border-amber-200/90'
+        isPreferential ? 'border-[#0081cf]' : 'border-amber-200/90'
       }`}
     >
       {/* ── Fila superior ── */}
@@ -33,7 +33,7 @@ export const QueueItemCard: React.FC<QueueItemCardProps> = React.memo(({ ticket 
         <span
           className={`text-[11px] font-bold px-2 py-0.5 rounded flex-shrink-0 ${
             isPreferential
-              ? 'bg-purple-50 text-purple-700'
+              ? 'bg-[#0081cf]/12 text-[#0f172a] border border-[#0081cf]'
               : 'bg-amber-50 text-amber-800'
           }`}
         >

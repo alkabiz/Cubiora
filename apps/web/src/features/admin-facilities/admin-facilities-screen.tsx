@@ -43,10 +43,14 @@ import { UsersManagementPanel } from '../admin-users';
 import { AppMain } from '../../app/app-main';
 import { PageHeader } from '../../app/page-header';
 
-const FACILITY_STATUS_COLOR: Record<FacilityStatus, 'green' | 'amber' | 'gray'> = {
-  [FacilityStatus.ACTIVE]: 'green',
+const FACILITY_STATUS_COLOR: Record<FacilityStatus, 'amber' | 'gray'> = {
+  [FacilityStatus.ACTIVE]: 'gray',
   [FacilityStatus.MAINTENANCE]: 'amber',
   [FacilityStatus.INACTIVE]: 'gray',
+};
+
+const FACILITY_STATUS_BADGE_CLASS: Partial<Record<FacilityStatus, string>> = {
+  [FacilityStatus.ACTIVE]: '!bg-[#008f7a]/12 !text-[#0f172a] !border !border-[#008f7a] !shadow-none',
 };
 
 export const AdminFacilitiesScreen: React.FC = () => {
@@ -180,7 +184,6 @@ export const AdminFacilitiesScreen: React.FC = () => {
           action={
             <Button
               type="button"
-              color="teal"
               size="2"
               onClick={handleOpenCreate}
               className="min-h-[36px] cursor-pointer"
@@ -195,7 +198,12 @@ export const AdminFacilitiesScreen: React.FC = () => {
       <div className="space-y-6">
 
       {statusFeedback && (
-        <Callout.Root color="teal" role="status" aria-live="polite">
+        <Callout.Root
+          color="gray"
+          role="status"
+          aria-live="polite"
+          className="!bg-[#008f7a]/12 !border !border-[#008f7a] !text-[#0f172a]"
+        >
           <Callout.Text>{statusFeedback}</Callout.Text>
         </Callout.Root>
       )}
@@ -210,7 +218,7 @@ export const AdminFacilitiesScreen: React.FC = () => {
             <button
               type="button"
               onClick={() => void facilitiesQuery.refetch()}
-              className="inline-flex items-center min-h-[32px] px-2 rounded underline font-semibold ml-1 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
+              className="inline-flex items-center min-h-[32px] px-2 rounded underline font-semibold ml-1 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2]"
             >
               Reintentar
             </button>
@@ -220,7 +228,7 @@ export const AdminFacilitiesScreen: React.FC = () => {
 
       {facilitiesQuery.isLoading && (
         <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center text-sm text-slate-600 flex items-center justify-center gap-2">
-          <RefreshCw size={15} className="motion-safe:animate-spin text-teal-700" aria-hidden="true" />
+          <RefreshCw size={15} className="motion-safe:animate-spin text-[#008e9b]" aria-hidden="true" />
           Cargando red de sedes hospitalarias…
         </div>
       )}
@@ -237,7 +245,7 @@ export const AdminFacilitiesScreen: React.FC = () => {
                   key={facility.id}
                   className={`bg-white rounded-2xl p-4 border transition-colors shadow-2xs flex flex-col justify-between gap-3 ${
                     isSelected
-                      ? 'border-[#0F766E] ring-1 ring-[#0F766E]/25'
+                      ? 'border-[#2c73d2] ring-1 ring-[#2c73d2]/25'
                       : 'border-slate-200/90 hover:border-slate-400'
                   }`}
                 >
@@ -248,7 +256,12 @@ export const AdminFacilitiesScreen: React.FC = () => {
                       </span>
 
                       {facility.isPrimary ? (
-                        <Badge size="1" color="green" variant="solid">
+                        <Badge
+                          size="1"
+                          color="gray"
+                          variant="solid"
+                          className="!bg-[#008f7a] !text-[#020617] !font-bold"
+                        >
                           SEDE EN USO
                         </Badge>
                       ) : (
@@ -256,6 +269,7 @@ export const AdminFacilitiesScreen: React.FC = () => {
                           size="1"
                           variant="soft"
                           color={FACILITY_STATUS_COLOR[facility.status]}
+                          className={FACILITY_STATUS_BADGE_CLASS[facility.status]}
                         >
                           {FACILITY_STATUS_LABELS_ES[facility.status]}
                         </Badge>
@@ -266,9 +280,9 @@ export const AdminFacilitiesScreen: React.FC = () => {
                       type="button"
                       onClick={() => setSelectedFacilityId(facility.id)}
                       aria-pressed={isSelected}
-                      className="text-left w-full group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] rounded-lg"
+                      className="text-left w-full group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2] rounded-lg"
                     >
-                      <h2 className="text-sm font-bold text-slate-900 group-hover:text-[#115E59] transition-colors">
+                      <h2 className="text-sm font-bold text-slate-900 group-hover:text-[#2c73d2] transition-colors">
                         {facility.name}
                       </h2>
                       <p className="text-xs text-slate-600 mt-1 flex items-center gap-1">
@@ -286,9 +300,9 @@ export const AdminFacilitiesScreen: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setSelectedFacilityId(facility.id)}
-                      className={`min-h-[32px] px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] ${
+                      className={`min-h-[32px] px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2] ${
                         isSelected
-                          ? 'bg-teal-50 text-teal-900 border border-teal-600'
+                          ? 'bg-[#2c73d2]/12 text-[#0f172a] border border-[#2c73d2]'
                           : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                       }`}
                     >
@@ -300,7 +314,6 @@ export const AdminFacilitiesScreen: React.FC = () => {
                         type="button"
                         size="1"
                         variant="soft"
-                        color="teal"
                         disabled={activateMutation.isPending}
                         onClick={() => void handleActivateFacility(facility)}
                         className="min-h-[30px] cursor-pointer"
@@ -327,13 +340,14 @@ export const AdminFacilitiesScreen: React.FC = () => {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-mono text-xs font-bold text-teal-800 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded">
+                  <span className="font-mono text-xs font-bold text-[#0f172a] bg-[#2c73d2]/12 border border-[#2c73d2] px-2 py-0.5 rounded">
                     {selectedFacility.code}
                   </span>
                   <Badge
                     size="1"
                     variant="soft"
                     color={FACILITY_STATUS_COLOR[selectedFacility.status]}
+                    className={FACILITY_STATUS_BADGE_CLASS[selectedFacility.status]}
                   >
                     {FACILITY_STATUS_LABELS_ES[selectedFacility.status]}
                   </Badge>
@@ -445,7 +459,7 @@ export const AdminFacilitiesScreen: React.FC = () => {
                         <span
                           aria-label={cub.active ? 'Activa' : 'Inactiva'}
                           className={`w-2 h-2 rounded-full ${
-                            cub.active ? 'bg-emerald-600' : 'bg-slate-400'
+                            cub.active ? 'bg-[#008f7a]' : 'bg-slate-400'
                           }`}
                         />
                       </div>
@@ -463,8 +477,8 @@ export const AdminFacilitiesScreen: React.FC = () => {
 
             <div className="pt-3 border-t border-slate-200 flex items-center justify-between gap-2 text-xs">
               {selectedFacility.isPrimary ? (
-                <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-800">
-                  <CheckCircle2 size={14} className="text-emerald-700" aria-hidden="true" />
+                <span className="inline-flex items-center gap-1.5 font-semibold text-[#0f172a]">
+                  <CheckCircle2 size={14} className="text-[#008f7a]" aria-hidden="true" />
                   Estado de sesión: Sede Primaria Activa
                 </span>
               ) : (
@@ -475,7 +489,6 @@ export const AdminFacilitiesScreen: React.FC = () => {
                   <Button
                     type="button"
                     size="1"
-                    color="teal"
                     disabled={activateMutation.isPending}
                     onClick={() => void handleActivateFacility(selectedFacility)}
                     className="min-h-[32px] cursor-pointer"
@@ -491,7 +504,7 @@ export const AdminFacilitiesScreen: React.FC = () => {
           <div className="lg:col-span-7 bg-white border border-slate-200/90 rounded-2xl p-5 shadow-2xs space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-200">
               <div className="flex items-center gap-2">
-                <Users size={16} className="text-teal-700" aria-hidden="true" />
+                <Users size={16} className="text-[#2c73d2]" aria-hidden="true" />
                 <h2 className="text-base font-bold text-slate-900">
                   Usuarios y Farmacéuticos Asociados ({selectedFacility.pharmacists.length})
                 </h2>
@@ -500,7 +513,6 @@ export const AdminFacilitiesScreen: React.FC = () => {
               <Button
                 type="button"
                 size="2"
-                color="teal"
                 variant="soft"
                 onClick={() => {
                   setPreselectedPharmacistId(null);
@@ -537,18 +549,21 @@ export const AdminFacilitiesScreen: React.FC = () => {
                         <span className="font-mono text-[11px] font-bold text-slate-700 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">
                           {member.licenseNumber}
                         </span>
-                        <Badge size="1" variant="soft" color="blue">
+                        <Badge size="1" variant="soft">
                           {PHARMACIST_ROLE_SHORT_LABELS_ES[member.operationalRole]}
                         </Badge>
                         <Badge
                           size="1"
                           variant="soft"
                           color={
+                            member.status === PharmacistStatus.ON_LEAVE
+                              ? 'amber'
+                              : 'gray'
+                          }
+                          className={
                             member.status === PharmacistStatus.ACTIVE
-                              ? 'green'
-                              : member.status === PharmacistStatus.ON_LEAVE
-                                ? 'amber'
-                                : 'gray'
+                              ? '!bg-[#008f7a]/12 !text-[#0f172a] !border !border-[#008f7a] !shadow-none'
+                              : undefined
                           }
                         >
                           {PHARMACIST_STATUS_LABELS_ES[member.status]}
@@ -585,13 +600,13 @@ export const AdminFacilitiesScreen: React.FC = () => {
             <div className="pt-3 border-t border-slate-200 flex items-center justify-between gap-2 flex-wrap">
               <Link
                 to="/admin/farmaceuticos"
-                className="text-xs font-semibold text-teal-700 hover:text-teal-900 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] rounded"
+                className="text-xs font-semibold text-[#2c73d2] hover:text-[#0f172a] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2] rounded"
               >
                 Administrar en Directorio de Farmacéuticos →
               </Link>
               <Link
                 to="/admin/cubiculos"
-                className="text-xs font-semibold text-slate-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] rounded"
+                className="text-xs font-semibold text-slate-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2] rounded"
               >
                 Ir a Configuración de Cubículos →
               </Link>

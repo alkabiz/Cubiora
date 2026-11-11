@@ -22,10 +22,10 @@ const STATUS_CONFIG: Record<
   }
 > = {
   ATENDIENDO: {
-    border: 'border-blue-200/90',
-    badge: 'bg-blue-50 text-blue-700',
+    border: 'border-[#0081cf]/50',
+    badge: 'bg-[#0081cf]/12 text-[#0f172a] border border-[#0081cf]',
     centerBlock: 'bg-slate-50/80',
-    timeText: 'text-blue-700 font-bold font-mono tabular-nums',
+    timeText: 'text-[#0f172a] font-bold font-mono tabular-nums',
     label: 'ATENDIENDO',
   },
   SLA_EXCEDIDO: {
@@ -36,17 +36,17 @@ const STATUS_CONFIG: Record<
     label: 'SLA EXCEDIDO',
   },
   LLAMANDO: {
-    border: 'border-purple-200/90',
-    badge: 'bg-purple-50 text-purple-700',
-    centerBlock: 'bg-purple-50/40',
-    timeText: 'text-purple-700 font-bold font-mono tabular-nums',
+    border: 'border-[#008e9b]/50',
+    badge: 'bg-[#008e9b]/12 text-[#0f172a] border border-[#008e9b]',
+    centerBlock: 'bg-[#008e9b]/8',
+    timeText: 'text-[#0f172a] font-bold font-mono tabular-nums',
     label: 'LLAMANDO',
   },
   DISPONIBLE: {
-    border: 'border-emerald-200/90',
-    badge: 'bg-emerald-50 text-emerald-700',
-    centerBlock: 'bg-emerald-50/40',
-    timeText: 'text-emerald-700 font-bold font-mono tabular-nums',
+    border: 'border-[#008f7a]/50',
+    badge: 'bg-[#008f7a]/12 text-[#0f172a] border border-[#008f7a]',
+    centerBlock: 'bg-[#008f7a]/8',
+    timeText: 'text-[#0f172a] font-bold font-mono tabular-nums',
     label: 'DISPONIBLE',
   },
   INACTIVO: {
@@ -62,12 +62,13 @@ const STATUS_CONFIG: Record<
 function StatusFooterIcon({ status }: { status: CubicleStatus }) {
   switch (status) {
     case 'ATENDIENDO':
+      return <CheckCircle2 size={12} className="text-[#0081cf] flex-shrink-0" />;
     case 'DISPONIBLE':
-      return <CheckCircle2 size={12} className="text-emerald-600 flex-shrink-0" />;
+      return <CheckCircle2 size={12} className="text-[#008f7a] flex-shrink-0" />;
     case 'SLA_EXCEDIDO':
       return <AlertTriangle size={12} className="text-red-600 flex-shrink-0" />;
     case 'LLAMANDO':
-      return <Volume2 size={12} className="text-purple-600 flex-shrink-0" />;
+      return <Volume2 size={12} className="text-[#008e9b] flex-shrink-0" />;
     case 'INACTIVO':
       return <Wrench size={12} className="text-slate-600 flex-shrink-0" />;
   }
@@ -120,7 +121,7 @@ export const CubicleCard: React.FC<CubicleCardProps> = React.memo(({ station }) 
                 station.status === 'SLA_EXCEDIDO'
                   ? 'text-red-600'
                   : station.status === 'LLAMANDO'
-                    ? 'text-purple-700'
+                    ? 'text-[#0f172a]'
                     : 'text-slate-800'
               }`}
             >
@@ -153,7 +154,7 @@ export const CubicleCard: React.FC<CubicleCardProps> = React.memo(({ station }) 
                 : station.status === 'SLA_EXCEDIDO'
                   ? 'text-red-700 font-semibold'
                   : station.status === 'LLAMANDO'
-                    ? 'text-purple-700 font-semibold'
+                    ? 'text-[#0f172a] font-semibold'
                     : 'text-slate-700'
             }`}
           >

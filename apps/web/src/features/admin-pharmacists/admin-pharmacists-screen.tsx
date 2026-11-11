@@ -45,18 +45,19 @@ import { DeletePharmacistDialog } from './delete-pharmacist-dialog';
 import { AppMain } from '../../app/app-main';
 import { PageHeader } from '../../app/page-header';
 
-const ROLE_BADGE_COLOR: Record<
-  PharmacistOperationalRole,
-  'blue' | 'teal' | 'amber' | 'purple'
-> = {
-  [PharmacistOperationalRole.TITULAR]: 'blue',
-  [PharmacistOperationalRole.ADJUNTO]: 'teal',
-  [PharmacistOperationalRole.DISPENSADOR]: 'amber',
-  [PharmacistOperationalRole.GUARDIA]: 'purple',
+const ROLE_BADGE_CLASS: Record<PharmacistOperationalRole, string> = {
+  [PharmacistOperationalRole.TITULAR]:
+    '!bg-[#2c73d2]/12 !text-[#0f172a] !border !border-[#2c73d2] !shadow-none',
+  [PharmacistOperationalRole.ADJUNTO]:
+    '!bg-[#0081cf]/12 !text-[#0f172a] !border !border-[#0081cf] !shadow-none',
+  [PharmacistOperationalRole.DISPENSADOR]:
+    '!bg-[#008e9b]/12 !text-[#0f172a] !border !border-[#008e9b] !shadow-none',
+  [PharmacistOperationalRole.GUARDIA]:
+    '!bg-[#0089ba]/12 !text-[#0f172a] !border !border-[#0089ba] !shadow-none',
 };
 
 const STATUS_DOT_COLOR: Record<PharmacistStatus, string> = {
-  [PharmacistStatus.ACTIVE]: 'bg-emerald-600',
+  [PharmacistStatus.ACTIVE]: 'bg-[#008f7a]',
   [PharmacistStatus.ON_LEAVE]: 'bg-amber-500',
   [PharmacistStatus.INACTIVE]: 'bg-slate-400',
 };
@@ -185,13 +186,12 @@ export const AdminPharmacistsScreen: React.FC = () => {
     <div className="flex items-center gap-2.5 flex-wrap">
       <Link
         to="/admin/cubiculos"
-        className="inline-flex items-center min-h-[36px] px-3.5 py-1.5 rounded-lg border border-slate-500 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-2"
+        className="inline-flex items-center min-h-[36px] px-3.5 py-1.5 rounded-lg border border-slate-500 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2] focus-visible:ring-offset-2"
       >
         Configurar Cubículos
       </Link>
       <Button
         type="button"
-        color="teal"
         size="2"
         onClick={handleOpenCreate}
         className="min-h-[36px] cursor-pointer"
@@ -217,7 +217,12 @@ export const AdminPharmacistsScreen: React.FC = () => {
 
       {/* Región viva accesible para confirmar mutaciones (WCAG 4.1.3 AA) */}
       {statusFeedback && (
-        <Callout.Root color="teal" role="status" aria-live="polite">
+        <Callout.Root
+          color="gray"
+          role="status"
+          aria-live="polite"
+          className="!bg-[#008f7a]/12 !border !border-[#008f7a] !text-[#0f172a]"
+        >
           <Callout.Text>{statusFeedback}</Callout.Text>
         </Callout.Root>
       )}
@@ -230,7 +235,7 @@ export const AdminPharmacistsScreen: React.FC = () => {
         <Card size="2" className="bg-white border border-slate-200/90">
           <div className="flex items-center justify-between text-xs font-semibold text-slate-600 uppercase tracking-wider">
             <span>Total Registrados</span>
-            <Users size={16} className="text-blue-700" aria-hidden="true" />
+            <Users size={16} className="text-[#2c73d2]" aria-hidden="true" />
           </div>
           <div className="mt-2 flex items-baseline gap-2">
             <span className="text-2xl font-bold text-slate-900 tabular-nums">
@@ -244,13 +249,13 @@ export const AdminPharmacistsScreen: React.FC = () => {
         <Card size="2" className="bg-white border border-slate-200/90">
           <div className="flex items-center justify-between text-xs font-semibold text-slate-600 uppercase tracking-wider">
             <span>En Servicio Activo</span>
-            <UserCheck size={16} className="text-emerald-700" aria-hidden="true" />
+            <UserCheck size={16} className="text-[#008f7a]" aria-hidden="true" />
           </div>
           <div className="mt-2 flex items-baseline gap-2">
             <span className="text-2xl font-bold text-slate-900 tabular-nums">
               {metrics.activeToday}
             </span>
-            <span className="text-xs text-emerald-700 font-semibold">habilitados</span>
+            <span className="text-xs text-[#0f172a] font-semibold">habilitados</span>
           </div>
           <p className="mt-2 text-xs text-slate-600">
             Licencia / Pausa: {metrics.onLeaveCount}
@@ -260,7 +265,7 @@ export const AdminPharmacistsScreen: React.FC = () => {
         <Card size="2" className="bg-white border border-slate-200/90">
           <div className="flex items-center justify-between text-xs font-semibold text-slate-600 uppercase tracking-wider">
             <span>Despachos Acumulados</span>
-            <ClipboardCheck size={16} className="text-teal-700" aria-hidden="true" />
+            <ClipboardCheck size={16} className="text-[#0089ba]" aria-hidden="true" />
           </div>
           <div className="mt-2 flex items-baseline gap-2">
             <span className="text-2xl font-bold text-slate-900 tabular-nums">
@@ -276,7 +281,7 @@ export const AdminPharmacistsScreen: React.FC = () => {
         <Card size="2" className="bg-white border border-slate-200/90">
           <div className="flex items-center justify-between text-xs font-semibold text-slate-600 uppercase tracking-wider">
             <span>Red de Sedes</span>
-            <Building2 size={16} className="text-indigo-700" aria-hidden="true" />
+            <Building2 size={16} className="text-[#0081cf]" aria-hidden="true" />
           </div>
           <div className="mt-2 flex items-baseline gap-2">
             <span className="text-2xl font-bold text-slate-900 tabular-nums">
@@ -287,7 +292,7 @@ export const AdminPharmacistsScreen: React.FC = () => {
           <div className="mt-2">
             <Link
               to="/admin/sedes"
-              className="text-xs font-semibold text-teal-700 hover:text-teal-900 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] rounded"
+              className="text-xs font-semibold text-[#2c73d2] hover:text-[#0f172a] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2] rounded"
             >
               Ver mapa y sedes →
             </Link>
@@ -408,7 +413,7 @@ export const AdminPharmacistsScreen: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => void pharmacistsQuery.refetch()}
-                  className="inline-flex items-center min-h-[32px] px-2 rounded underline font-semibold ml-1 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
+                  className="inline-flex items-center min-h-[32px] px-2 rounded underline font-semibold ml-1 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2]"
                 >
                   Reintentar
                 </button>
@@ -419,7 +424,7 @@ export const AdminPharmacistsScreen: React.FC = () => {
 
         {pharmacistsQuery.isLoading && (
           <div className="p-8 text-center text-sm text-slate-600 flex items-center justify-center gap-2">
-            <RefreshCw size={15} className="motion-safe:animate-spin text-teal-700" aria-hidden="true" />
+            <RefreshCw size={15} className="motion-safe:animate-spin text-[#008e9b]" aria-hidden="true" />
             Cargando profesionales farmacéuticos registrados…
           </div>
         )}
@@ -478,7 +483,7 @@ export const AdminPharmacistsScreen: React.FC = () => {
                       <div className="flex items-center gap-3">
                         <span
                           aria-hidden="true"
-                          className="w-9 h-9 rounded-full bg-teal-50 border border-teal-200 text-teal-800 font-bold text-xs inline-flex items-center justify-center flex-shrink-0"
+                          className="w-9 h-9 rounded-full bg-[#2c73d2]/12 border border-[#2c73d2] text-[#0f172a] font-bold text-xs inline-flex items-center justify-center flex-shrink-0"
                         >
                           {getInitials(pharmacist.fullName)}
                         </span>
@@ -503,7 +508,8 @@ export const AdminPharmacistsScreen: React.FC = () => {
                       <Badge
                         size="1"
                         variant="soft"
-                        color={ROLE_BADGE_COLOR[pharmacist.operationalRole]}
+                        color="gray"
+                        className={ROLE_BADGE_CLASS[pharmacist.operationalRole]}
                       >
                         {PHARMACIST_ROLE_SHORT_LABELS_ES[pharmacist.operationalRole]}
                       </Badge>
@@ -560,13 +566,15 @@ export const AdminPharmacistsScreen: React.FC = () => {
                             aria-label={`Estado operativo de ${pharmacist.fullName}`}
                             variant="soft"
                             color={
-                              pharmacist.status === PharmacistStatus.ACTIVE
-                                ? 'green'
-                                : pharmacist.status === PharmacistStatus.ON_LEAVE
-                                  ? 'amber'
-                                  : 'gray'
+                              pharmacist.status === PharmacistStatus.ON_LEAVE
+                                ? 'amber'
+                                : 'gray'
                             }
-                            className="min-h-[28px] font-semibold"
+                            className={`min-h-[28px] font-semibold ${
+                              pharmacist.status === PharmacistStatus.ACTIVE
+                                ? '!bg-[#008f7a]/12 !text-[#0f172a] !border !border-[#008f7a] !shadow-none'
+                                : ''
+                            }`}
                           />
                           <Select.Content>
                             {Object.values(PharmacistStatus).map((st) => (

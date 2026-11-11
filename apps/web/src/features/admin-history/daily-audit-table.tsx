@@ -81,16 +81,16 @@ export const DailyAuditTable: React.FC<DailyAuditTableProps> = ({
                   {/* 4. Prioridad con jerarquía visual adecuada: PREFERENCIAL resaltado, GENERAL neutro (Nielsen H8) */}
                   <td className="py-4 px-6 whitespace-nowrap">
                     {record.priority === 'PREFERENCIAL' ? (
-                      <span className="inline-flex items-center gap-1 bg-purple-50 border border-purple-200 text-purple-800 font-mono text-[11px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider">
-                        <Star className="w-3 h-3 text-purple-700 fill-purple-700/20" aria-hidden="true" />
+                      <span className="inline-flex items-center gap-1 bg-[#0081cf]/12 border border-[#0081cf] text-[#0f172a] font-mono text-[11px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider">
+                        <Star className="w-3 h-3 text-[#0081cf] fill-[#0081cf]/20" aria-hidden="true" />
                         PREFERENCIAL
                       </span>
                     ) : record.priority === 'ALTO_COSTO' ? (
-                      <span className="inline-flex items-center gap-1 bg-purple-50 border border-purple-300 text-purple-900 font-mono text-[11px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider">
+                      <span className="inline-flex items-center gap-1 bg-[#0089ba]/12 border border-[#0089ba] text-[#0f172a] font-mono text-[11px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider">
                         Alto Costo
                       </span>
                     ) : record.priority === 'FACTURACION' ? (
-                      <span className="inline-flex items-center gap-1 bg-blue-50 border border-blue-200 text-blue-800 font-mono text-[11px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider">
+                      <span className="inline-flex items-center gap-1 bg-[#008e9b]/12 border border-[#008e9b] text-[#0f172a] font-mono text-[11px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider">
                         Facturación
                       </span>
                     ) : (
@@ -108,8 +108,8 @@ export const DailyAuditTable: React.FC<DailyAuditTableProps> = ({
                   {/* 6. Cumplimiento SLA */}
                   <td className="py-4 px-6 whitespace-nowrap">
                     {record.slaCompliant ? (
-                      <span className="inline-flex items-center gap-1.5 bg-emerald-50 text-emerald-800 px-2.5 py-1 rounded-md text-xs font-semibold">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" aria-hidden="true" />
+                      <span className="inline-flex items-center gap-1.5 bg-[#008f7a]/12 border border-[#008f7a] text-[#0f172a] px-2.5 py-1 rounded-md text-xs font-semibold">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-[#008f7a]" aria-hidden="true" />
                         Cumplido
                       </span>
                     ) : (
@@ -127,11 +127,11 @@ export const DailyAuditTable: React.FC<DailyAuditTableProps> = ({
                         Pendiente 48h
                       </span>
                     ) : record.resultStatus === 'FINALIZADO' ? (
-                      <span className="bg-blue-50/90 text-blue-800 font-mono text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md">
+                      <span className="bg-[#2c73d2]/12 border border-[#2c73d2] text-[#0f172a] font-mono text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md">
                         FINALIZADO
                       </span>
                     ) : record.resultStatus === 'CANCELADO' ? (
-                      <span className="bg-rose-50 text-rose-800 border border-rose-200 font-mono text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md">
+                      <span className="bg-red-50 text-red-800 border border-red-200 font-mono text-[11px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md">
                         CANCELADO
                       </span>
                     ) : (
@@ -148,9 +148,9 @@ export const DailyAuditTable: React.FC<DailyAuditTableProps> = ({
                       disabled={!record.publicId}
                       onClick={() => onInspectTimeline?.(record)}
                       aria-label={`Ver trazabilidad del turno ${record.ticketCode}`}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[32px] rounded-lg border border-slate-500 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[32px] rounded-lg border border-slate-500 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2]"
                     >
-                      <History className="w-3.5 h-3.5 text-teal-700" aria-hidden="true" />
+                      <History className="w-3.5 h-3.5 text-[#2c73d2]" aria-hidden="true" />
                       Ver trazabilidad
                     </button>
                   </td>
@@ -180,7 +180,7 @@ export const DailyAuditTable: React.FC<DailyAuditTableProps> = ({
               type="button"
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={currentPage === 1}
-              className="px-3 py-1.5 min-h-[32px] rounded-lg border border-slate-500 bg-white hover:bg-slate-50 text-slate-800 disabled:opacity-40 disabled:cursor-not-allowed font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] transition-colors cursor-pointer"
+              className="px-3 py-1.5 min-h-[32px] rounded-lg border border-slate-500 bg-white hover:bg-slate-50 text-slate-800 disabled:opacity-40 disabled:cursor-not-allowed font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2] transition-colors cursor-pointer"
             >
               Anterior
             </button>
@@ -191,7 +191,7 @@ export const DailyAuditTable: React.FC<DailyAuditTableProps> = ({
               type="button"
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage === totalPages}
-              className="px-3 py-1.5 min-h-[32px] rounded-lg border border-slate-500 bg-white hover:bg-slate-50 text-slate-800 disabled:opacity-40 disabled:cursor-not-allowed font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] transition-colors cursor-pointer"
+              className="px-3 py-1.5 min-h-[32px] rounded-lg border border-slate-500 bg-white hover:bg-slate-50 text-slate-800 disabled:opacity-40 disabled:cursor-not-allowed font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2] transition-colors cursor-pointer"
             >
               Siguiente
             </button>

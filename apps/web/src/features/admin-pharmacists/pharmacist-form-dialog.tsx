@@ -429,7 +429,7 @@ export const PharmacistFormDialog: React.FC<PharmacistFormDialogProps> = ({
                 Cancelar
               </Button>
             </Dialog.Close>
-            <Button type="submit" color="teal" disabled={isSubmitting}>
+            <Button type="submit" disabled={isSubmitting}>
               {isSubmitting
                 ? 'Guardando…'
                 : mode === 'create'

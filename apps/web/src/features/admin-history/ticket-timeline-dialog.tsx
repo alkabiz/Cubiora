@@ -96,7 +96,7 @@ export const TicketTimelineDialog: React.FC<TicketTimelineDialogProps> = ({
         className="max-h-[85vh] overflow-y-auto"
       >
         <Dialog.Title className="flex items-center gap-2 text-slate-900">
-          <History className="w-4 h-4 text-teal-700" aria-hidden="true" />
+          <History className="w-4 h-4 text-[#2c73d2]" aria-hidden="true" />
           <span>Trazabilidad del turno {ticket?.publicCode ?? ticketCode}</span>
         </Dialog.Title>
         <Dialog.Description id="ticket-timeline-description" size="2" color="gray" mb="4">
@@ -108,7 +108,7 @@ export const TicketTimelineDialog: React.FC<TicketTimelineDialogProps> = ({
             role="status"
             className="py-10 flex items-center justify-center gap-2 text-xs font-medium text-slate-600"
           >
-            <RefreshCw className="w-4 h-4 motion-safe:animate-spin text-teal-700" aria-hidden="true" />
+            <RefreshCw className="w-4 h-4 motion-safe:animate-spin text-[#008e9b]" aria-hidden="true" />
             Cargando línea de tiempo del turno…
           </div>
         )}
@@ -141,10 +141,18 @@ export const TicketTimelineDialog: React.FC<TicketTimelineDialogProps> = ({
               <div>
                 <span className="text-slate-600 font-semibold block">Estado final / actual</span>
                 <div className="mt-1 flex items-center gap-2">
-                  <Badge color="blue" variant="soft">
+                  <Badge variant="soft">
                     {TICKET_STATUS_LABELS_ES[ticket.status] ?? ticket.status}
                   </Badge>
-                  <Badge color={ticket.slaCompliant ? 'green' : 'red'} variant="soft">
+                  <Badge
+                    color={ticket.slaCompliant ? 'gray' : 'red'}
+                    variant="soft"
+                    className={
+                      ticket.slaCompliant
+                        ? '!bg-[#008f7a]/12 !text-[#0f172a] !border !border-[#008f7a] !shadow-none'
+                        : undefined
+                    }
+                  >
                     {ticket.slaCompliant ? 'SLA Cumplido' : 'SLA Excedido'}
                   </Badge>
                 </div>
@@ -185,7 +193,7 @@ export const TicketTimelineDialog: React.FC<TicketTimelineDialogProps> = ({
             {/* Línea de tiempo WORM de estados */}
             <section aria-label="Historial de transiciones de estado">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 mb-3 flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-blue-700" aria-hidden="true" />
+                <Clock className="w-3.5 h-3.5 text-[#0089ba]" aria-hidden="true" />
                 Línea de tiempo de estados ({timeline.statusHistory.length})
               </h3>
 
@@ -194,7 +202,7 @@ export const TicketTimelineDialog: React.FC<TicketTimelineDialogProps> = ({
                   No se registraron transiciones de estado en la auditoría.
                 </p>
               ) : (
-                <ol className="space-y-2.5 border-l-2 border-blue-200 pl-4 ml-1.5">
+                <ol className="space-y-2.5 border-l-2 border-[#2c73d2]/35 pl-4 ml-1.5">
                   {timeline.statusHistory.map((entry) => {
                     const fromLabel = entry.fromStatus
                       ? (TICKET_STATUS_LABELS_ES[entry.fromStatus] ?? entry.fromStatus)
@@ -239,7 +247,7 @@ export const TicketTimelineDialog: React.FC<TicketTimelineDialogProps> = ({
             {/* Llamados en sala */}
             <section aria-label="Registro de llamados en sala">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 mb-2.5 flex items-center gap-1.5">
-                <Bell className="w-3.5 h-3.5 text-purple-700" aria-hidden="true" />
+                <Bell className="w-3.5 h-3.5 text-[#008e9b]" aria-hidden="true" />
                 Llamados en sala ({timeline.calls.length})
               </h3>
               {timeline.calls.length === 0 ? (
@@ -269,7 +277,7 @@ export const TicketTimelineDialog: React.FC<TicketTimelineDialogProps> = ({
             {/* Registro de dispensación farmacéutica */}
             <section aria-label="Registro de dispensación farmacéutica">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 mb-2.5 flex items-center gap-1.5">
-                <Pill className="w-3.5 h-3.5 text-emerald-700" aria-hidden="true" />
+                <Pill className="w-3.5 h-3.5 text-[#008f7a]" aria-hidden="true" />
                 Dispensación farmacéutica
               </h3>
 
@@ -281,7 +289,7 @@ export const TicketTimelineDialog: React.FC<TicketTimelineDialogProps> = ({
                 <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-2">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <span className="inline-flex items-center gap-1.5 font-bold text-slate-900">
-                      <FileCheck2 className="w-4 h-4 text-emerald-700" aria-hidden="true" />
+                      <FileCheck2 className="w-4 h-4 text-[#008f7a]" aria-hidden="true" />
                       {dispensation.resolution === DispensationResolution.PENDING_48H
                         ? 'Pendiente 48h (Resolución 1604)'
                         : 'Entrega Total (PBS)'}

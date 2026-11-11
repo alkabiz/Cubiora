@@ -27,7 +27,7 @@ export const KpiCard: React.FC<KpiCardProps> = React.memo(({
         <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
           {label}
         </span>
-        <div className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-sky-50 text-sky-700">
+        <div className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-[#0089ba]/12 text-[#0089ba] border border-[#0089ba]/30">
           {icon}
         </div>
       </div>

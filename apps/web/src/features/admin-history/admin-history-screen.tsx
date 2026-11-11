@@ -235,7 +235,7 @@ export const AdminHistoryScreen: React.FC = () => {
               type="button"
               onClick={() => handleChangeServerPage(Math.max(1, effectivePage - 1))}
               disabled={historyQuery.isFetching || effectivePage <= 1}
-              className="px-3 py-1.5 min-h-[32px] rounded-lg border border-slate-500 bg-white hover:bg-slate-50 text-slate-800 disabled:opacity-40 disabled:cursor-not-allowed font-semibold cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
+              className="px-3 py-1.5 min-h-[32px] rounded-lg border border-slate-500 bg-white hover:bg-slate-50 text-slate-800 disabled:opacity-40 disabled:cursor-not-allowed font-semibold cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2]"
             >
               Lote anterior
             </button>
@@ -243,7 +243,7 @@ export const AdminHistoryScreen: React.FC = () => {
               type="button"
               onClick={() => handleChangeServerPage(Math.min(serverTotalPages, effectivePage + 1))}
               disabled={historyQuery.isFetching || effectivePage >= serverTotalPages}
-              className="px-3 py-1.5 min-h-[32px] rounded-lg border border-slate-500 bg-white hover:bg-slate-50 text-slate-800 disabled:opacity-40 disabled:cursor-not-allowed font-semibold cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
+              className="px-3 py-1.5 min-h-[32px] rounded-lg border border-slate-500 bg-white hover:bg-slate-50 text-slate-800 disabled:opacity-40 disabled:cursor-not-allowed font-semibold cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2]"
             >
               Siguiente lote
             </button>

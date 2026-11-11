@@ -127,7 +127,7 @@ export const ResetPasswordDialog: React.FC<ResetPasswordDialogProps> = ({
                 Cancelar
               </Button>
             </Dialog.Close>
-            <Button type="submit" color="teal" disabled={isSubmitting}>
+            <Button type="submit" disabled={isSubmitting}>
               {isSubmitting ? 'Actualizando…' : 'Restablecer Contraseña'}
             </Button>
           </Flex>
