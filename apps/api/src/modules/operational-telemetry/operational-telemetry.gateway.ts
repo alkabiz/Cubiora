@@ -7,11 +7,11 @@ import {
   ConnectedSocket,
   MessageBody,
 } from '@nestjs/websockets';
-import { Logger, OnModuleInit } from '@nestjs/common';
+import { Logger, OnModuleInit, Optional } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { SessionTokenUtil } from '../auth/session-token.util';
 import { getEnv } from '../../config/env.validation';
-import { UserRole } from '@cubiora/shared';
+import { PublicBroadcastNoticeSeverity, UserRole } from '@cubiora/shared';
 import {
   TELEMETRY_EVENTS,
   TelemetryPingPayload,
@@ -21,6 +21,7 @@ import {
   TelemetrySnapshotPayload,
 } from '@cubiora/shared';
 import { OperationalTelemetryService } from './operational-telemetry.service';
+import { PublicDisplayService } from '../public-display/public-display.service';
 
 /** Roles autorizados para recibir telemetría operativa. */
 const ALLOWED_ROLES: ReadonlySet<UserRole> = new Set([UserRole.ADMIN]);
@@ -49,7 +50,10 @@ export class OperationalTelemetryGateway
 
   private readonly logger = new Logger(OperationalTelemetryGateway.name);
 
-  constructor(private readonly telemetryService: OperationalTelemetryService) {}
+  constructor(
+    private readonly telemetryService: OperationalTelemetryService,
+    @Optional() private readonly publicDisplayService?: PublicDisplayService,
+  ) {}
 
   onModuleInit(): void {
     this.telemetryService.onCubicleUpdate$.subscribe((payload) => {
@@ -141,16 +145,26 @@ export class OperationalTelemetryGateway
   ): void {
     if (!this.isAuthorized(client)) return;
 
+    const trimmedMessage = typeof data?.message === 'string' ? data.message.trim() : '';
+    if (!trimmedMessage) return;
+
+    const rawSeverity = data?.severity;
+    const severity: PublicBroadcastNoticeSeverity =
+      rawSeverity === 'warning' || rawSeverity === 'critical' ? rawSeverity : 'info';
+
     const user = (client as unknown as { user?: { displayName: string } }).user;
     this.logger.log(
-      `Aviso general emitido por ${user?.displayName ?? 'admin'}: [${data?.severity}] ${data?.message}`,
+      `Aviso general emitido por ${user?.displayName ?? 'admin'}: [${severity}] ${trimmedMessage}`,
     );
 
+    const emittedNotice = this.publicDisplayService?.emitNotice(trimmedMessage, severity);
+    const issuedAt = emittedNotice?.issuedAtIso ?? new Date().toISOString();
+
     // Re-emitir el aviso a todos los administradores conectados
-    this.server.emit('admin:notice', {
-      message: data?.message ?? '',
-      severity: data?.severity ?? 'info',
-      sentAt: new Date().toISOString(),
+    this.server?.emit('admin:notice', {
+      message: trimmedMessage,
+      severity,
+      sentAt: issuedAt,
       sentBy: user?.displayName ?? 'Administrador',
     });
   }

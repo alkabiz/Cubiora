@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TicketStatus } from '@cubiora/shared';
+import { resolveDailyTargetSeconds } from '../../config/sla-target.util';
 
 export interface CashierOperativeSummary {
   /** Turnos actualmente en gestión (ASSIGNED | CALLED | IN_SERVICE) */
@@ -13,14 +14,11 @@ export interface CashierOperativeSummary {
   avgWaitSeconds: number | null;
   /**
    * Porcentaje de turnos cerrados hoy cuyo tiempo de espera total
-   * (desde creación hasta inicio de atención) estuvo dentro del objetivo (≤ 15 min).
+   * (desde creación hasta inicio de atención) estuvo dentro del umbral SLA configurado.
    * Es null si no hay turnos cerrados.
    */
   slaCompliancePct: number | null;
 }
-
-/** Tiempo objetivo de espera en segundos (15 minutos). */
-const SLA_TARGET_SECONDS = 15 * 60;
 
 @Injectable()
 export class CashierMetricsService {
@@ -33,6 +31,7 @@ export class CashierMetricsService {
    * No devuelve datos personales de pacientes.
    */
   async getOperativeSummary(): Promise<CashierOperativeSummary> {
+    const slaTargetSeconds = resolveDailyTargetSeconds();
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
 
@@ -80,7 +79,7 @@ export class CashierMetricsService {
         );
       }
 
-      // SLA: porcentaje dentro del objetivo (tiempo hasta inicio de servicio ≤ 15 min)
+      // SLA: porcentaje dentro del umbral SLA configurado en CUBICLE_DAILY_TARGET_SECONDS
       const slaWaitTimes = closedTodayWithTimes
         .filter((t) => t.serviceStartedAt !== null)
         .map((t) => {
@@ -91,7 +90,7 @@ export class CashierMetricsService {
         .filter((s) => s >= 0);
 
       if (slaWaitTimes.length > 0) {
-        const withinSla = slaWaitTimes.filter((s) => s <= SLA_TARGET_SECONDS).length;
+        const withinSla = slaWaitTimes.filter((s) => s <= slaTargetSeconds).length;
         slaCompliancePct = Math.round((withinSla / slaWaitTimes.length) * 1000) / 10;
       }
     }

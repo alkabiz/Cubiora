@@ -1,7 +1,8 @@
 import { Inject, Injectable, Logger, Optional, forwardRef } from '@nestjs/common';
 import { Subject, Observable } from 'rxjs';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CubiclesService, resolveDailyTargetSeconds } from '../cubicles/cubicles.service';
+import { CubiclesService } from '../cubicles/cubicles.service';
+import { resolveDailyTargetSeconds } from '../../config/sla-target.util';
 import {
   CubicleStatus,
   QueueCategory,
@@ -107,12 +108,16 @@ export class OperationalTelemetryService {
 
     // Resolver sede primaria activa (si el modelo Facility está disponible)
     let primaryFacilityId: string | null = null;
+    let primaryFacilityCode: string | null = null;
+    let primaryFacilityName: string | null = null;
     if (this.prisma.facility?.findFirst) {
       const primaryFacility = await this.prisma.facility.findFirst({
         where: { isPrimary: true },
-        select: { id: true },
+        select: { id: true, code: true, name: true },
       });
       primaryFacilityId = primaryFacility?.id ?? null;
+      primaryFacilityCode = primaryFacility?.code ?? null;
+      primaryFacilityName = primaryFacility?.name ?? null;
     }
 
     // ─── Consultas paralelas ───────────────────────────────────────────────────
@@ -398,7 +403,7 @@ export class OperationalTelemetryService {
       const stats = categoryStats.get(spec.cat);
       if (!stats || stats.count === 0) continue;
 
-      const isHighWait = stats.avgWaitSeconds > 900; // > 15 min
+      const isHighWait = stats.avgWaitSeconds > slaThresholdSeconds;
       const isHighVolumeCongested =
         stats.count >= 3 &&
         (generalStats.avgWaitSeconds === 0 || stats.avgWaitSeconds > 2 * generalStats.avgWaitSeconds);
@@ -468,6 +473,9 @@ export class OperationalTelemetryService {
     }
 
     return {
+      facilityCode: primaryFacilityCode,
+      facilityName: primaryFacilityName,
+      slaThresholdSeconds,
       cubicles,
       queue,
       kpis,

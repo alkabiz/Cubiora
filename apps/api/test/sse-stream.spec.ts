@@ -84,6 +84,18 @@ describe('Validación de Stream SSE Real (EventSource / Reactive Stream)', () =>
     // Cliente desconectado que se reconecta y consulta el snapshot del servidor
     const snapshot = await publicDisplayService.getSnapshot();
 
+    // 2. Verificar llamada con rango horario del día actual
+    expect(mockPrisma.ticketCall.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          createdAt: {
+            gte: expect.any(Date),
+            lt: expect.any(Date),
+          },
+        },
+      }),
+    );
+
     expect(snapshot).toBeDefined();
     expect(snapshot.currentCall).toBeDefined();
     expect(snapshot.currentCall?.publicCode).toBe('TUR-000001-GE');
@@ -92,5 +104,57 @@ describe('Validación de Stream SSE Real (EventSource / Reactive Stream)', () =>
 
     expect(snapshot.recentCalls).toHaveLength(1);
     expect(snapshot.recentCalls[0].publicCode).toBe('TUR-000002-GE');
+  });
+
+  it('3. Excluye turnos en estado terminal (CLOSED, NO_SHOW, CANCELLED) del llamado activo en curso', async () => {
+    mockPrisma.ticketCall.findMany.mockResolvedValue([
+      {
+        createdAt: new Date(),
+        callNumber: 1,
+        ticket: { publicCode: 'TUR-000046-GE', status: 'CLOSED' },
+        cubicle: { displayName: 'Cubículo 01' },
+      },
+      {
+        createdAt: new Date(Date.now() - 60_000),
+        callNumber: 1,
+        ticket: { publicCode: 'TUR-000045-GE', status: 'NO_SHOW' },
+        cubicle: { displayName: 'Cubículo 02' },
+      },
+    ]);
+
+    const snapshot = await publicDisplayService.getSnapshot();
+
+    expect(snapshot.currentCall).toBeNull();
+    expect(snapshot.recentCalls).toHaveLength(2);
+    expect(snapshot.recentCalls.map((c) => c.publicCode)).toEqual([
+      'TUR-000046-GE',
+      'TUR-000045-GE',
+    ]);
+  });
+
+  it('4. Difunde Aviso General (admin.notice) por SSE y lo mantiene en snapshot hasta expirar', async () => {
+    const stream$ = publicDisplayService.getEventStream();
+    const captured: SseMessage[] = [];
+    const sub = stream$.subscribe((m) => captured.push(m));
+
+    const emitted = publicDisplayService.emitNotice('Turno preferencial prioritario', 'warning', 15_000);
+    expect(emitted).not.toBeNull();
+
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(captured).toHaveLength(1);
+    expect(captured[0].type).toBe('admin.notice');
+    expect(JSON.parse(captured[0].data as string)).toMatchObject({
+      message: 'Turno preferencial prioritario',
+      severity: 'warning',
+    });
+
+    const snapshot = await publicDisplayService.getSnapshot();
+    expect(snapshot.activeNotice).toMatchObject({
+      message: 'Turno preferencial prioritario',
+      severity: 'warning',
+    });
+
+    sub.unsubscribe();
   });
 });

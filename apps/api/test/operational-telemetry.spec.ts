@@ -11,6 +11,7 @@ describe('Validación de Telemetría Operativa WebSocket (OperationalTelemetry)'
   let gateway: OperationalTelemetryGateway;
   let mockPrisma: any;
   let mockCubiclesService: any;
+  let mockPublicDisplayService: any;
   const SESSION_SECRET = 'super_secret_session_key_min_32_characters_12345';
 
   beforeEach(() => {
@@ -19,6 +20,13 @@ describe('Validación de Telemetría Operativa WebSocket (OperationalTelemetry)'
     vi.stubEnv('CUBICLE_DAILY_TARGET_SECONDS', '720'); // 12 minutos
 
     mockPrisma = {
+      facility: {
+        findFirst: vi.fn().mockResolvedValue({
+          id: 'fac-01',
+          code: 'SEDE-CEN-01',
+          name: 'Sede Central',
+        }),
+      },
       cubicle: {
         findMany: vi.fn().mockResolvedValue([
           {
@@ -160,19 +168,29 @@ describe('Validación de Telemetría Operativa WebSocket (OperationalTelemetry)'
     };
 
     mockCubiclesService = {};
+    mockPublicDisplayService = {
+      emitNotice: vi.fn().mockReturnValue({
+        message: 'Test',
+        severity: 'info',
+        issuedAtIso: new Date().toISOString(),
+      }),
+    };
 
     telemetryService = new OperationalTelemetryService(
       mockPrisma as PrismaService,
       mockCubiclesService as CubiclesService,
     );
 
-    gateway = new OperationalTelemetryGateway(telemetryService);
+    gateway = new OperationalTelemetryGateway(telemetryService, mockPublicDisplayService);
   });
 
   it('1. Construye snapshot inicial completo con detección automática de umbral SLA', async () => {
     const snapshot = await telemetryService.buildSnapshot();
 
     expect(snapshot).toBeDefined();
+    expect(snapshot.facilityCode).toBe('SEDE-CEN-01');
+    expect(snapshot.facilityName).toBe('Sede Central');
+    expect(snapshot.slaThresholdSeconds).toBe(720);
     expect(snapshot.cubicles).toHaveLength(5);
 
     // Cubículo 01 dentro de umbral -> ATENDIENDO
@@ -300,6 +318,36 @@ describe('Validación de Telemetría Operativa WebSocket (OperationalTelemetry)'
       expect.objectContaining({
         clientSentAt: now,
         serverTime: expect.any(String),
+      }),
+    );
+  });
+
+  it('5. Gateway reenvía Aviso General validado a PublicDisplayService y omite mensajes vacíos', () => {
+    const serverEmit = vi.fn();
+    (gateway as any).server = { emit: serverEmit };
+
+    const adminSocket: any = {
+      user: { role: UserRole.ADMIN, displayName: 'Director Técnico' },
+    };
+
+    gateway.handleBroadcastNotice(adminSocket, { message: '   ', severity: 'info' });
+    expect(mockPublicDisplayService.emitNotice).not.toHaveBeenCalled();
+
+    gateway.handleBroadcastNotice(adminSocket, {
+      message: '  Mantener orden en fila preferencial  ',
+      severity: 'warning',
+    });
+
+    expect(mockPublicDisplayService.emitNotice).toHaveBeenCalledWith(
+      'Mantener orden en fila preferencial',
+      'warning',
+    );
+    expect(serverEmit).toHaveBeenCalledWith(
+      'admin:notice',
+      expect.objectContaining({
+        message: 'Mantener orden en fila preferencial',
+        severity: 'warning',
+        sentBy: 'Director Técnico',
       }),
     );
   });

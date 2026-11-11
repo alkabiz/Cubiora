@@ -171,7 +171,7 @@ export class PharmacistsService {
     const averageServiceMinutes =
       serviceMinutes.length > 0
         ? Math.round((serviceMinutes.reduce((acc, v) => acc + v, 0) / serviceMinutes.length) * 10) / 10
-        : 4.7;
+        : 0;
 
     const assignedFacilities = new Set(
       allPharmacists

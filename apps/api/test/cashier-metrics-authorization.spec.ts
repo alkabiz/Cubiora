@@ -125,4 +125,28 @@ describe('Resumen operativo — control de acceso (RBAC)', () => {
       expect(keys).not.toContain(field);
     }
   });
+
+  it('Aplica CUBICLE_DAILY_TARGET_SECONDS en lugar de umbral fijo de 15 min', async () => {
+    vi.stubEnv('CUBICLE_DAILY_TARGET_SECONDS', '600'); // 10 min
+    try {
+      const mockPrisma = {
+        ticket: {
+          count: vi.fn().mockResolvedValue(0),
+          findMany: vi.fn().mockResolvedValue([
+            {
+              createdAt: new Date('2026-10-24T10:00:00Z'),
+              calledAt: new Date('2026-10-24T10:05:00Z'),
+              serviceStartedAt: new Date('2026-10-24T10:11:00Z'), // 660s (> 600s, < 900s)
+            },
+          ]),
+        },
+      };
+
+      const service = new CashierMetricsService(mockPrisma as unknown as PrismaService);
+      const summary = await service.getOperativeSummary();
+      expect(summary.slaCompliancePct).toBe(0);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
 });

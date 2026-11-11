@@ -154,6 +154,16 @@ describe('[SCR-ADM-004] PharmacistsModule – Servicio, DTOs y RBAC', () => {
     });
   });
 
+  it('findAll retorna averageServiceMinutes = 0 cuando no existen tickets cerrados (sin mock 4.7)', async () => {
+    mockPrisma.ticket.findMany.mockResolvedValueOnce([]);
+    mockPrisma.pharmacist.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    const result = await service.findAll({});
+    expect(result.metrics.averageServiceMinutes).toBe(0);
+  });
+
   it('create valida duplicados (409) y sincroniza Cubicle.operatorName al asignar cubículo', async () => {
     mockPrisma.pharmacist.findFirst.mockResolvedValueOnce({
       id: 'ph-existing',
