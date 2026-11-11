@@ -5,7 +5,7 @@ import {
   GridIcon,
   PlusCircledIcon,
 } from '@radix-ui/react-icons';
-import { Building2, Users } from 'lucide-react';
+import { Building2, Users, Activity } from 'lucide-react';
 
 export type AppRole = 'RECEPTION' | 'CASHIER' | 'ADMIN';
 
@@ -15,6 +15,7 @@ export interface NavigationItem {
   icon: React.ElementType;
   allowedRoles: AppRole[];
   code?: string;
+  exact?: boolean;
 }
 
 export const APP_NAVIGATION: NavigationItem[] = [
@@ -29,6 +30,14 @@ export const APP_NAVIGATION: NavigationItem[] = [
     path: '/cajero',
     icon: DesktopIcon,
     allowedRoles: ['CASHIER'],
+  },
+  {
+    label: 'Resumen operativo',
+    path: '/admin',
+    icon: Activity,
+    allowedRoles: ['ADMIN'],
+    code: 'SCR-ADM-001',
+    exact: true,
   },
   {
     label: 'Cubículos',
@@ -81,7 +90,7 @@ export const NAVIGATION_SECTION_LABEL: Record<AppRole, string> = {
 export const DEFAULT_ROUTE_BY_ROLE: Record<AppRole, string> = {
   RECEPTION: '/recepcion',
   CASHIER: '/cajero',
-  ADMIN: '/admin/cubiculos',
+  ADMIN: '/admin',
 };
 
 export function getNavigationForRole(role: AppRole): NavigationItem[] {
@@ -89,5 +98,8 @@ export function getNavigationForRole(role: AppRole): NavigationItem[] {
 }
 
 export function isNavigationItemActive(item: NavigationItem, pathname: string): boolean {
+  if (item.exact) {
+    return pathname === item.path || (item.path === '/admin' && pathname === '/admin/supervision');
+  }
   return pathname === item.path || pathname.startsWith(`${item.path}/`);
 }

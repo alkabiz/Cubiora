@@ -39,8 +39,12 @@ describe('AdminOverviewScreen · Escalabilidad Mega-Centro y Prescripción de Cu
     expect(compactBtn.getAttribute('aria-pressed')).toBe('false');
   });
 
-  it('renderiza la tarjeta reactiva de Cuello de Botella cuando se detecta congestión', () => {
+  it('renderiza la tarjeta reactiva de Cuello de Botella cuando se detecta congestión y datos reales sin mocks', () => {
     vi.spyOn(telemetryHook, 'useOperationalTelemetry').mockReturnValue({
+      facilityCode: 'SEDE-CEN-01',
+      facilityName: 'Sede Central',
+      slaThresholdSeconds: 600,
+      isLoaded: true,
       cubicles: [],
       queue: [],
       kpis: {
@@ -52,6 +56,7 @@ describe('AdminOverviewScreen · Escalabilidad Mega-Centro y Prescripción de Cu
         noShowTodayCount: 0,
         noShowRate: 0,
         averageWaitSeconds: 980,
+        averageServiceSeconds: 310,
       },
       slaAlert: {
         isActive: false,
@@ -59,7 +64,7 @@ describe('AdminOverviewScreen · Escalabilidad Mega-Centro y Prescripción de Cu
         worstCubicleDisplay: null,
         affectedTicketCode: null,
         elapsedSeconds: null,
-        thresholdSeconds: 720,
+        thresholdSeconds: 600,
         slaCompliancePercentage: 95.0,
       },
       bottleneckRecommendation: {
@@ -75,10 +80,16 @@ describe('AdminOverviewScreen · Escalabilidad Mega-Centro y Prescripción de Cu
       connectionStatus: 'connected',
       latencyMs: 12,
       forceRefresh: vi.fn(),
-      sendBroadcastNotice: vi.fn(),
+      sendBroadcastNotice: vi.fn().mockReturnValue(true),
     });
 
     renderWithProviders(<AdminOverviewScreen />);
+
+    expect(screen.getByText('SEDE-CEN-01')).toBeDefined();
+    expect(screen.getByText('SLA ≤ 10 min')).toBeDefined();
+    expect(screen.queryByText('DISP-CENTRAL')).toBeNull();
+    expect(screen.queryByText('98.2%')).toBeNull();
+    expect(screen.queryByText('±42s')).toBeNull();
 
     const card = screen.getByTestId('bottleneck-recommendation-card');
     expect(card).toBeDefined();
@@ -87,5 +98,52 @@ describe('AdminOverviewScreen · Escalabilidad Mega-Centro y Prescripción de Cu
       within(card).getByText(/cuello de botella detectado en alto costo \/ mipres/i),
     ).toBeDefined();
     expect(within(card).getByText('Reasignar [Cubículo 01] a Alto Costo / MIPRES')).toBeDefined();
+  });
+
+  it('muestra valores vacíos honestos y alerta OFFLINE cuando la telemetría está sin conexión', () => {
+    vi.spyOn(telemetryHook, 'useOperationalTelemetry').mockReturnValue({
+      facilityCode: null,
+      facilityName: null,
+      slaThresholdSeconds: null,
+      isLoaded: false,
+      cubicles: [],
+      queue: [],
+      kpis: {
+        waitingCount: 0,
+        activeCubicles: 0,
+        totalCubicles: 0,
+        closedTodayCount: 0,
+        slaCompliancePercentage: null,
+        noShowTodayCount: 0,
+        noShowRate: null,
+        averageWaitSeconds: null,
+        averageServiceSeconds: null,
+      },
+      slaAlert: {
+        isActive: false,
+        worstCubicleCode: null,
+        worstCubicleDisplay: null,
+        affectedTicketCode: null,
+        elapsedSeconds: null,
+        thresholdSeconds: 0,
+        slaCompliancePercentage: null,
+      },
+      bottleneckRecommendation: null,
+      hourlyFlow: [],
+      connectionStatus: 'offline',
+      latencyMs: null,
+      forceRefresh: vi.fn(),
+      sendBroadcastNotice: vi.fn().mockReturnValue(false),
+    });
+
+    renderWithProviders(<AdminOverviewScreen />);
+
+    expect(screen.getByRole('alert')).toBeDefined();
+    expect(screen.getByText(/Telemetría sin conexión en vivo \(OFFLINE\)/i)).toBeDefined();
+    expect(screen.getByText('0%')).toBeDefined();
+    expect(screen.getByText('Offline')).toBeDefined();
+    expect(screen.queryByText('98.2%')).toBeNull();
+    expect(screen.queryByText('1.33%')).toBeNull();
+    expect(screen.queryByText('DISP-CENTRAL')).toBeNull();
   });
 });

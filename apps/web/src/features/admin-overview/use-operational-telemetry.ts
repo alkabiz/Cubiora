@@ -43,139 +43,28 @@ export function formatWaitTime(totalSeconds: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')} min`;
 }
 
-// ─── Estado inicial mockeado (Fallback de alta fidelidad) ──────────────────────
-const FALLBACK_CUBICLES: CubicleStation[] = [
-  {
-    id: 'CUB-01',
-    name: 'Cubículo 01',
-    moduleCode: 'MOD-A',
-    status: 'ATENDIENDO',
-    assignedTicket: 'TUR-000122-F4',
-    operatorName: 'Lic. M. Arismendi',
-    elapsedSeconds: 432, // 07:12 min
-    elapsedTimeFormatted: '07:12 min',
-    statusFooterText: 'En rango de SLA nominal',
-    dailyProcessedCount: 38,
-    slaThresholdSeconds: 720,
-    startedAtIso: new Date(Date.now() - 432 * 1000).toISOString(),
-  },
-  {
-    id: 'CUB-02',
-    name: 'Cubículo 02',
-    moduleCode: 'MOD-A',
-    status: 'SLA_EXCEDIDO',
-    assignedTicket: 'TUR-000120-B9',
-    operatorName: 'Farm. J. Duarte',
-    elapsedSeconds: 877, // 14:37 min
-    elapsedTimeFormatted: '14:37 min',
-    statusFooterText: 'Umbral superado (>12 min)',
-    dailyProcessedCount: 34,
-    slaThresholdSeconds: 720,
-    startedAtIso: new Date(Date.now() - 877 * 1000).toISOString(),
-  },
-  {
-    id: 'CUB-03',
-    name: 'Cubículo 03',
-    moduleCode: 'MOD-B',
-    status: 'LLAMANDO',
-    assignedTicket: 'TUR-000123-A7',
-    operatorName: 'Lic. R. Mendoza',
-    elapsedSeconds: 157, // 02:37 min
-    elapsedTimeFormatted: '02:37 min',
-    statusFooterText: 'Proyectado en monitor',
-    dailyProcessedCount: 41,
-    calledAtIso: new Date(Date.now() - 157 * 1000).toISOString(),
-  },
-  {
-    id: 'CUB-04',
-    name: 'Cubículo 04',
-    moduleCode: 'MOD-B',
-    status: 'DISPONIBLE',
-    assignedTicket: null,
-    operatorName: 'Farm. S. Quintero',
-    elapsedSeconds: 187, // 3m 7s
-    elapsedTimeFormatted: 'Ocio: hace 3m 7s',
-    statusFooterText: 'Estación lista para asignación',
-    dailyProcessedCount: 35,
-    idleSinceIso: new Date(Date.now() - 187 * 1000).toISOString(),
-  },
-  {
-    id: 'CUB-05',
-    name: 'Cubículo 05',
-    moduleCode: 'MOD-C',
-    status: 'INACTIVO',
-    assignedTicket: null,
-    operatorName: null,
-    elapsedSeconds: 0,
-    elapsedTimeFormatted: 'Fuera de servicio',
-    statusFooterText: 'Puesto en mantenimiento programado',
-    dailyProcessedCount: 0,
-    fullWidth: true,
-  },
-];
-
-const FALLBACK_QUEUE: QueuedTicket[] = [
-  {
-    position: 1,
-    ticketCode: 'TUR-000124-K3',
-    priority: 'PREFERENCIAL',
-    issuedAt: '14:03:18',
-    waitingSeconds: 597, // 09:57 min
-    issuedAtIso: new Date(Date.now() - 597 * 1000).toISOString(),
-  },
-  {
-    position: 2,
-    ticketCode: 'TUR-000125-P8',
-    priority: 'GENERAL',
-    issuedAt: '14:05:30',
-    waitingSeconds: 465, // 07:45 min
-    issuedAtIso: new Date(Date.now() - 465 * 1000).toISOString(),
-  },
-  {
-    position: 3,
-    ticketCode: 'TUR-000126-M2',
-    priority: 'GENERAL',
-    issuedAt: '14:07:48',
-    waitingSeconds: 327, // 05:27 min
-    issuedAtIso: new Date(Date.now() - 327 * 1000).toISOString(),
-  },
-  {
-    position: 4,
-    ticketCode: 'TUR-000127-R1',
-    priority: 'GENERAL',
-    issuedAt: '14:09:10',
-    waitingSeconds: 245, // 04:05 min
-    issuedAtIso: new Date(Date.now() - 245 * 1000).toISOString(),
-  },
-];
-
-const FALLBACK_KPIS: TelemetryDailyKpis = {
-  waitingCount: 4,
-  activeCubicles: 3,
-  totalCubicles: 4,
-  closedTodayCount: 148,
-  slaCompliancePercentage: 98.2,
-  noShowTodayCount: 2,
-  noShowRate: 1.33,
+// ─── Estado inicial honesto (sin mocks ni cifras inventadas) ──────────────────
+const INITIAL_EMPTY_KPIS: TelemetryDailyKpis = {
+  waitingCount: 0,
+  activeCubicles: 0,
+  totalCubicles: 0,
+  closedTodayCount: 0,
+  slaCompliancePercentage: null,
+  noShowTodayCount: 0,
+  noShowRate: null,
+  averageWaitSeconds: null,
+  averageServiceSeconds: null,
 };
 
-const FALLBACK_SLA_ALERT: TelemetrySlaAlert = {
-  isActive: true,
-  worstCubicleCode: 'CUB-02',
-  worstCubicleDisplay: 'Cubículo 02',
-  affectedTicketCode: 'TUR-000120-B9',
-  elapsedSeconds: 859, // 14:19 min
-  thresholdSeconds: 720,
-  slaCompliancePercentage: 98.2,
+const INITIAL_EMPTY_SLA_ALERT: TelemetrySlaAlert = {
+  isActive: false,
+  worstCubicleCode: null,
+  worstCubicleDisplay: null,
+  affectedTicketCode: null,
+  elapsedSeconds: null,
+  thresholdSeconds: 0,
+  slaCompliancePercentage: null,
 };
-
-const FALLBACK_HOURLY_FLOW: HourlyFlowEntry[] = [
-  { hour: '07:00', volume: 28 },
-  { hour: '08:00', volume: 56 },
-  { hour: '09:00', volume: 72, isCurrentHour: true },
-  { hour: '10:00', volume: 44 },
-  { hour: '11:00', volume: 20 },
-];
 
 // ─── Helpers de conversión Server → Client ───────────────────────────────────
 
@@ -266,14 +155,21 @@ function mapServerQueue(serverQueue: TelemetryQueuedTicket[]): QueuedTicket[] {
 // ─── Hook principal ───────────────────────────────────────────────────────────
 
 export function useOperationalTelemetry(enabled = true): OperationalTelemetryHookResult {
-  const [cubicles, setCubicles] = useState<CubicleStation[]>(FALLBACK_CUBICLES);
-  const [queue, setQueue] = useState<QueuedTicket[]>(FALLBACK_QUEUE);
-  const [kpis, setKpis] = useState<TelemetryDailyKpis>(FALLBACK_KPIS);
-  const [slaAlert, setSlaAlert] = useState<TelemetrySlaAlert>(FALLBACK_SLA_ALERT);
-  const [bottleneckRecommendation, setBottleneckRecommendation] = useState<BottleneckRecommendation | null>(null);
-  const [hourlyFlow, setHourlyFlow] = useState<HourlyFlowEntry[]>(FALLBACK_HOURLY_FLOW);
-  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
-  const [latencyMs, setLatencyMs] = useState<number>(18);
+  const [facilityCode, setFacilityCode] = useState<string | null>(null);
+  const [facilityName, setFacilityName] = useState<string | null>(null);
+  const [slaThresholdSeconds, setSlaThresholdSeconds] = useState<number | null>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [cubicles, setCubicles] = useState<CubicleStation[]>([]);
+  const [queue, setQueue] = useState<QueuedTicket[]>([]);
+  const [kpis, setKpis] = useState<TelemetryDailyKpis>(INITIAL_EMPTY_KPIS);
+  const [slaAlert, setSlaAlert] = useState<TelemetrySlaAlert>(INITIAL_EMPTY_SLA_ALERT);
+  const [bottleneckRecommendation, setBottleneckRecommendation] =
+    useState<BottleneckRecommendation | null>(null);
+  const [hourlyFlow, setHourlyFlow] = useState<HourlyFlowEntry[]>([]);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(() =>
+    typeof navigator !== 'undefined' && navigator.onLine === false ? 'offline' : 'connecting',
+  );
+  const [latencyMs, setLatencyMs] = useState<number | null>(null);
 
   const socketRef = useRef<Socket | null>(null);
   const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -302,18 +198,36 @@ export function useOperationalTelemetry(enabled = true): OperationalTelemetryHoo
 
     socket.on('disconnect', () => {
       setConnectionStatus('disconnected');
+      setLatencyMs(null);
     });
 
     socket.on('connect_error', () => {
-      setConnectionStatus('fallback');
+      setConnectionStatus('offline');
+      setLatencyMs(null);
     });
 
     // ─── Receptor: Snapshot completo ─────────────────────────────────────────
     socket.on(TELEMETRY_EVENTS.SNAPSHOT, (snapshot: TelemetrySnapshotPayload) => {
-      if (snapshot.cubicles && snapshot.cubicles.length > 0) {
+      if (snapshot.facilityCode !== undefined) {
+        setFacilityCode(snapshot.facilityCode ?? null);
+      }
+      if (snapshot.facilityName !== undefined) {
+        setFacilityName(snapshot.facilityName ?? null);
+      }
+      const resolvedSla =
+        typeof snapshot.slaThresholdSeconds === 'number' && snapshot.slaThresholdSeconds > 0
+          ? snapshot.slaThresholdSeconds
+          : snapshot.slaAlert?.thresholdSeconds && snapshot.slaAlert.thresholdSeconds > 0
+            ? snapshot.slaAlert.thresholdSeconds
+            : snapshot.cubicles?.[0]?.slaThresholdSeconds ?? null;
+      if (resolvedSla !== null) {
+        setSlaThresholdSeconds(resolvedSla);
+      }
+
+      if (Array.isArray(snapshot.cubicles)) {
         setCubicles(snapshot.cubicles.map(mapServerCubicle));
       }
-      if (snapshot.queue) {
+      if (Array.isArray(snapshot.queue)) {
         setQueue(mapServerQueue(snapshot.queue));
       }
       if (snapshot.kpis) {
@@ -325,7 +239,7 @@ export function useOperationalTelemetry(enabled = true): OperationalTelemetryHoo
       if (snapshot.bottleneckRecommendation !== undefined) {
         setBottleneckRecommendation(snapshot.bottleneckRecommendation ?? null);
       }
-      if (snapshot.hourlyFlow) {
+      if (Array.isArray(snapshot.hourlyFlow)) {
         const currentHour = `${String(new Date().getHours()).padStart(2, '0')}:00`;
         setHourlyFlow(
           snapshot.hourlyFlow.map((hf) => ({
@@ -335,6 +249,7 @@ export function useOperationalTelemetry(enabled = true): OperationalTelemetryHoo
           })),
         );
       }
+      setIsLoaded(true);
       setConnectionStatus('connected');
     });
 
@@ -433,8 +348,8 @@ export function useOperationalTelemetry(enabled = true): OperationalTelemetryHoo
         // ATENDIENDO o SLA_EXCEDIDO
         if (c.startedAtIso) {
           totalSecs = Math.max(0, Math.floor((nowMs - new Date(c.startedAtIso).getTime()) / 1000));
-          const threshold = c.slaThresholdSeconds || 720;
-          if (totalSecs > threshold && visualStatus === 'ATENDIENDO') {
+          const threshold = c.slaThresholdSeconds;
+          if (threshold && threshold > 0 && totalSecs > threshold && visualStatus === 'ATENDIENDO') {
             visualStatus = 'SLA_EXCEDIDO';
           }
         } else {
@@ -447,8 +362,8 @@ export function useOperationalTelemetry(enabled = true): OperationalTelemetryHoo
           elapsedSeconds: totalSecs,
           elapsedTimeFormatted: formatElapsedTime(totalSecs),
           statusFooterText:
-            visualStatus === 'SLA_EXCEDIDO'
-              ? `Umbral superado (>${Math.round((c.slaThresholdSeconds || 720) / 60)} min)`
+            visualStatus === 'SLA_EXCEDIDO' && c.slaThresholdSeconds
+              ? `Umbral superado (>${Math.round(c.slaThresholdSeconds / 60)} min)`
               : c.statusFooterText,
         };
       }),
@@ -489,15 +404,22 @@ export function useOperationalTelemetry(enabled = true): OperationalTelemetryHoo
 
   /** Envía un aviso general para proyectar en monitores */
   const sendBroadcastNotice = useCallback(
-    (message: string, severity: 'info' | 'warning' | 'critical' = 'info') => {
-      if (socketRef.current?.connected) {
-        socketRef.current.emit(TELEMETRY_EVENTS.BROADCAST_NOTICE, { message, severity });
+    (message: string, severity: 'info' | 'warning' | 'critical' = 'info'): boolean => {
+      const trimmed = message.trim();
+      if (!trimmed || !socketRef.current?.connected) {
+        return false;
       }
+      socketRef.current.emit(TELEMETRY_EVENTS.BROADCAST_NOTICE, { message: trimmed, severity });
+      return true;
     },
     [],
   );
 
   return {
+    facilityCode,
+    facilityName,
+    slaThresholdSeconds,
+    isLoaded,
     cubicles,
     queue,
     kpis,

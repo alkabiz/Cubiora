@@ -1,6 +1,7 @@
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/auth-context';
+import { DEFAULT_ROUTE_BY_ROLE } from '../app/navigation-config';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -24,16 +25,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowe
   }
 
   if (allowedRoles && !allowedRoles.includes(user.role)) {
-    if (user.role === 'RECEPTION') {
-      return <Navigate to="/recepcion" replace />;
-    }
-    if (user.role === 'CASHIER') {
-      return <Navigate to="/cajero" replace />;
-    }
-    if (user.role === 'ADMIN') {
-      return <Navigate to="/admin/cubiculos" replace />;
-    }
-    return <Navigate to="/login" replace />;
+    return <Navigate to={DEFAULT_ROUTE_BY_ROLE[user.role] ?? '/login'} replace />;
   }
 
   return <>{children}</>;

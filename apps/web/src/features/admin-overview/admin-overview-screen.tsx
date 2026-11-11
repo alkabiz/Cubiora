@@ -11,10 +11,11 @@ import {
   Grid2X2,
   CheckCircle2,
   UserX,
-  TrendingDown,
+  Clock,
   Timer,
   Activity,
   Cpu,
+  WifiOff,
 } from 'lucide-react';
 
 import { CubicleCard } from './cubicle-card';
@@ -27,9 +28,21 @@ import type { TelemetryDailyKpis, TelemetrySlaAlert, BottleneckRecommendation } 
 // ─── Banner de alerta SLA ─────────────────────────────────────────────────────
 interface SlaAlertBannerProps {
   alert: TelemetrySlaAlert;
+  slaThresholdSeconds: number | null;
+  isLoaded: boolean;
 }
 
-const SlaAlertBanner: React.FC<SlaAlertBannerProps> = ({ alert }) => {
+const SlaAlertBanner: React.FC<SlaAlertBannerProps> = ({
+  alert,
+  slaThresholdSeconds,
+  isLoaded,
+}) => {
+  const effectiveThreshold =
+    alert.thresholdSeconds > 0 ? alert.thresholdSeconds : slaThresholdSeconds ?? 0;
+  const thresholdMin = effectiveThreshold > 0 ? Math.round(effectiveThreshold / 60) : null;
+  const complianceDisplay =
+    alert.slaCompliancePercentage !== null ? `${alert.slaCompliancePercentage}%` : '—';
+
   if (!alert.isActive) {
     return (
       <div className="bg-emerald-50/70 border border-emerald-200/80 rounded-xl p-3.5 flex items-center justify-between gap-4">
@@ -43,28 +56,32 @@ const SlaAlertBanner: React.FC<SlaAlertBannerProps> = ({ alert }) => {
                 DIAGNÓSTICO OPERATIVO:
               </span>
               <span className="bg-emerald-600 text-white text-[11px] font-bold px-2 py-0.5 rounded">
-                OPERACIÓN NOMINAL
+                {isLoaded ? 'OPERACIÓN NOMINAL' : 'SINCRONIZANDO'}
               </span>
             </div>
             <p className="text-xs text-slate-700 mt-0.5">
-              Todos los puestos activos se encuentran operando dentro del umbral SLA nominal (≤ 12 minutos).
+              {!isLoaded
+                ? 'Esperando el primer snapshot de telemetría en tiempo real desde la sede activa.'
+                : thresholdMin !== null
+                  ? `Todos los puestos activos operan dentro del umbral SLA configurado (≤ ${thresholdMin} minutos).`
+                  : 'Todos los puestos activos operan dentro de los parámetros nominales.'}
             </p>
           </div>
         </div>
         <div className="text-right flex-shrink-0">
           <span className="text-xs text-slate-500 block">SLA General:</span>
           <span className="text-sm font-mono font-bold text-slate-900">
-            {alert.slaCompliancePercentage ?? 98.2}%
+            {complianceDisplay}
           </span>
         </div>
       </div>
     );
   }
 
-  const thresholdMin = Math.round((alert.thresholdSeconds || 720) / 60);
-  const elapsedFormatted = alert.elapsedSeconds ? formatElapsedTime(alert.elapsedSeconds) : '14:19 min';
-  const worstDisplay = alert.worstCubicleDisplay || 'Cubículo 02';
-  const affectedTicket = alert.affectedTicketCode || 'TUR-000120-B9';
+  const elapsedFormatted =
+    alert.elapsedSeconds !== null ? formatElapsedTime(alert.elapsedSeconds) : '—';
+  const worstDisplay = alert.worstCubicleDisplay || alert.worstCubicleCode || 'Puesto en atención';
+  const affectedTicket = alert.affectedTicketCode || '—';
 
   return (
     <div className="bg-[#FEF2F2] border border-red-200/80 rounded-xl p-3.5 flex items-center justify-between gap-4">
@@ -85,8 +102,8 @@ const SlaAlertBanner: React.FC<SlaAlertBannerProps> = ({ alert }) => {
           <p className="text-xs text-slate-700 mt-1 leading-relaxed">
             El puesto {worstDisplay} registra un tiempo acumulado de atención de{' '}
             <span className="font-semibold">{elapsedFormatted}</span> en el turno{' '}
-            <span className="font-mono font-semibold">{affectedTicket}</span>, superando el umbral de{' '}
-            {thresholdMin} minutos.
+            <span className="font-mono font-semibold">{affectedTicket}</span>
+            {thresholdMin !== null ? `, superando el umbral de ${thresholdMin} minutos.` : '.'}
           </p>
         </div>
       </div>
@@ -95,7 +112,7 @@ const SlaAlertBanner: React.FC<SlaAlertBannerProps> = ({ alert }) => {
       <div className="text-right flex-shrink-0">
         <span className="text-xs text-slate-700 font-medium block">SLA General:</span>
         <span className="text-sm font-mono font-bold text-slate-900">
-          {alert.slaCompliancePercentage ?? 98.2}%
+          {complianceDisplay}
         </span>
       </div>
     </div>
@@ -105,19 +122,24 @@ const SlaAlertBanner: React.FC<SlaAlertBannerProps> = ({ alert }) => {
 // ─── Grid KPI ─────────────────────────────────────────────────────────────────
 interface KpiSummaryGridProps {
   kpis: TelemetryDailyKpis;
+  slaThresholdSeconds: number | null;
 }
 
-const KpiSummaryGrid: React.FC<KpiSummaryGridProps> = ({ kpis }) => {
+const KpiSummaryGrid: React.FC<KpiSummaryGridProps> = ({ kpis, slaThresholdSeconds }) => {
   const waitingPadded = String(kpis.waitingCount).padStart(2, '0');
   const activePercent =
-    kpis.totalCubicles > 0 ? Math.round((kpis.activeCubicles / kpis.totalCubicles) * 100) : 75;
+    kpis.totalCubicles > 0 ? Math.round((kpis.activeCubicles / kpis.totalCubicles) * 100) : 0;
   const closedCountStr = String(kpis.closedTodayCount);
   const slaComplianceStr =
-    kpis.slaCompliancePercentage !== null ? `${kpis.slaCompliancePercentage}%` : '98.2%';
+    kpis.slaCompliancePercentage !== null ? `${kpis.slaCompliancePercentage}%` : '—';
   const noShowPadded = String(kpis.noShowTodayCount).padStart(2, '0');
-  const noShowRateStr = kpis.noShowRate !== null ? `${kpis.noShowRate}%` : '1.33%';
+  const noShowRateStr = kpis.noShowRate !== null ? `${kpis.noShowRate}%` : '—';
+  const slaTargetMins =
+    slaThresholdSeconds && slaThresholdSeconds > 0
+      ? Math.round(slaThresholdSeconds / 60)
+      : null;
 
-  let waitText = '6m prom.';
+  let waitText = '—';
   let waitClass = 'text-blue-700';
 
   if (kpis.averageWaitSeconds !== undefined && kpis.averageWaitSeconds !== null) {
@@ -139,13 +161,14 @@ const KpiSummaryGrid: React.FC<KpiSummaryGridProps> = ({ kpis }) => {
         mainValue={waitingPadded}
         mainUnit="turnos"
         secondaryValue={<span className={waitClass}>{waitText}</span>}
-        secondaryLabel="Tiempo estimado"
+        secondaryLabel="Espera promedio (AWT)"
         footer={
           <div className="flex items-center gap-1.5 text-xs text-slate-600">
-            <TrendingDown size={12} className="text-emerald-700 flex-shrink-0" />
+            <Clock size={12} className="text-slate-500 flex-shrink-0" />
             <span>
-              <span className="text-emerald-800 font-bold">-1.4 min</span> comparado a la hora
-              anterior
+              {kpis.waitingCount > 0
+                ? 'Pacientes aguardando llamado en sala'
+                : 'Sin turnos pendientes en cola'}
             </span>
           </div>
         }
@@ -156,7 +179,7 @@ const KpiSummaryGrid: React.FC<KpiSummaryGridProps> = ({ kpis }) => {
         label="Cubículos activos"
         icon={<Grid2X2 size={15} />}
         mainValue={`${activePercent}%`}
-        mainUnit="ocupación"
+        mainUnit="habilitados"
         secondaryValue={
           <span className="text-slate-800">
             {kpis.activeCubicles} de {kpis.totalCubicles}
@@ -182,11 +205,15 @@ const KpiSummaryGrid: React.FC<KpiSummaryGridProps> = ({ kpis }) => {
         mainValue={closedCountStr}
         mainUnit="atendidos"
         secondaryValue={<span className="text-emerald-800 font-bold">{slaComplianceStr}</span>}
-        secondaryLabel="SLA &lt; 8 min"
+        secondaryLabel={slaTargetMins !== null ? `SLA ≤ ${slaTargetMins} min` : 'Cumplimiento SLA'}
         footer={
           <div className="flex items-center gap-1.5 text-xs text-slate-600">
             <Timer size={12} className="text-slate-500 flex-shrink-0" />
-            <span>Desviación estándar: ±42s</span>
+            <span>
+              {kpis.averageServiceSeconds !== undefined && kpis.averageServiceSeconds !== null
+                ? `TMM hoy: ${formatElapsedTime(kpis.averageServiceSeconds)}`
+                : 'Sin turnos cerrados en la jornada'}
+            </span>
           </div>
         }
       />
@@ -246,44 +273,52 @@ const HourlyFlowWidget: React.FC<HourlyFlowWidgetProps> = ({ flow }) => {
         <span className="text-xs text-slate-600">Turnos procesados / Hora de atención</span>
       </div>
 
-      {/* Barras */}
-      <div className="flex items-end justify-around gap-2 pt-4 pb-1 h-20">
-        {flow.map((entry) => {
-          const heightPct = Math.round((entry.volume / maxVolume) * 100);
-          return (
-            <div key={entry.hour} className="flex flex-col items-center gap-1 flex-1">
+      {flow.length === 0 ? (
+        <div className="py-6 text-center text-xs text-slate-500">
+          Sin datos de flujo horario para la jornada actual.
+        </div>
+      ) : (
+        <>
+          {/* Barras */}
+          <div className="flex items-end justify-around gap-2 pt-4 pb-1 h-20">
+            {flow.map((entry) => {
+              const heightPct = Math.round((entry.volume / maxVolume) * 100);
+              return (
+                <div key={entry.hour} className="flex flex-col items-center gap-1 flex-1">
+                  <span
+                    className={`text-[10px] font-mono tabular-nums font-bold ${
+                      entry.isCurrentHour ? 'text-blue-700' : 'text-slate-600'
+                    }`}
+                  >
+                    {entry.volume}
+                  </span>
+                  <div
+                    className={`w-full rounded-t-sm transition-all duration-300 ${
+                      entry.isCurrentHour ? 'bg-blue-500' : 'bg-slate-200'
+                    }`}
+                    style={{ height: `${heightPct}%`, minHeight: '4px' }}
+                    title={`${entry.hour} — ${entry.volume} turnos`}
+                  />
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Etiquetas de hora */}
+          <div className="flex justify-around pt-1">
+            {flow.map((entry) => (
               <span
-                className={`text-[10px] font-mono tabular-nums font-bold ${
-                  entry.isCurrentHour ? 'text-blue-700' : 'text-slate-600'
+                key={entry.hour}
+                className={`text-xs font-mono tabular-nums flex-1 text-center ${
+                  entry.isCurrentHour ? 'font-bold text-blue-900' : 'text-slate-600'
                 }`}
               >
-                {entry.volume}
+                {entry.hour}
               </span>
-              <div
-                className={`w-full rounded-t-sm transition-all duration-300 ${
-                  entry.isCurrentHour ? 'bg-blue-500' : 'bg-slate-200'
-                }`}
-                style={{ height: `${heightPct}%`, minHeight: '4px' }}
-                title={`${entry.hour} — ${entry.volume} turnos`}
-              />
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Etiquetas de hora */}
-      <div className="flex justify-around pt-1">
-        {flow.map((entry) => (
-          <span
-            key={entry.hour}
-            className={`text-xs font-mono tabular-nums flex-1 text-center ${
-              entry.isCurrentHour ? 'font-bold text-blue-900' : 'text-slate-600'
-            }`}
-          >
-            {entry.hour}
-          </span>
-        ))}
-      </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 };
@@ -342,6 +377,10 @@ const BottleneckCard: React.FC<BottleneckCardProps> = ({ recommendation }) => {
 // ─── Componente principal SCR-ADM-001 ─────────────────────────────────────────
 export const AdminOverviewScreen: React.FC = () => {
   const {
+    facilityCode,
+    facilityName,
+    slaThresholdSeconds,
+    isLoaded,
     cubicles,
     queue,
     kpis,
@@ -356,6 +395,10 @@ export const AdminOverviewScreen: React.FC = () => {
 
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [densityMode, setDensityMode] = useState<'standard' | 'compact'>('standard');
+  const [noticeFeedback, setNoticeFeedback] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
 
   const handleRefreshClick = () => {
     setIsRefreshing(true);
@@ -364,15 +407,43 @@ export const AdminOverviewScreen: React.FC = () => {
   };
 
   const handleBroadcastClick = () => {
+    setNoticeFeedback(null);
     const message = window.prompt(
       'Ingrese el mensaje de aviso general para proyectar en pantallas de sala:',
       'Atención: favor verificar número de cubículo en pantalla antes de avanzar.',
     );
     if (message && message.trim().length > 0) {
-      sendBroadcastNotice(message.trim(), 'info');
-      alert('Aviso general transmitido a monitores de sala.');
+      const sent = sendBroadcastNotice(message.trim(), 'info');
+      if (sent) {
+        setNoticeFeedback({
+          type: 'success',
+          text: 'Aviso general enviado en tiempo real a monitores de sala.',
+        });
+      } else {
+        setNoticeFeedback({
+          type: 'error',
+          text: 'Sin conexión WebSocket activa: no fue posible emitir el aviso general.',
+        });
+      }
     }
   };
+
+  const wsStatusLabel =
+    connectionStatus === 'connected'
+      ? latencyMs !== null
+        ? `${latencyMs}ms`
+        : 'En línea'
+      : connectionStatus === 'connecting'
+        ? 'Conectando…'
+        : connectionStatus === 'offline'
+          ? 'Offline'
+          : 'Desconectado';
+
+  const facilityBadgeText = facilityCode
+    ? facilityCode
+    : isLoaded
+      ? 'SIN SEDE'
+      : 'SINCRONIZANDO';
 
   return (
     <div className="min-h-screen bg-[#F8FAFC]">
@@ -394,8 +465,11 @@ export const AdminOverviewScreen: React.FC = () => {
             <h1 className="text-xl font-bold text-slate-900 leading-tight">
               CMP-ADM-001 · Estado General Operativo
             </h1>
-            <span className="bg-sky-50 text-sky-700 border border-sky-200 text-xs font-mono px-2 py-0.5 rounded flex-shrink-0">
-              DISP-CENTRAL
+            <span
+              title={facilityName ?? undefined}
+              className="bg-sky-50 text-sky-700 border border-sky-200 text-xs font-mono px-2 py-0.5 rounded flex-shrink-0"
+            >
+              {facilityBadgeText}
             </span>
           </div>
         </div>
@@ -406,7 +480,7 @@ export const AdminOverviewScreen: React.FC = () => {
           <button
             type="button"
             onClick={handleRefreshClick}
-            title="Conexión WebSocket activa. Clic para forzar actualización de snapshot"
+            title="Estado de conexión WebSocket. Clic para solicitar snapshot actualizado"
             className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-full px-3 py-1.5 text-xs hover:bg-slate-100 transition-colors cursor-pointer"
           >
             <span
@@ -415,12 +489,12 @@ export const AdminOverviewScreen: React.FC = () => {
                   ? 'bg-blue-500 animate-pulse'
                   : connectionStatus === 'connecting'
                     ? 'bg-amber-500 animate-pulse'
-                    : 'bg-slate-400'
+                    : 'bg-red-500'
               }`}
             />
             <span className="text-slate-600">WebSocket</span>
             <span className="font-mono font-bold text-slate-900 tabular-nums">
-              {latencyMs}ms
+              {wsStatusLabel}
             </span>
             <RefreshCw
               size={11}
@@ -460,11 +534,43 @@ export const AdminOverviewScreen: React.FC = () => {
 
       {/* ═══════════════ CONTENIDO PRINCIPAL ═══════════════ */}
       <main className="p-6 space-y-5">
+        {(connectionStatus === 'offline' || connectionStatus === 'disconnected') && (
+          <div
+            role="alert"
+            className="bg-red-50 border border-red-200 text-red-900 rounded-xl px-4 py-3 flex items-center gap-2.5 text-xs font-medium"
+          >
+            <WifiOff size={15} className="text-red-600 flex-shrink-0" aria-hidden="true" />
+            <span>
+              Telemetría sin conexión en vivo ({connectionStatus === 'offline' ? 'OFFLINE' : 'DESCONECTADO'}).
+              {isLoaded
+                ? ' Se muestran los últimos datos confirmados antes de perder conexión.'
+                : ' No se ha recibido snapshot operativo del servidor.'}
+            </span>
+          </div>
+        )}
+
+        {noticeFeedback && (
+          <div
+            role="status"
+            className={`rounded-xl px-4 py-2.5 text-xs font-medium border ${
+              noticeFeedback.type === 'success'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                : 'bg-red-50 border-red-200 text-red-900'
+            }`}
+          >
+            {noticeFeedback.text}
+          </div>
+        )}
+
         {/* Banner SLA reactivo */}
-        <SlaAlertBanner alert={slaAlert} />
+        <SlaAlertBanner
+          alert={slaAlert}
+          slaThresholdSeconds={slaThresholdSeconds}
+          isLoaded={isLoaded}
+        />
 
         {/* Grid KPI reactivo */}
-        <KpiSummaryGrid kpis={kpis} />
+        <KpiSummaryGrid kpis={kpis} slaThresholdSeconds={slaThresholdSeconds} />
 
         {/* Split view 8/4 */}
         <div className="grid grid-cols-12 gap-6 items-start">
@@ -514,22 +620,30 @@ export const AdminOverviewScreen: React.FC = () => {
             </div>
 
             {/* Grilla de cubículos */}
-            <div
-              className={`mt-4 ${
-                densityMode === 'compact'
-                  ? 'grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2.5'
-                  : 'grid grid-cols-1 md:grid-cols-2 gap-4'
-              }`}
-            >
-              {cubicles.map((station) => (
-                <div
-                  key={station.id}
-                  className={densityMode === 'standard' && station.fullWidth ? 'md:col-span-2' : ''}
-                >
-                  <CubicleCard station={station} />
-                </div>
-              ))}
-            </div>
+            {cubicles.length === 0 ? (
+              <div className="mt-4 bg-white border border-slate-200/80 rounded-xl p-8 text-center text-xs text-slate-600">
+                {isLoaded
+                  ? 'No hay cubículos parametrizados para la sede activa.'
+                  : 'Esperando snapshot operativo de cubículos...'}
+              </div>
+            ) : (
+              <div
+                className={`mt-4 ${
+                  densityMode === 'compact'
+                    ? 'grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2.5'
+                    : 'grid grid-cols-1 md:grid-cols-2 gap-4'
+                }`}
+              >
+                {cubicles.map((station) => (
+                  <div
+                    key={station.id}
+                    className={densityMode === 'standard' && station.fullWidth ? 'md:col-span-2' : ''}
+                  >
+                    <CubicleCard station={station} />
+                  </div>
+                ))}
+              </div>
+            )}
 
             {/* Flujo por hora reactivo */}
             <HourlyFlowWidget flow={hourlyFlow} />
@@ -550,9 +664,15 @@ export const AdminOverviewScreen: React.FC = () => {
 
             {/* Lista de turnos */}
             <div className="space-y-3 mt-4">
-              {queue.map((ticket) => (
-                <QueueItemCard key={ticket.ticketCode} ticket={ticket} />
-              ))}
+              {queue.length === 0 ? (
+                <div className="bg-white border border-slate-200/80 rounded-xl p-6 text-center text-xs text-slate-600">
+                  Sin turnos pendientes en cola.
+                </div>
+              ) : (
+                queue.map((ticket) => (
+                  <QueueItemCard key={ticket.ticketCode} ticket={ticket} />
+                ))
+              )}
             </div>
 
             {/* Tarjeta FIFO */}

@@ -1,4 +1,5 @@
 // ─── [SCR-PUB-001] Monitor Público de Llamado de Turnos — Tipos ──────────────
+import type { PublicBroadcastNotice } from '@cubiora/shared';
 
 export type PublicCallPriority = 'GENERAL' | 'PREFERENCIAL';
 
@@ -12,11 +13,7 @@ export interface PublicTicketCall {
   callCount?: number; // Incrementa cuando el operador o supervisor re-llama el turno
 }
 
-export interface PublicDisplayNotice {
-  message: string;
-  severity: 'INFO' | 'WARNING' | 'CRITICAL';
-  issuedAtIso: string;
-}
+export type PublicDisplayNotice = PublicBroadcastNotice;
 
 export interface PublicDisplayState {
   currentCall: PublicTicketCall | null;

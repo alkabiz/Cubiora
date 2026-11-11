@@ -64,9 +64,13 @@ export interface HourlyFlowEntry {
   volume: number;
 }
 
-export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected' | 'fallback';
+export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected' | 'offline';
 
 export interface OperationalTelemetryHookResult {
+  facilityCode: string | null;
+  facilityName: string | null;
+  slaThresholdSeconds: number | null;
+  isLoaded: boolean;
   cubicles: CubicleStation[];
   queue: QueuedTicket[];
   kpis: TelemetryDailyKpis;
@@ -74,7 +78,7 @@ export interface OperationalTelemetryHookResult {
   bottleneckRecommendation?: BottleneckRecommendation | null;
   hourlyFlow: HourlyFlowEntry[];
   connectionStatus: ConnectionStatus;
-  latencyMs: number;
+  latencyMs: number | null;
   forceRefresh: () => void;
-  sendBroadcastNotice: (message: string, severity?: 'info' | 'warning' | 'critical') => void;
+  sendBroadcastNotice: (message: string, severity?: 'info' | 'warning' | 'critical') => boolean;
 }
