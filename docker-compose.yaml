@@ -17,11 +17,13 @@ services:
       DATABASE_URL: ${DATABASE_URL:?Defina DATABASE_URL para la conexion a PostgreSQL}
       DIRECT_URL: ${DIRECT_URL:-}
       ALLOW_DOCKER_INTERNAL_DB: "true"
-      RUN_SEED_ON_BOOT: ${RUN_SEED_ON_BOOT:-true}
+      COOKIE_SECURE: ${COOKIE_SECURE:-auto}
+      RUN_SEED_ON_BOOT: ${RUN_SEED_ON_BOOT:-false}
+      RESET_SEED_PASSWORDS: ${RESET_SEED_PASSWORDS:-false}
       SESSION_SECRET: ${SESSION_SECRET:?Defina SESSION_SECRET con un minimo de 32 caracteres criptograficos}
       DISPLAY_TOKEN: ${DISPLAY_TOKEN:-display_token_default_local_min_32_chars!}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost,http://127.0.0.1}
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost,http://127.0.0.1}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://cubiora.samlapspeed.com,https://coolify.samlapspeed.com,http://localhost:5173,http://localhost,http://127.0.0.1}
+      CORS_ORIGIN: ${CORS_ORIGIN:-https://cubiora.samlapspeed.com,https://coolify.samlapspeed.com,http://localhost:5173,http://localhost,http://127.0.0.1}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       NO_SHOW_MAX_CALLS: ${NO_SHOW_MAX_CALLS:-3}
       CUBICLE_DAILY_TARGET_SECONDS: ${CUBICLE_DAILY_TARGET_SECONDS:-600}
@@ -31,8 +33,8 @@ services:
       BOTTLENECK_OCCUPANCY_RATE_THRESHOLD: ${BOTTLENECK_OCCUPANCY_RATE_THRESHOLD:-0.90}
       WMS_WEBHOOK_URL: ${WMS_WEBHOOK_URL:-}
       WMS_WEBHOOK_SECRET: ${WMS_WEBHOOK_SECRET:-}
-      DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:-AdminAudifarma2026!}
-      DEV_SEED_USER_PASSWORD: ${DEV_SEED_USER_PASSWORD:-AdminAudifarma2026!}
+      DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:-Admin2026!*}
+      DEV_SEED_USER_PASSWORD: ${DEV_SEED_USER_PASSWORD:-Admin2026!*}
     expose:
       - "3000"
     healthcheck:

@@ -165,22 +165,21 @@ async function main() {
 
   const facilityIds = new Map<string, string>();
   for (const facility of facilitiesData) {
+    const existingFacility = await prisma.facility.findUnique({
+      where: { code: facility.code },
+    });
+
+    if (existingFacility) {
+      facilityIds.set(existingFacility.code, existingFacility.id);
+      continue;
+    }
+
     const resolvedPrimary = existingPrimaryFacility
       ? existingPrimaryFacility.code === facility.code
       : facility.isPrimary;
 
-    const persisted = await prisma.facility.upsert({
-      where: { code: facility.code },
-      update: {
-        name: facility.name,
-        address: facility.address,
-        city: facility.city,
-        phone: facility.phone,
-        openingHours: facility.openingHours,
-        enabledCubiclesCount: facility.enabledCubiclesCount,
-        status: facility.status,
-      },
-      create: {
+    const created = await prisma.facility.create({
+      data: {
         id: ulid(),
         code: facility.code,
         name: facility.name,
@@ -193,9 +192,9 @@ async function main() {
         isPrimary: resolvedPrimary,
       },
     });
-    facilityIds.set(persisted.code, persisted.id);
+    facilityIds.set(created.code, created.id);
   }
-  console.log('✅ 4 Sedes hospitalarias aseguradas (SEDE-CEN-01 .. SEDE-OES-04)');
+  console.log('✅ 4 Sedes hospitalarias aseguradas sin sobrescribir cambios existentes (SEDE-CEN-01 .. SEDE-OES-04)');
 
   // 1. Cubículos parametrizados (Topología Audifarma PMV + Sedes)
   const centralFacilityId = facilityIds.get('SEDE-CEN-01') ?? null;
@@ -337,15 +336,25 @@ async function main() {
 
   const cubicleIds = new Map<string, string>();
   for (const cubicle of cubiclesData) {
-    const persisted = await prisma.cubicle.upsert({
+    const existingCubicle = await prisma.cubicle.findUnique({
       where: { code: cubicle.code },
-      update: {
-        displayName: cubicle.displayName,
-        operatorName: cubicle.operatorName,
-        allowedCategories: cubicle.allowedCategories,
-        facilityId: cubicle.facilityId,
-      },
-      create: {
+    });
+
+    if (existingCubicle) {
+      if (existingCubicle.facilityId === null && cubicle.facilityId !== null) {
+        const updated = await prisma.cubicle.update({
+          where: { id: existingCubicle.id },
+          data: { facilityId: cubicle.facilityId },
+        });
+        cubicleIds.set(updated.code, updated.id);
+      } else {
+        cubicleIds.set(existingCubicle.code, existingCubicle.id);
+      }
+      continue;
+    }
+
+    const created = await prisma.cubicle.create({
+      data: {
         id: ulid(),
         code: cubicle.code,
         displayName: cubicle.displayName,
@@ -356,9 +365,9 @@ async function main() {
         facilityId: cubicle.facilityId,
       },
     });
-    cubicleIds.set(persisted.code, persisted.id);
+    cubicleIds.set(created.code, created.id);
   }
-  console.log('✅ Cubículos asegurados (CUB-01..CUB-05 vinculados a SEDE-CEN-01 y ventanillas de red)');
+  console.log('✅ Cubículos asegurados respetando estado operativo y asignaciones actuales');
 
   // 2. Usuarios de prueba para desarrollo local con publicId e id ULID válidos
   const salt = await bcrypt.genSalt(10);
@@ -441,22 +450,42 @@ async function main() {
     },
   ];
 
+  const resetSeedPasswords = process.env.RESET_SEED_PASSWORDS === 'true';
   const userIds = new Map<string, string>();
   for (const user of testUsers) {
-    const persisted = await prisma.user.upsert({
+    const existingUser = await prisma.user.findUnique({
       where: { username: user.username },
-      update: {
-        cubicleId: user.cubicleId,
-        displayName: user.displayName,
-        role: user.role,
-        active: true,
-        ...(user.role === UserRole.ADMIN ? { passwordHash: user.passwordHash } : {}),
-      },
-      create: user,
     });
-    userIds.set(persisted.username, persisted.id);
+
+    if (!existingUser) {
+      const created = await prisma.user.create({ data: user });
+      userIds.set(created.username, created.id);
+      continue;
+    }
+
+    const updateData: { cubicleId?: string; passwordHash?: string } = {};
+    if (existingUser.cubicleId === null && user.cubicleId !== null) {
+      updateData.cubicleId = user.cubicleId;
+    }
+    if (resetSeedPasswords) {
+      updateData.passwordHash = user.passwordHash;
+    }
+
+    if (Object.keys(updateData).length > 0) {
+      const updated = await prisma.user.update({
+        where: { id: existingUser.id },
+        data: updateData,
+      });
+      userIds.set(updated.username, updated.id);
+    } else {
+      userIds.set(existingUser.username, existingUser.id);
+    }
   }
-  console.log('✅ Usuarios asegurados (incluye admin/admin_cubiora y asignación a cubículos CUB-01..CUB-04)');
+  console.log(
+    resetSeedPasswords
+      ? '✅ Usuarios asegurados con restablecimiento explícito de contraseñas (RESET_SEED_PASSWORDS=true)'
+      : '✅ Usuarios asegurados sin sobrescribir passwordHash ni perfiles existentes',
+  );
 
   // 2b. Farmacéuticos registrados vinculados a sedes y cubículos (SCR-ADM-004)
   const pharmacistsData = [
@@ -571,37 +600,53 @@ async function main() {
     const cubicleId = pharm.cubicleCode ? (cubicleIds.get(pharm.cubicleCode) ?? null) : null;
     const userId = pharm.username ? (userIds.get(pharm.username) ?? null) : null;
 
-    await prisma.pharmacist.upsert({
+    const existingPharm = await prisma.pharmacist.findUnique({
       where: { licenseNumber: pharm.licenseNumber },
-      update: {
-        fullName: pharm.fullName,
-        operationalRole: pharm.operationalRole,
-        shift: pharm.shift,
-        status: pharm.status,
-        email: pharm.email,
-        phone: pharm.phone,
-        dispatchesCount: pharm.dispatchesCount,
-        facilityId,
-        cubicleId,
-        userId,
-      },
-      create: {
-        id: ulid(),
-        fullName: pharm.fullName,
-        licenseNumber: pharm.licenseNumber,
-        operationalRole: pharm.operationalRole,
-        shift: pharm.shift,
-        status: pharm.status,
-        email: pharm.email,
-        phone: pharm.phone,
-        dispatchesCount: pharm.dispatchesCount,
-        facilityId,
-        cubicleId,
-        userId,
-      },
     });
+
+    if (!existingPharm) {
+      await prisma.pharmacist.create({
+        data: {
+          id: ulid(),
+          fullName: pharm.fullName,
+          licenseNumber: pharm.licenseNumber,
+          operationalRole: pharm.operationalRole,
+          shift: pharm.shift,
+          status: pharm.status,
+          email: pharm.email,
+          phone: pharm.phone,
+          dispatchesCount: pharm.dispatchesCount,
+          facilityId,
+          cubicleId,
+          userId,
+        },
+      });
+      continue;
+    }
+
+    const backfillData: {
+      facilityId?: string;
+      cubicleId?: string;
+      userId?: string;
+    } = {};
+    if (existingPharm.facilityId === null && facilityId !== null) {
+      backfillData.facilityId = facilityId;
+    }
+    if (existingPharm.cubicleId === null && cubicleId !== null) {
+      backfillData.cubicleId = cubicleId;
+    }
+    if (existingPharm.userId === null && userId !== null) {
+      backfillData.userId = userId;
+    }
+
+    if (Object.keys(backfillData).length > 0) {
+      await prisma.pharmacist.update({
+        where: { id: existingPharm.id },
+        data: backfillData,
+      });
+    }
   }
-  console.log('✅ 8 Farmacéuticos registrados asegurados y sincronizados con sedes y cubículos');
+  console.log('✅ Farmacéuticos asegurados sin sobrescribir contadores ni estado operativo');
 
   const defaultCreatorId =
     userIds.get('recepcion') ??

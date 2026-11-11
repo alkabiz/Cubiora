@@ -45,14 +45,18 @@ const requiresSsl =
   process.env.NODE_ENV === 'production';
 
 // Parseo robusto que tolera caracteres especiales (como '/' o '=') en contraseñas sin romper new URL()
+const allowDockerInternalDb = process.env.ALLOW_DOCKER_INTERNAL_DB === 'true';
+
 function buildPoolConfig(connStr: string, sslRequired: boolean, ca?: string): PoolConfig {
   const match = connStr.match(/^postgres(?:ql)?:\/\/([^:]+):(.*)@([^@/:]+)(?::(\d+))?\/([^?]+)(?:\?(.*))?$/);
-  const sslConfig = sslRequired
-    ? {
-        rejectUnauthorized: true,
-        ca,
-      }
-    : undefined;
+  const sslConfig = allowDockerInternalDb
+    ? { rejectUnauthorized: false }
+    : sslRequired
+      ? {
+          rejectUnauthorized: Boolean(ca),
+          ...(ca ? { ca } : {}),
+        }
+      : undefined;
 
   if (match) {
     const [, user, password, host, portStr, database] = match;
@@ -100,9 +104,14 @@ async function main() {
   try {
     await client.query('BEGIN');
 
-    // Hashes seguros generados con 10 rounds de bcrypt
-    const cajeroPassword = process.env.SEED_CAJERO_PASSWORD || 'Cajero2026!*';
-    const receptorPassword = process.env.SEED_RECEPTOR_PASSWORD || 'Receptor2026!*';
+    // Hashes seguros generados con 10 rounds de bcrypt (alineados con variables de entorno unificadas)
+    const unifiedPassword =
+      process.env.DEV_SEED_USER_PASSWORD ||
+      process.env.DEFAULT_ADMIN_PASSWORD ||
+      'Admin2026!*';
+    const cajeroPassword = process.env.SEED_CAJERO_PASSWORD || unifiedPassword;
+    const receptorPassword = process.env.SEED_RECEPTOR_PASSWORD || unifiedPassword;
+    const resetExistingPasswords = process.env.RESET_SEED_PASSWORDS === 'true';
 
     const salt = await bcrypt.genSalt(10);
     const hashCajero = await bcrypt.hash(cajeroPassword, salt);
@@ -144,7 +153,8 @@ async function main() {
     ];
 
     for (const u of usersToInsert) {
-      const query = `
+      const query = resetExistingPasswords
+        ? `
         INSERT INTO "users" (
           "id", "public_id", "username", "password_hash", "display_name", "role", "cubicle_id", "active", "created_at", "updated_at"
         ) VALUES (
@@ -152,10 +162,15 @@ async function main() {
         )
         ON CONFLICT ("username") DO UPDATE SET
           "password_hash" = EXCLUDED."password_hash",
-          "display_name"  = EXCLUDED."display_name",
-          "role"          = EXCLUDED."role",
-          "active"        = true,
           "updated_at"    = CURRENT_TIMESTAMP;
+      `
+        : `
+        INSERT INTO "users" (
+          "id", "public_id", "username", "password_hash", "display_name", "role", "cubicle_id", "active", "created_at", "updated_at"
+        ) VALUES (
+          $1, $2, $3, $4, $5, $6::"UserRole", NULL, true, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+        )
+        ON CONFLICT ("username") DO NOTHING;
       `;
 
       await client.query(query, [
@@ -168,9 +183,7 @@ async function main() {
       ]);
     }
 
-    // Asignación determinista de cubículos para los operadores de caja.
-    // Si los cubículos aún no existen, el usuario queda sin asignar y el
-    // endpoint de rendimiento devolverá 403 hasta ejecutar el seed.
+    // Asignación determinista solo si el operador aún no tiene cubículo asignado.
     const cubicleAssignments = [
       { username: 'cajero', cubicleCode: 'CUB-03' },
       { username: 'cajero1', cubicleCode: 'CUB-01' },
@@ -182,14 +195,14 @@ async function main() {
           UPDATE "users" AS u
           SET "cubicle_id" = c."id", "updated_at" = CURRENT_TIMESTAMP
           FROM "cubicles" AS c
-          WHERE u."username" = $1 AND c."code" = $2;
+          WHERE u."username" = $1 AND c."code" = $2 AND u."cubicle_id" IS NULL;
         `,
         [assignment.username, assignment.cubicleCode],
       );
 
       if (result.rowCount === 0) {
-        console.warn(
-          `⚠️  No se pudo asignar ${assignment.username} a ${assignment.cubicleCode}: el cubículo no existe. Ejecuta el seed.`,
+        console.log(
+          `ℹ️  ${assignment.username} ya tenía cubículo asignado o ${assignment.cubicleCode} no existe.`,
         );
       }
     }
