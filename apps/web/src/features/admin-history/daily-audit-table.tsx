@@ -1,14 +1,23 @@
 // ─── [SCR-ADM-003] DailyAuditTable — Tabla de Registro Operativo Diario ───────
 import React from 'react';
-import { CheckCircle2, AlertCircle, Star } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Star, History } from 'lucide-react';
 import type { DailyAuditRecord } from './types';
 
 interface DailyAuditTableProps {
   records: DailyAuditRecord[];
   pageSize?: number;
+  isLoading?: boolean;
+  hasActiveFilter?: boolean;
+  onInspectTimeline?: (record: DailyAuditRecord) => void;
 }
 
-export const DailyAuditTable: React.FC<DailyAuditTableProps> = ({ records, pageSize = 25 }) => {
+export const DailyAuditTable: React.FC<DailyAuditTableProps> = ({
+  records,
+  pageSize = 25,
+  isLoading = false,
+  hasActiveFilter = false,
+  onInspectTimeline,
+}) => {
   const [currentPage, setCurrentPage] = React.useState(1);
   const totalPages = Math.max(1, Math.ceil(records.length / pageSize));
 
@@ -34,16 +43,21 @@ export const DailyAuditTable: React.FC<DailyAuditTableProps> = ({ records, pageS
               <th scope="col" className="py-3.5 px-6 text-left">Tiempo de Atención</th>
               <th scope="col" className="py-3.5 px-6 text-left">Cumplimiento SLA</th>
               <th scope="col" className="py-3.5 px-6 text-right">Resultado</th>
+              <th scope="col" className="py-3.5 px-6 text-right">Trazabilidad</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100 text-xs">
             {paginatedRecords.length === 0 ? (
               <tr>
                 <td
-                  colSpan={7}
+                  colSpan={8}
                   className="py-12 px-6 text-center text-slate-700 text-xs font-medium"
                 >
-                  No se encontraron registros que coincidan con los criterios de filtro.
+                  {isLoading
+                    ? 'Cargando historial operativo...'
+                    : hasActiveFilter
+                      ? 'No se encontraron registros que coincidan con los criterios de filtro.'
+                      : 'No hay registros operativos finalizados aún.'}
                 </td>
               </tr>
             ) : (
@@ -116,11 +130,29 @@ export const DailyAuditTable: React.FC<DailyAuditTableProps> = ({ records, pageS
                       <span className="bg-blue-50/90 text-blue-800 font-mono text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md">
                         FINALIZADO
                       </span>
+                    ) : record.resultStatus === 'CANCELADO' ? (
+                      <span className="bg-rose-50 text-rose-800 border border-rose-200 font-mono text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md">
+                        CANCELADO
+                      </span>
                     ) : (
                       <span className="bg-slate-100 text-slate-700 font-mono text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-md">
                         ABANDONADO
                       </span>
                     )}
+                  </td>
+
+                  {/* 8. Trazabilidad */}
+                  <td className="py-4 px-6 text-right whitespace-nowrap">
+                    <button
+                      type="button"
+                      disabled={!record.publicId}
+                      onClick={() => onInspectTimeline?.(record)}
+                      aria-label={`Ver trazabilidad del turno ${record.ticketCode}`}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[32px] rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0B5793]"
+                    >
+                      <History className="w-3.5 h-3.5 text-blue-700" aria-hidden="true" />
+                      Ver trazabilidad
+                    </button>
                   </td>
                 </tr>
               ))

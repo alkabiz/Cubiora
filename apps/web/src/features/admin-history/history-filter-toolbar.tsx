@@ -8,6 +8,7 @@ interface HistoryFilterToolbarProps {
   onSearchChange: (query: string) => void;
   slaFilter: SlaFilterOption;
   onSlaFilterChange: (option: SlaFilterOption) => void;
+  slaTargetMinutes?: number | null;
 }
 
 export const HistoryFilterToolbar: React.FC<HistoryFilterToolbarProps> = ({
@@ -15,6 +16,7 @@ export const HistoryFilterToolbar: React.FC<HistoryFilterToolbarProps> = ({
   onSearchChange,
   slaFilter,
   onSlaFilterChange,
+  slaTargetMinutes = null,
 }) => {
   return (
     <div className="bg-white border border-slate-200/90 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shadow-2xs">
@@ -62,7 +64,7 @@ export const HistoryFilterToolbar: React.FC<HistoryFilterToolbarProps> = ({
                 : 'text-slate-700 hover:text-slate-950 font-medium'
             }`}
           >
-            En Norma (&lt;8m)
+            {slaTargetMinutes ? `En Norma (≤${slaTargetMinutes}m)` : 'En Norma'}
           </button>
           <button
             type="button"
