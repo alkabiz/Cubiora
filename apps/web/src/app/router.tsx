@@ -16,6 +16,11 @@ const CashierPage = lazy(() =>
 const AdminOverviewPage = lazy(() =>
   import('../pages/admin-overview-page').then((m) => ({ default: m.AdminOverviewPage })),
 );
+const OperationalTelemetryLayout = lazy(() =>
+  import('../features/admin-overview/use-operational-telemetry').then((m) => ({
+    default: m.OperationalTelemetryLayout,
+  })),
+);
 const AdminCubiclesPage = lazy(() =>
   import('../pages/admin-cubicles-page').then((m) => ({ default: m.AdminCubiclesPage })),
 );
@@ -42,7 +47,7 @@ const LoginPage = lazy(() =>
 const RouteWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <Suspense
     fallback={
-      <div className="flex items-center justify-center min-h-[50vh] text-sm text-slate-400">
+      <div className="flex items-center justify-center min-h-[50vh] text-sm text-slate-600">
         Cargando interfaz...
       </div>
     }
@@ -56,7 +61,7 @@ const RootRedirect: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[50vh] text-sm text-slate-400">
+      <div className="flex items-center justify-center min-h-[50vh] text-sm text-slate-600">
         Cargando interfaz...
       </div>
     );
@@ -131,6 +136,13 @@ export const appRoutes: RouteObject[] = [
           },
           {
             path: 'admin',
+            element: (
+              <RouteWrapper>
+                <ProtectedRoute allowedRoles={['ADMIN']}>
+                  <OperationalTelemetryLayout />
+                </ProtectedRoute>
+              </RouteWrapper>
+            ),
             children: [
               {
                 index: true,

@@ -14,7 +14,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowe
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[50vh] text-sm text-slate-400">
+      <div className="flex items-center justify-center min-h-[50vh] text-sm text-slate-600">
         Cargando interfaz...
       </div>
     );

@@ -234,9 +234,11 @@ describe('Shell de aplicación Cubiora', () => {
     expect(within(nav).queryByRole('link', { name: 'Historial' })).toBeNull();
     expect(screen.getByRole('heading', { name: 'Generar turno' })).toBeDefined();
 
-    await waitFor(() =>
-      expect(screen.getByText('SCR-REC-001 · Recepción')).toBeDefined(),
-    );
+    await waitFor(() => {
+      const header = document.querySelector('header.app-page-header');
+      expect(header).not.toBeNull();
+      expect(within(header as HTMLElement).getByText('Recepción')).toBeDefined();
+    });
   });
 
   it('CASHIER solo ve Mi cubículo y reporta el estado operativo', async () => {
@@ -307,7 +309,7 @@ describe('Shell de aplicación Cubiora', () => {
     expect(within(nav).queryByRole('link', { name: 'Generar turno' })).toBeNull();
     expect(within(nav).queryByRole('link', { name: 'Mi cubículo' })).toBeNull();
 
-    expect(screen.getByText('SCR-ADM-002 · Administración')).toBeDefined();
+    expect(screen.getByText('Administración · Parametrización de Puestos')).toBeDefined();
 
     await waitFor(() => {
       expect(
@@ -330,7 +332,7 @@ describe('Shell de aplicación Cubiora', () => {
     expect(
       within(nav).getByRole('link', { name: 'Cubículos' }).getAttribute('aria-current'),
     ).toBeNull();
-    expect(screen.getByText('SCR-ADM-003 · Auditoría básica')).toBeDefined();
+    expect(screen.getByText('Auditoría Operativa de Tiempos y Despacho')).toBeDefined();
   });
 
   it('la sidebar se colapsa conservando nombres accesibles y tooltips', () => {
@@ -470,11 +472,10 @@ describe('Shell de aplicación Cubiora', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
-  it('renderiza PageHeader con código, sección, título, descripción y acción', () => {
+  it('renderiza PageHeader con sección, título, descripción y acción', () => {
     render(
       <Theme accentColor="teal" grayColor="slate">
         <PageHeader
-          code="SCR-TEST-001"
           section="Pruebas"
           title="Título de prueba"
           description="Descripción de prueba."
@@ -483,7 +484,7 @@ describe('Shell de aplicación Cubiora', () => {
       </Theme>,
     );
 
-    expect(screen.getByText('SCR-TEST-001 · Pruebas')).toBeDefined();
+    expect(screen.getByText('Pruebas')).toBeDefined();
     expect(screen.getByRole('heading', { level: 1, name: 'Título de prueba' })).toBeDefined();
     expect(screen.getByText('Descripción de prueba.')).toBeDefined();
     expect(screen.getByRole('button', { name: 'Acción contextual' })).toBeDefined();
@@ -720,7 +721,7 @@ describe('Tarjeta de resumen operativo (SCR-CAJ-OPS)', () => {
     renderShellAt('/admin/cubiculos');
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Cubículos' })).toBeDefined();
+      expect(screen.getByRole('heading', { name: /Configuración de Cubículos/i })).toBeDefined();
     });
 
     await waitFor(() => {

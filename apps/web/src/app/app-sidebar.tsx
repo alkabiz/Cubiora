@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Box, IconButton, ScrollArea, Text, Tooltip } from '@radix-ui/themes';
-import { ChevronLeftIcon, ChevronRightIcon, Cross2Icon } from '@radix-ui/react-icons';
+import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 import {
   type AppRole,
   getNavigationForRole,
@@ -62,11 +62,6 @@ const NavigationLink: React.FC<{
     >
       <Icon className="app-sidebar-link-icon" aria-hidden="true" />
       <span className="app-sidebar-link-label">{item.label}</span>
-      {!collapsed && item.code && (
-        <span className="app-sidebar-link-code" aria-hidden="true">
-          {item.code}
-        </span>
-      )}
     </Link>
   );
 
@@ -155,15 +150,15 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
                 type="button"
                 variant="ghost"
                 color="gray"
-                size="1"
+                size="2"
                 aria-label={toggleLabel}
                 onClick={onToggleCollapsed}
                 className="app-sidebar-collapse-button"
               >
                 {collapsed ? (
-                  <ChevronRightIcon width={16} height={16} aria-hidden="true" />
+                  <ChevronRight size={16} aria-hidden="true" />
                 ) : (
-                  <ChevronLeftIcon width={16} height={16} aria-hidden="true" />
+                  <ChevronLeft size={16} aria-hidden="true" />
                 )}
               </IconButton>
             </Tooltip>
@@ -179,7 +174,7 @@ export const AppSidebar: React.FC<AppSidebarProps> = ({
               onClick={onClose}
               className="app-sidebar-close-button"
             >
-              <Cross2Icon width={18} height={18} aria-hidden="true" />
+              <X size={18} aria-hidden="true" />
             </IconButton>
           )}
         </div>

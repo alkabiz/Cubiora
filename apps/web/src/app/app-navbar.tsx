@@ -9,8 +9,7 @@ import {
   Text,
   Tooltip,
 } from '@radix-ui/themes';
-import { ExitIcon, HamburgerMenuIcon } from '@radix-ui/react-icons';
-import { Building2 } from 'lucide-react';
+import { Building2, LogOut, Menu } from 'lucide-react';
 import type { AuthUser } from '../context/auth-context';
 import { useFacilitiesQuery } from '../features/admin-facilities/api';
 import {
@@ -99,7 +98,7 @@ export const AppNavbar: React.FC<AppNavbarProps> = ({
           onClick={onOpenMobileMenu}
           className="app-mobile-menu-button"
         >
-          <HamburgerMenuIcon width={20} height={20} aria-hidden="true" />
+          <Menu size={20} aria-hidden="true" />
         </IconButton>
 
         <Link to={homePath} className="app-navbar-brand" aria-label="Cubiora, ir a la pantalla principal">
@@ -186,7 +185,7 @@ export const AppNavbar: React.FC<AppNavbarProps> = ({
               </DropdownMenu.Label>
               <DropdownMenu.Separator />
               <DropdownMenu.Item color="red" onSelect={onLogout} className="app-user-menu-item">
-                <ExitIcon width={15} height={15} aria-hidden="true" />
+                <LogOut size={15} aria-hidden="true" />
                 Cerrar sesión
               </DropdownMenu.Item>
             </DropdownMenu.Content>

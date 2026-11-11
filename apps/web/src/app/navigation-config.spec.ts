@@ -39,13 +39,6 @@ describe('Configuración de navegación por rol', () => {
       '/admin/sedes',
       '/admin/historial',
     ]);
-    expect(items.map((item) => item.code)).toEqual([
-      'SCR-ADM-001',
-      'SCR-ADM-002',
-      'SCR-ADM-004',
-      'SCR-ADM-005',
-      'SCR-ADM-003',
-    ]);
     expect(items.some((item) => item.label === 'Generar turno')).toBe(false);
     expect(items.some((item) => item.label === 'Mi cubículo')).toBe(false);
   });

@@ -2,10 +2,17 @@
 @import "@radix-ui/themes/styles.css";
 @import "./app-shell.css";
 
+@theme {
+  --font-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
 /* ─── Base Operativa Cubiora (Radix Themes + Tailwind v4) ──────────────────── */
 :root {
-  --default-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  --default-font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  scrollbar-color: var(--app-border-strong) transparent;
 }
 
 html,
@@ -17,15 +24,52 @@ body,
 body {
   min-height: 100vh;
   margin: 0;
-  overflow-x: hidden;
+  overflow-x: clip;
   font-family: var(--default-font-family);
   background-color: var(--app-bg);
   color: var(--gray-12);
+  caret-color: var(--app-primary);
   -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+p {
+  text-wrap: pretty;
+}
+
+::selection {
+  background-color: var(--app-primary-soft-strong);
+  color: var(--app-text);
+}
+
+a,
+button {
+  text-underline-offset: 0.15em;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
 }
 
 /* Tipografía de código de turnos en sala */
 .font-mono-ticket {
   font-family: var(--font-mono);
   letter-spacing: -0.02em;
+}
+
+/* Reducción global de movimiento (WCAG 2.3.3) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0s !important;
+    scroll-behavior: auto !important;
+  }
 }

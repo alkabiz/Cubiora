@@ -1,11 +1,13 @@
 import React from 'react';
 import {
-  ClockIcon,
-  DesktopIcon,
-  GridIcon,
-  PlusCircledIcon,
-} from '@radix-ui/react-icons';
-import { Building2, Users, Activity } from 'lucide-react';
+  Activity,
+  Building2,
+  CirclePlus,
+  Clock,
+  LayoutGrid,
+  Monitor,
+  Users,
+} from 'lucide-react';
 
 export type AppRole = 'RECEPTION' | 'CASHIER' | 'ADMIN';
 
@@ -14,7 +16,6 @@ export interface NavigationItem {
   path: string;
   icon: React.ElementType;
   allowedRoles: AppRole[];
-  code?: string;
   exact?: boolean;
 }
 
@@ -22,13 +23,13 @@ export const APP_NAVIGATION: NavigationItem[] = [
   {
     label: 'Generar turno',
     path: '/recepcion',
-    icon: PlusCircledIcon,
+    icon: CirclePlus,
     allowedRoles: ['RECEPTION'],
   },
   {
     label: 'Mi cubículo',
     path: '/cajero',
-    icon: DesktopIcon,
+    icon: Monitor,
     allowedRoles: ['CASHIER'],
   },
   {
@@ -36,36 +37,31 @@ export const APP_NAVIGATION: NavigationItem[] = [
     path: '/admin',
     icon: Activity,
     allowedRoles: ['ADMIN'],
-    code: 'SCR-ADM-001',
     exact: true,
   },
   {
     label: 'Cubículos',
     path: '/admin/cubiculos',
-    icon: GridIcon,
+    icon: LayoutGrid,
     allowedRoles: ['ADMIN'],
-    code: 'SCR-ADM-002',
   },
   {
     label: 'Farmacéuticos',
     path: '/admin/farmaceuticos',
     icon: Users,
     allowedRoles: ['ADMIN'],
-    code: 'SCR-ADM-004',
   },
   {
     label: 'Sedes y Usuarios',
     path: '/admin/sedes',
     icon: Building2,
     allowedRoles: ['ADMIN'],
-    code: 'SCR-ADM-005',
   },
   {
     label: 'Historial',
     path: '/admin/historial',
-    icon: ClockIcon,
+    icon: Clock,
     allowedRoles: ['ADMIN'],
-    code: 'SCR-ADM-003',
   },
 ];
 

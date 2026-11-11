@@ -1,10 +1,6 @@
 import React from 'react';
 import { Skeleton, Text, Tooltip } from '@radix-ui/themes';
-import {
-  PersonIcon,
-  ClockIcon,
-  CheckCircledIcon,
-} from '@radix-ui/react-icons';
+import { CheckCircle2, Clock, User } from 'lucide-react';
 import { formatWaitTime, formatSla, useCashierMetrics } from '../features/cashier/use-cashier-metrics';
 import type { AppRole } from './navigation-config';
 
@@ -82,7 +78,7 @@ export const SidebarOperativeSummary: React.FC<SidebarOperativeSummaryProps> = (
 
       <div className="sidebar-summary-row">
         <span className="sidebar-summary-icon" aria-hidden="true">
-          <PersonIcon width={14} height={14} />
+          <User size={14} />
         </span>
         <Text as="span" size="1" className="sidebar-summary-label">
           Turnos en gestión
@@ -94,7 +90,7 @@ export const SidebarOperativeSummary: React.FC<SidebarOperativeSummaryProps> = (
 
       <div className="sidebar-summary-row">
         <span className="sidebar-summary-icon" aria-hidden="true">
-          <ClockIcon width={14} height={14} />
+          <Clock size={14} />
         </span>
         <Text as="span" size="1" className="sidebar-summary-label">
           Espera promedio
@@ -106,7 +102,7 @@ export const SidebarOperativeSummary: React.FC<SidebarOperativeSummaryProps> = (
 
       <div className="sidebar-summary-row">
         <span className="sidebar-summary-icon" aria-hidden="true">
-          <CheckCircledIcon width={14} height={14} />
+          <CheckCircle2 size={14} />
         </span>
         <Text as="span" size="1" className="sidebar-summary-label">
           Cumplimiento del objetivo

@@ -1,4 +1,4 @@
-import { describe, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 function parseHex(hex: string): [number, number, number] {
   const clean = hex.replace('#', '');
@@ -29,40 +29,31 @@ function contrastRatio(hex1: string, hex2: string): number {
   return Math.round(((lighter + 0.05) / (darker + 0.05)) * 100) / 100;
 }
 
-const pairs: [string, string, string, string][] = [
-  ['Texto slate-400 (deprecado)', '#94A3B8', '#FFFFFF', '1.4.3 Texto normal'],
-  ['Texto slate-400 (deprecado)', '#94A3B8', '#F8FAFC', '1.4.3 Texto normal'],
-  ['Texto slate-500', '#64748B', '#FFFFFF', '1.4.3 Texto normal'],
-  ['Texto slate-500', '#64748B', '#F8FAFC', '1.4.3 Texto normal'],
-  ['Texto slate-600', '#475569', '#FFFFFF', '1.4.3 Texto normal'],
-  ['Texto slate-600', '#475569', '#F8FAFC', '1.4.3 Texto normal'],
-  ['Texto slate-700', '#334155', '#FFFFFF', '1.4.3 Texto normal'],
-  ['Texto slate-700', '#334155', '#F8FAFC', '1.4.3 Texto normal'],
-  ['Texto slate-900', '#0F172A', '#FFFFFF', '1.4.3 Texto normal'],
-  ['Texto slate-900', '#0F172A', '#F8FAFC', '1.4.3 Texto normal'],
-  ['Borde input slate-300', '#CBD5E1', '#FFFFFF', '1.4.11 Componentes no textuales (min 3.0:1)'],
-  ['Borde input slate-300', '#CBD5E1', '#F8FAFC', '1.4.11 Componentes no textuales (min 3.0:1)'],
-  ['Anillo de foco #0B5793', '#0B5793', '#FFFFFF', '1.4.11 Indicador de foco (min 3.0:1)'],
-  ['Anillo de foco #0B5793', '#0B5793', '#F8FAFC', '1.4.11 Indicador de foco (min 3.0:1)'],
-  ['Anillo de foco #0B5793 contra slate-300', '#0B5793', '#CBD5E1', '1.4.11 Contraste foco vs borde adyacente'],
-  ['Pantalla Sala: Blanco', '#FFFFFF', '#020B14', '1.4.3 Texto Sala'],
-  ['Pantalla Sala: emerald-400', '#34D399', '#041527', '1.4.3 / 1.4.11 Hero Sala'],
-  ['Pantalla Sala: slate-300', '#CBD5E1', '#020B14', '1.4.3 Texto secundario Sala'],
-  ['Pantalla Sala: purple-300', '#D8B4FE', '#041527', '1.4.3 Badge Preferencial'],
+const pairs: [string, string, string, string, number][] = [
+  ['Texto muted estándar slate-600', '#475569', '#FFFFFF', '1.4.3 Texto normal', 4.5],
+  ['Texto muted slate-600 sobre surface', '#475569', '#F8FAFC', '1.4.3 Texto normal', 4.5],
+  ['Texto slate-700', '#334155', '#FFFFFF', '1.4.3 Texto normal', 4.5],
+  ['Texto slate-900', '#0F172A', '#FFFFFF', '1.4.3 Texto normal', 4.5],
+  ['Primario Cubiora Teal (#0F766E)', '#FFFFFF', '#0F766E', '1.4.3 Botón primario', 4.5],
+  ['Primario Hover Cubiora (#115E59)', '#FFFFFF', '#115E59', '1.4.3 Botón primario hover', 4.5],
+  ['Badge rol shell (#134E4A sobre #CCFBF1)', '#134E4A', '#CCFBF1', '1.4.3 Contexto de rol', 4.5],
+  ['Borde control slate-500 sobre blanco', '#64748B', '#FFFFFF', '1.4.11 Componentes no textuales (min 3.0:1)', 3.0],
+  ['Borde control slate-500 sobre surface', '#64748B', '#F8FAFC', '1.4.11 Componentes no textuales (min 3.0:1)', 3.0],
+  ['Anillo de foco Teal (#0F766E sobre blanco)', '#0F766E', '#FFFFFF', '1.4.11 Indicador de foco (min 3.0:1)', 3.0],
+  ['Anillo de foco Teal (#0F766E sobre surface)', '#0F766E', '#F8FAFC', '1.4.11 Indicador de foco (min 3.0:1)', 3.0],
+  ['Pantalla Sala: Blanco', '#FFFFFF', '#020B14', '1.4.3 Texto Sala', 4.5],
+  ['Pantalla Sala: emerald-400', '#34D399', '#041527', '1.4.3 / 1.4.11 Hero Sala', 4.5],
+  ['Pantalla Sala: slate-300', '#CBD5E1', '#020B14', '1.4.3 Texto secundario Sala', 4.5],
+  ['Pantalla Sala: purple-300', '#D8B4FE', '#041527', '1.4.3 Badge Preferencial', 4.5],
 ];
 
 describe('Cálculo exacto de contrastes WCAG 2.1 / 2.2', () => {
-  it('Calcula y reporta ratios medidos', () => {
-    console.log('\n--- REPORTE DE CONTRASTES CALCULADOS FORMALMENTE (W3C RELATIVE LUMINANCE) ---');
-    for (const [elem, fg, bg, crit] of pairs) {
+  it('verifica que toda la paleta operativa Cubiora cumpla WCAG AA (4.5:1 texto / 3.0:1 UI)', () => {
+    for (const [elem, fg, bg, crit, minRatio] of pairs) {
       const cr = contrastRatio(fg, bg);
-      let status = 'FALLA';
-      if (crit.includes('1.4.11')) {
-        status = cr >= 3.0 ? 'CUMPLE AA (>= 3.0:1)' : 'FALLA (menor a 3.0:1)';
-      } else {
-        status = cr >= 7.0 ? 'CUMPLE AAA (>= 7.0:1)' : cr >= 4.5 ? 'CUMPLE AA (>= 4.5:1)' : 'FALLA (menor a 4.5:1)';
-      }
-      console.log(`  ${elem} [${fg} sobre ${bg}]: ${cr}:1 -> ${status}`);
+      expect(cr, `${elem} [${fg} sobre ${bg}] (${crit}) = ${cr}:1 < ${minRatio}:1`).toBeGreaterThanOrEqual(
+        minRatio,
+      );
     }
   });
 });

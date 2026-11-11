@@ -5,17 +5,17 @@
   --app-surface: #ffffff;
   --app-surface-subtle: #f8fafc;
   --app-border: #dbe4ee;
-  --app-border-strong: #c8d5e3;
+  --app-border-strong: #64748b;
   --app-text: #0f2942;
-  --app-text-muted: #607287;
-  --app-primary: #0b5793;
-  --app-primary-hover: #084876;
-  --app-primary-soft: #edf5fc;
-  --app-primary-soft-strong: #deedfa;
-  --app-success: #0b8f68;
-  --app-warning: #a15c0a;
+  --app-text-muted: #475569;
+  --app-primary: #0f766e;
+  --app-primary-hover: #115e59;
+  --app-primary-soft: #f0fdfa;
+  --app-primary-soft-strong: #ccfbf1;
+  --app-success: #047857;
+  --app-warning: #92400e;
   --app-danger: #b42318;
-  --app-focus: #0b6cb8;
+  --app-focus: #0f766e;
   --navbar-height: 68px;
   --sidebar-width: 264px;
   --sidebar-collapsed-width: 78px;
@@ -102,10 +102,10 @@ html {
   width: 34px;
   height: 34px;
   flex: 0 0 34px;
-  border-radius: 9px;
+  border-radius: 8px;
   background: var(--app-text);
   color: #ffffff;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 800;
   letter-spacing: -0.02em;
 }
@@ -131,9 +131,9 @@ html {
 .app-role-context {
   flex: 0 0 auto;
   font-weight: 700;
-  background-color: #dbeafe !important;
-  color: #1e3a8a !important; /* Contrast ratio 10.3:1 AAA */
-  border: 1px solid #bfdbfe;
+  background-color: #ccfbf1 !important;
+  color: #134e4a !important; /* Contrast ratio 8.07:1 AAA */
+  border: 1px solid #99f6e4;
 }
 
 .app-primary-facility-pill {
@@ -197,8 +197,8 @@ html {
 }
 
 .app-user-avatar .rt-AvatarFallback {
-  background-color: #0b5793 !important;
-  color: #ffffff !important; /* Contrast ratio 7.5:1 AAA */
+  background-color: #115e59 !important;
+  color: #ffffff !important; /* Contrast ratio 7.65:1 AAA */
   font-weight: 700;
 }
 
@@ -211,7 +211,7 @@ html {
 }
 
 .app-connection-badge.is-online .app-connection-dot {
-  box-shadow: 0 0 0 3px rgb(11 143 104 / 12%);
+  box-shadow: 0 0 0 3px #ccfbf1;
 }
 
 .app-user-trigger {
@@ -351,6 +351,13 @@ html {
 
 .app-sidebar-collapse-button {
   color: var(--app-text-muted);
+  min-width: 32px;
+  min-height: 32px;
+}
+
+.app-sidebar-close-button {
+  min-width: 40px;
+  min-height: 40px;
 }
 
 .app-sidebar-navigation {
@@ -403,8 +410,8 @@ html {
 
 .app-sidebar-link[aria-current='page'] {
   background: var(--app-primary-soft);
-  border-color: #cfe4f6;
-  color: var(--app-primary);
+  border-color: #99f6e4;
+  color: var(--app-primary-hover);
 }
 
 .app-sidebar-link[aria-current='page']::before {
@@ -414,7 +421,7 @@ html {
   top: 50%;
   width: 3px;
   height: 22px;
-  border-radius: 0 3px 3px 0;
+  border-radius: 0 4px 4px 0;
   background: var(--app-primary);
   transform: translateY(-50%);
 }
@@ -431,25 +438,6 @@ html {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.app-sidebar-link-code {
-  flex: 0 0 auto;
-  padding: 2px 6px;
-  border-radius: 6px;
-  border: 1px solid var(--app-border);
-  background: var(--app-surface-subtle);
-  color: var(--app-text-muted);
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-
-.app-sidebar-link[aria-current='page'] .app-sidebar-link-code {
-  border-color: #bfe0f8;
-  background: #ffffff;
-  color: var(--app-primary);
 }
 
 .app-sidebar.is-collapsed .app-sidebar-inner {
@@ -555,7 +543,7 @@ html {
   border-radius: 4px;
   background: #fef3c7;
   color: var(--app-warning);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.02em;
   text-transform: uppercase;
@@ -591,7 +579,7 @@ html {
 }
 
 .sidebar-summary-value--accent {
-  color: var(--app-primary);
+  color: var(--app-primary-hover);
 }
 
 /* El sidebar colapsado ya oculta la tarjeta desde React (returns null),
@@ -624,11 +612,19 @@ html {
   max-width: 820px;
 }
 
+.app-page-eyebrow-row {
+  margin: 0 0 8px;
+}
+
 .app-page-eyebrow {
   margin: 0 0 8px;
   color: var(--app-primary);
   letter-spacing: 0.09em;
   text-transform: uppercase;
+}
+
+.app-page-eyebrow-row .app-page-eyebrow {
+  margin: 0;
 }
 
 .app-page-title {
@@ -659,7 +655,7 @@ html {
   min-width: 0;
 }
 
-/* ─── SCR-CAJ-001: CARD operativa + rendimiento diario ───────────────────── */
+/* ─── Tarjeta operativa + rendimiento diario (Mi cubículo) ───────────────── */
 .cashier-workspace-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -734,7 +730,7 @@ html {
 .app-logout-dialog-title {
   margin: 0;
   color: var(--app-text);
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 700;
 }
 
@@ -758,7 +754,7 @@ html {
   min-height: 40px;
   padding: 9px 16px;
   border: 0;
-  border-radius: 9px;
+  border-radius: 8px;
   background: var(--app-text);
   color: #ffffff;
   font-size: 12px;
@@ -767,7 +763,7 @@ html {
 }
 
 .app-logout-dialog-button:hover {
-  background: #0a1f33;
+  background: #0a1b2c;
 }
 
 .app-logout-dialog-button:focus-visible {
@@ -876,6 +872,8 @@ html {
   .app-mobile-menu-button {
     display: inline-flex !important;
     flex: 0 0 auto;
+    min-width: 44px;
+    min-height: 44px;
   }
 
   .app-navbar-brand {
@@ -925,7 +923,7 @@ html {
   }
 
   .app-page-title {
-    font-size: 1.55rem;
+    font-size: 1.5rem;
   }
 
   .app-page-description {

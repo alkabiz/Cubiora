@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Dialog, VisuallyHidden } from '@radix-ui/themes';
-import { ExclamationTriangleIcon } from '@radix-ui/react-icons';
+import { AlertTriangle } from 'lucide-react';
 import { useAuth } from '../context/auth-context';
 import { AppNavbar } from './app-navbar';
 import { AppSidebar } from './app-sidebar';
@@ -186,7 +186,7 @@ const ShellLayout: React.FC = () => {
               onClick={() => setLogoutDialogOpen(false)}
               className="app-logout-dialog-button"
             >
-              <ExclamationTriangleIcon width={16} height={16} aria-hidden="true" />
+              <AlertTriangle size={16} aria-hidden="true" />
               Volver al turno
             </button>
           </div>
