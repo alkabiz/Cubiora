@@ -1,5 +1,5 @@
 import { assertDatabaseUrlSecurity } from '../src/config/env.validation';
-import { PrismaService } from '../src/prisma/prisma.service';
+import { PrismaService, resolvePgPoolOptions } from '../src/prisma/prisma.service';
 import * as path from 'path';
 
 describe('Seguridad TLS y Validación de Arranque en Producción (verify-full obligatorio)', () => {
@@ -155,5 +155,40 @@ describe('Seguridad TLS y Validación de Arranque en Producción (verify-full ob
     expect((sslStatus as any).password).toBeUndefined();
     expect((sslStatus as any).token).toBeUndefined();
     expect((sslStatus as any).secret).toBeUndefined();
+  });
+
+  it('resolvePgPoolOptions con ALLOW_DOCKER_INTERNAL_DB=true elimina sslmode=require y configura rejectUnauthorized=false', () => {
+    const resolved = resolvePgPoolOptions(
+      'postgresql://cubiora_app:pass@192.168.1.33:5432/cubiora_db?schema=public&sslmode=require',
+      'production',
+      true,
+    );
+
+    expect(resolved.connectionString).toBe(
+      'postgresql://cubiora_app:pass@192.168.1.33:5432/cubiora_db?schema=public',
+    );
+    expect(resolved.ssl).toEqual({ rejectUnauthorized: false });
+  });
+
+  it('resolvePgPoolOptions en producción estricta sin ALLOW_DOCKER_INTERNAL_DB exige CA institucional', () => {
+    expect(() =>
+      resolvePgPoolOptions(
+        'postgresql://cubiora_app:pass@postgres.internal:5432/cubiora_db?sslmode=verify-full',
+        'production',
+        false,
+        undefined,
+      ),
+    ).toThrow(/FATAL_TLS_VERIFICATION_FAILED/);
+
+    const strictResolved = resolvePgPoolOptions(
+      'postgresql://cubiora_app:pass@postgres.internal:5432/cubiora_db?sslmode=verify-full',
+      'production',
+      false,
+      '-----BEGIN CERTIFICATE-----\nTEST_CA\n-----END CERTIFICATE-----',
+    );
+    expect(strictResolved.ssl).toEqual({
+      rejectUnauthorized: true,
+      ca: '-----BEGIN CERTIFICATE-----\nTEST_CA\n-----END CERTIFICATE-----',
+    });
   });
 });

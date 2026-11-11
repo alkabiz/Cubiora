@@ -6,6 +6,63 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import { getEnv } from '../config/env.validation';
 
+export interface ResolvedPgPoolOptions {
+  connectionString: string;
+  ssl: { rejectUnauthorized: boolean; ca?: string } | undefined;
+}
+
+/**
+ * Resuelve la cadena de conexión saneada y la configuración TLS para `pg.Pool`.
+ * Cuando `ALLOW_DOCKER_INTERNAL_DB=true` (Coolify / LXC interno con `hostssl`
+ * y certificado autofirmado), elimina `sslmode` de la URL y configura
+ * `ssl: { rejectUnauthorized: false }` para que `pg-connection-string` no lo sobrescriba.
+ */
+export function resolvePgPoolOptions(
+  databaseUrl: string,
+  nodeEnv: string,
+  allowDockerInternalDb: boolean,
+  caCert?: string,
+): ResolvedPgPoolOptions {
+  const lowerDbUrl = databaseUrl.toLowerCase();
+  const sslDisabled = lowerDbUrl.includes('sslmode=disable');
+  const urlRequestsSsl =
+    lowerDbUrl.includes('sslmode=require') ||
+    lowerDbUrl.includes('sslmode=verify-ca') ||
+    lowerDbUrl.includes('sslmode=verify-full');
+
+  const requiresStrictSsl = !allowDockerInternalDb && (urlRequestsSsl || nodeEnv === 'production');
+
+  if (nodeEnv === 'production' && !allowDockerInternalDb) {
+    if (!requiresStrictSsl || !caCert) {
+      throw new Error(
+        'FATAL_TLS_VERIFICATION_FAILED: En producción es obligatorio el uso de TLS con CA interna verificada (rejectUnauthorized: true, verify-full). La API se niega a iniciar.',
+      );
+    }
+  }
+
+  let ssl: { rejectUnauthorized: boolean; ca?: string } | undefined;
+  if (allowDockerInternalDb) {
+    ssl = sslDisabled ? undefined : { rejectUnauthorized: false };
+  } else if (requiresStrictSsl) {
+    if (caCert) {
+      ssl = { rejectUnauthorized: true, ca: caCert };
+    } else if (nodeEnv !== 'production' && lowerDbUrl.includes('sslmode=require')) {
+      ssl = { rejectUnauthorized: false };
+    } else {
+      ssl = { rejectUnauthorized: true };
+    }
+  }
+
+  const sanitizedConnectionString = databaseUrl
+    .replace(/([?&])sslmode=[^&]+(&|$)/gi, '$1')
+    .replace(/[?&]$/, '');
+
+  return {
+    connectionString: sanitizedConnectionString,
+    ssl,
+  };
+}
+
 /**
  * PrismaService: envuelve PrismaClient con el driver adapter @prisma/adapter-pg
  * y gestiona el ciclo de vida de la conexión.
@@ -43,41 +100,19 @@ export class PrismaService
     }
 
     const isDockerInternal = process.env['ALLOW_DOCKER_INTERNAL_DB'] === 'true';
-
-    const requiresSsl = !isDockerInternal && (
-      env.DATABASE_URL.includes('sslmode=require') ||
-      env.DATABASE_URL.includes('sslmode=verify-ca') ||
-      env.DATABASE_URL.includes('sslmode=verify-full') ||
-      env.NODE_ENV === 'production'
+    const pgOptions = resolvePgPoolOptions(
+      env.DATABASE_URL,
+      env.NODE_ENV,
+      isDockerInternal,
+      caCert,
     );
 
-    // Validación de inicio obligatoria:
-    // Si NODE_ENV=production y no es red interna Docker, TLS con CA interna es obligatorio.
-    if (env.NODE_ENV === 'production' && !isDockerInternal) {
-      if (!requiresSsl || !caCert) {
-        throw new Error(
-          'FATAL_TLS_VERIFICATION_FAILED: En producción es obligatorio el uso de TLS con CA interna verificada (rejectUnauthorized: true, verify-full). La API se niega a iniciar.',
-        );
-      }
-    }
-
-    const sslConfig = requiresSsl
-      ? {
-          rejectUnauthorized: true,
-          ca: caCert,
-        }
-      : undefined;
-
-    const sanitizedConnectionString = env.DATABASE_URL
-      .replace(/([?&])sslmode=[^&]+(&|$)/, '$1')
-      .replace(/[?&]$/, '');
-
     const pool = new Pool({
-      connectionString: sanitizedConnectionString,
+      connectionString: pgOptions.connectionString,
       max: 10,
       idleTimeoutMillis: 30_000,
       connectionTimeoutMillis: 5_000,
-      ssl: sslConfig,
+      ssl: pgOptions.ssl,
     });
 
     const adapter = new PrismaPg(pool);
