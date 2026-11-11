@@ -36,7 +36,7 @@ vi.mock('../features/cashier/cubicle-daily-performance-card', () => ({
 
 const renderWithTheme = (ui: React.ReactElement) => {
   return render(
-    <Theme accentColor="teal" grayColor="slate">
+    <Theme accentColor="blue" grayColor="slate">
       <MemoryRouter>{ui}</MemoryRouter>
     </Theme>,
   );

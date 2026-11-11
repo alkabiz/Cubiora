@@ -7,7 +7,7 @@ import { PublicDisplayScreen } from './public-display-screen';
 
 const renderComponent = () => {
   return render(
-    <Theme accentColor="teal" grayColor="slate">
+    <Theme accentColor="blue" grayColor="slate">
       <MemoryRouter>
         <PublicDisplayScreen />
       </MemoryRouter>

@@ -123,7 +123,7 @@ const renderComponent = () => {
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <Theme accentColor="teal" grayColor="slate">
+      <Theme accentColor="blue" grayColor="slate">
         <MemoryRouter>
           <AdminHistoryScreen />
         </MemoryRouter>
@@ -297,7 +297,7 @@ describe('[SCR-ADM-003] Historial · Registro Operativo Diario', () => {
     }));
 
     render(
-      <Theme accentColor="teal" grayColor="slate">
+      <Theme accentColor="blue" grayColor="slate">
         <DailyAuditTable records={manyRecords} pageSize={25} />
       </Theme>,
     );

@@ -34,7 +34,7 @@ describe('[FASE D] Medición de Rendimiento y Escalabilidad con Evidencia Numér
     // Medición SIN paginación (renderizando las 600 filas simultáneamente en el DOM)
     const t0Without = performance.now();
     const { container: containerWithout, unmount: unmountWithout } = render(
-      <Theme accentColor="teal" grayColor="slate">
+      <Theme accentColor="blue" grayColor="slate">
         <DailyAuditTable records={records} pageSize={600} />
       </Theme>,
     );
@@ -47,7 +47,7 @@ describe('[FASE D] Medición de Rendimiento y Escalabilidad con Evidencia Numér
     // Medición CON paginación (pageSize = 25)
     const t0With = performance.now();
     const { container: containerWith, unmount: unmountWith } = render(
-      <Theme accentColor="teal" grayColor="slate">
+      <Theme accentColor="blue" grayColor="slate">
         <DailyAuditTable records={records} pageSize={25} />
       </Theme>,
     );

@@ -170,7 +170,7 @@ function renderShellAt(path: string) {
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <Theme accentColor="teal" grayColor="slate">
+      <Theme accentColor="blue" grayColor="slate">
         <RouterProvider router={router} />
       </Theme>
     </QueryClientProvider>,
@@ -474,7 +474,7 @@ describe('Shell de aplicación Cubiora', () => {
 
   it('renderiza PageHeader con sección, título, descripción y acción', () => {
     render(
-      <Theme accentColor="teal" grayColor="slate">
+      <Theme accentColor="blue" grayColor="slate">
         <PageHeader
           section="Pruebas"
           title="Título de prueba"
@@ -492,7 +492,7 @@ describe('Shell de aplicación Cubiora', () => {
 
   it('AppMain expone un único landmark principal', () => {
     render(
-      <Theme accentColor="teal" grayColor="slate">
+      <Theme accentColor="blue" grayColor="slate">
         <AppMain header={<PageHeader title="Contenido" />}>
           <p>Contenido de prueba</p>
         </AppMain>
@@ -544,7 +544,7 @@ describe('Separación del shell privado y la pantalla pública', () => {
     const router = createMemoryRouter(appRoutes, { initialEntries: ['/pantalla'] });
 
     render(
-      <Theme accentColor="teal" grayColor="slate">
+      <Theme accentColor="blue" grayColor="slate">
         <RouterProvider router={router} />
       </Theme>,
     );
@@ -562,7 +562,7 @@ describe('Separación del shell privado y la pantalla pública', () => {
     const router = createMemoryRouter(appRoutes, { initialEntries: ['/cajero'] });
 
     render(
-      <Theme accentColor="teal" grayColor="slate">
+      <Theme accentColor="blue" grayColor="slate">
         <RouterProvider router={router} />
       </Theme>,
     );
@@ -586,7 +586,7 @@ describe('Separación del shell privado y la pantalla pública', () => {
 
     render(
       <QueryClientProvider client={queryClient}>
-        <Theme accentColor="teal" grayColor="slate">
+        <Theme accentColor="blue" grayColor="slate">
           <RouterProvider router={router} />
         </Theme>
       </QueryClientProvider>,
@@ -607,7 +607,7 @@ describe('Separación del shell privado y la pantalla pública', () => {
     const router = createMemoryRouter(appRoutes, { initialEntries: ['/recepcion'] });
 
     render(
-      <Theme accentColor="teal" grayColor="slate">
+      <Theme accentColor="blue" grayColor="slate">
         <RouterProvider router={router} />
       </Theme>,
     );

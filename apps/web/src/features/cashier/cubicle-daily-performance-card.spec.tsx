@@ -65,7 +65,7 @@ function setNavigatorOnline(value: boolean) {
 function cardTree(queryClient: QueryClient, outcome: CubicleOutcome | null = null) {
   return (
     <QueryClientProvider client={queryClient}>
-      <Theme accentColor="teal" grayColor="slate">
+      <Theme accentColor="blue" grayColor="slate">
         <CubicleDailyPerformanceCard cubicleCode="CUB-03" outcome={outcome} />
       </Theme>
     </QueryClientProvider>

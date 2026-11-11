@@ -59,7 +59,7 @@ describe('[JSDOM] Semántica ARIA — Verificación de estructura accesible (no 
     });
     return render(
       <QueryClientProvider client={client}>
-        <Theme accentColor="teal" grayColor="slate">
+        <Theme accentColor="blue" grayColor="slate">
           <AuthProvider>
             <MemoryRouter>{ui}</MemoryRouter>
           </AuthProvider>

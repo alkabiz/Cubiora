@@ -269,7 +269,7 @@ const renderScreen = () => {
   });
   return render(
     <QueryClientProvider client={client}>
-      <Theme accentColor="teal" grayColor="slate">
+      <Theme accentColor="blue" grayColor="slate">
         <MemoryRouter>
           <AdminFacilitiesScreen />
         </MemoryRouter>

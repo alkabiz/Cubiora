@@ -13,7 +13,7 @@ describe('AdminOverviewScreen · Escalabilidad Mega-Centro y Prescripción de Cu
 
   const renderWithProviders = (ui: React.ReactElement) => {
     return render(
-      <Theme accentColor="teal" grayColor="slate">
+      <Theme accentColor="blue" grayColor="slate">
         <MemoryRouter>{ui}</MemoryRouter>
       </Theme>,
     );
