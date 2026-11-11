@@ -190,7 +190,7 @@ describe('[SCR-ADM-004] Gestión de Farmacéuticos Registrados', () => {
     expect(
       screen.getByRole('heading', {
         level: 1,
-        name: /\[SCR-ADM-004\] Gestión de Farmacéuticos Registrados/i,
+        name: /Gestión de Farmacéuticos Registrados/i,
       }),
     ).toBeDefined();
 

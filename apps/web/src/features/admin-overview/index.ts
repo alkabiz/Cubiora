@@ -3,7 +3,11 @@ export { AdminOverviewScreen } from './admin-overview-screen';
 export { CubicleCard } from './cubicle-card';
 export { QueueItemCard } from './queue-item-card';
 export { KpiCard } from './kpi-card';
-export { useOperationalTelemetry } from './use-operational-telemetry';
+export {
+  OperationalTelemetryLayout,
+  OperationalTelemetryProvider,
+  useOperationalTelemetry,
+} from './use-operational-telemetry';
 export type {
   CubicleStation,
   QueuedTicket,

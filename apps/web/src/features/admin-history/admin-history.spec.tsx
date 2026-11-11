@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Theme } from '@radix-ui/themes';
 import {
   DispensationResolution,
@@ -112,12 +113,22 @@ const MOCK_HISTORY_RESPONSE: TicketHistoryResponse = {
 };
 
 const renderComponent = () => {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+      },
+    },
+  });
+
   return render(
-    <Theme accentColor="teal" grayColor="slate">
-      <MemoryRouter>
-        <AdminHistoryScreen />
-      </MemoryRouter>
-    </Theme>,
+    <QueryClientProvider client={queryClient}>
+      <Theme accentColor="teal" grayColor="slate">
+        <MemoryRouter>
+          <AdminHistoryScreen />
+        </MemoryRouter>
+      </Theme>
+    </QueryClientProvider>,
   );
 };
 
@@ -133,13 +144,12 @@ describe('[SCR-ADM-003] Historial · Registro Operativo Diario', () => {
   it('1. Renderiza el Header superior con breadcrumbs, título principal, Exportar CSV y enlace de regreso', async () => {
     renderComponent();
 
-    // Breadcrumb
-    expect(screen.getByText('SCR-ADM-003')).toBeDefined();
+    // Breadcrumb / sección
     expect(screen.getByText('Auditoría Operativa de Tiempos y Despacho')).toBeDefined();
 
     // Título Principal
     expect(
-      screen.getByText('[SCR-ADM-003] Historial · Registro Operativo Diario'),
+      screen.getByRole('heading', { level: 1, name: 'Historial Operativo Diario' }),
     ).toBeDefined();
 
     // Botones de acción

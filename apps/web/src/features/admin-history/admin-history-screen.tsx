@@ -1,5 +1,6 @@
 // ─── [SCR-ADM-003] Historial · Registro Operativo Diario ─────────────────────
-import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { Callout } from '@radix-ui/themes';
 import {
@@ -9,6 +10,7 @@ import {
   type TicketHistoryResponse,
 } from '@cubiora/shared';
 import { apiClient } from '../../lib/api';
+import { AppMain } from '../../app/app-main';
 import { HistoryHeader } from './history-header';
 import { HistoryFilterToolbar } from './history-filter-toolbar';
 import { DailyAuditTable } from './daily-audit-table';
@@ -53,87 +55,73 @@ function mapHistoryItems(historyData: TicketHistoryResponse): DailyAuditRecord[]
 }
 
 export const AdminHistoryScreen: React.FC = () => {
-  const [records, setRecords] = useState<DailyAuditRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [slaTargetSeconds, setSlaTargetSeconds] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [slaFilter, setSlaFilter] = useState<SlaFilterOption>('ALL');
   const [serverPage, setServerPage] = useState(1);
-  const [serverTotalPages, setServerTotalPages] = useState(1);
-  const [serverTotal, setServerTotal] = useState(0);
   const [inspectedRecord, setInspectedRecord] = useState<DailyAuditRecord | null>(null);
-  const isMountedRef = useRef(true);
-
-  const loadHistory = useCallback(
-    (targetPage = 1, options?: { search?: string; slaFilter?: SlaFilterOption }) => {
-      setIsLoading(true);
-      setLoadError(null);
-
-      const params = new URLSearchParams({ limit: '100' });
-      if (targetPage > 1) {
-        params.set('page', String(targetPage));
-      }
-      const trimmedSearch = options?.search?.trim();
-      if (trimmedSearch) {
-        params.set('search', trimmedSearch);
-      }
-      if (options?.slaFilter && options.slaFilter !== 'ALL') {
-        params.set('slaFilter', options.slaFilter);
-      }
-
-      apiClient<{ success: boolean; data: TicketHistoryResponse }>(
-        `/tickets/history?${params.toString()}`,
-      )
-        .then((res) => {
-          if (!isMountedRef.current) return;
-          const historyData = res.data ?? (res as unknown as TicketHistoryResponse);
-          if (historyData && typeof historyData.slaThresholdSeconds === 'number') {
-            setSlaTargetSeconds(historyData.slaThresholdSeconds);
-          }
-          if (historyData && Array.isArray(historyData.items)) {
-            setRecords(mapHistoryItems(historyData));
-            setServerPage(
-              typeof historyData.page === 'number' && historyData.page >= 1
-                ? historyData.page
-                : targetPage,
-            );
-            setServerTotalPages(
-              typeof historyData.totalPages === 'number' && historyData.totalPages >= 1
-                ? historyData.totalPages
-                : 1,
-            );
-            setServerTotal(
-              typeof historyData.total === 'number' ? historyData.total : historyData.items.length,
-            );
-          } else {
-            setRecords([]);
-            setServerPage(1);
-            setServerTotalPages(1);
-            setServerTotal(0);
-          }
-        })
-        .catch(() => {
-          if (!isMountedRef.current) return;
-          setRecords([]);
-          setLoadError('No fue posible cargar el historial operativo del servidor.');
-        })
-        .finally(() => {
-          if (isMountedRef.current) {
-            setIsLoading(false);
-          }
-        });
-    },
-    [],
-  );
 
   useEffect(() => {
-    isMountedRef.current = true;
-    loadHistory(1);
+    const trimmed = searchQuery.trim();
+    if (trimmed === debouncedSearchQuery) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedSearchQuery(trimmed);
+      setServerPage(1);
+    }, 350);
+
     return () => {
-      isMountedRef.current = false;
+      window.clearTimeout(timeoutId);
     };
-  }, [loadHistory]);
+  }, [searchQuery, debouncedSearchQuery]);
+
+  const historyQuery = useQuery({
+    queryKey: ['admin-history', serverPage, debouncedSearchQuery, slaFilter],
+    placeholderData: keepPreviousData,
+    queryFn: async () => {
+      const params = new URLSearchParams({ limit: '100' });
+      if (serverPage > 1) {
+        params.set('page', String(serverPage));
+      }
+      if (debouncedSearchQuery) {
+        params.set('search', debouncedSearchQuery);
+      }
+      if (slaFilter !== 'ALL') {
+        params.set('slaFilter', slaFilter);
+      }
+
+      const res = await apiClient<{ success: boolean; data: TicketHistoryResponse }>(
+        `/tickets/history?${params.toString()}`,
+      );
+      return res.data ?? (res as unknown as TicketHistoryResponse);
+    },
+  });
+
+  const historyData = historyQuery.data;
+
+  const records = useMemo(() => {
+    if (!historyData || !Array.isArray(historyData.items)) {
+      return [];
+    }
+    return mapHistoryItems(historyData);
+  }, [historyData]);
+
+  const slaTargetSeconds =
+    typeof historyData?.slaThresholdSeconds === 'number' ? historyData.slaThresholdSeconds : null;
+  const effectivePage =
+    typeof historyData?.page === 'number' && historyData.page >= 1 ? historyData.page : serverPage;
+  const serverTotalPages =
+    typeof historyData?.totalPages === 'number' && historyData.totalPages >= 1
+      ? historyData.totalPages
+      : 1;
+  const serverTotal =
+    typeof historyData?.total === 'number' ? historyData.total : records.length;
+
+  const loadError = historyQuery.isError
+    ? 'No fue posible cargar el historial operativo del servidor.'
+    : null;
 
   // Filtrado reactivo en memoria sobre el lote cargado
   const filteredRecords = useMemo(() => {
@@ -176,8 +164,13 @@ export const AdminHistoryScreen: React.FC = () => {
     exportAuditRecordsToCsv(filteredRecords);
   };
 
+  const handleSlaFilterChange = (nextFilter: SlaFilterOption) => {
+    setSlaFilter(nextFilter);
+    setServerPage(1);
+  };
+
   const handleChangeServerPage = (nextPage: number) => {
-    loadHistory(nextPage, { search: searchQuery, slaFilter });
+    setServerPage(nextPage);
   };
 
   const slaTargetMinutes =
@@ -187,18 +180,16 @@ export const AdminHistoryScreen: React.FC = () => {
   const hasActiveFilter = searchQuery.trim().length > 0 || slaFilter !== 'ALL';
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] p-6 lg:p-8 space-y-5">
-      {/* ═══════════════ HEADER SUPERIOR DE PÁGINA ═══════════════ */}
-      <HistoryHeader onExportCsv={handleExportCsv} />
-
-      {/* ═══════════════ BARRA DE BÚSQUEDA Y FILTRO SLA ═══════════════ */}
-      <HistoryFilterToolbar
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-        slaFilter={slaFilter}
-        onSlaFilterChange={setSlaFilter}
-        slaTargetMinutes={slaTargetMinutes}
-      />
+    <AppMain header={<HistoryHeader onExportCsv={handleExportCsv} />}>
+      <div className="space-y-5">
+        {/* ═══════════════ BARRA DE BÚSQUEDA Y FILTRO SLA ═══════════════ */}
+        <HistoryFilterToolbar
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          slaFilter={slaFilter}
+          onSlaFilterChange={handleSlaFilterChange}
+          slaTargetMinutes={slaTargetMinutes}
+        />
 
       {loadError && (
         <Callout.Root color="red" role="alert">
@@ -209,8 +200,9 @@ export const AdminHistoryScreen: React.FC = () => {
             <Callout.Text>{loadError}</Callout.Text>
             <button
               type="button"
-              onClick={() => loadHistory(serverPage, { search: searchQuery, slaFilter })}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[32px] rounded-lg bg-white border border-red-300 text-red-800 hover:bg-red-50 text-xs font-semibold cursor-pointer"
+              onClick={() => void historyQuery.refetch()}
+              disabled={historyQuery.isFetching}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[32px] rounded-lg bg-white border border-red-300 text-red-800 hover:bg-red-50 text-xs font-semibold cursor-pointer disabled:opacity-50"
             >
               <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
               Reintentar
@@ -222,46 +214,36 @@ export const AdminHistoryScreen: React.FC = () => {
       {/* ═══════════════ TABLA DE REGISTRO OPERATIVO DIARIO ═══════════════ */}
       <DailyAuditTable
         records={filteredRecords}
-        isLoading={isLoading}
+        isLoading={historyQuery.isPending}
         hasActiveFilter={hasActiveFilter}
         onInspectTimeline={(record) => setInspectedRecord(record)}
       />
 
       {/* ═══════════════ PAGINACIÓN DE SERVIDOR (> 100 REGISTROS) ═══════════════ */}
-      {(serverTotalPages > 1 || serverPage > 1) && (
+      {(serverTotalPages > 1 || effectivePage > 1) && (
         <nav
           aria-label="Paginación de resultados del servidor"
           className="bg-white border border-slate-200/90 rounded-2xl px-6 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 text-xs text-slate-700 font-medium shadow-2xs"
         >
           <div>
-            Página del servidor <span className="font-mono font-bold text-slate-900">{serverPage}</span> de{' '}
+            Página del servidor <span className="font-mono font-bold text-slate-900">{effectivePage}</span> de{' '}
             <span className="font-mono font-bold text-slate-900">{serverTotalPages}</span> (Total:{' '}
             <span className="font-mono font-bold text-slate-900">{serverTotal}</span> registros)
           </div>
           <div className="flex items-center gap-2">
-            {hasActiveFilter && (
-              <button
-                type="button"
-                onClick={() => loadHistory(1, { search: searchQuery, slaFilter })}
-                disabled={isLoading}
-                className="px-3 py-1.5 min-h-[32px] rounded-lg border border-blue-200 bg-blue-50 hover:bg-blue-100 text-blue-900 font-semibold transition-colors cursor-pointer disabled:opacity-50"
-              >
-                Aplicar filtro en servidor
-              </button>
-            )}
             <button
               type="button"
-              onClick={() => handleChangeServerPage(Math.max(1, serverPage - 1))}
-              disabled={isLoading || serverPage <= 1}
-              className="px-3 py-1.5 min-h-[32px] rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 disabled:opacity-40 disabled:cursor-not-allowed font-semibold cursor-pointer"
+              onClick={() => handleChangeServerPage(Math.max(1, effectivePage - 1))}
+              disabled={historyQuery.isFetching || effectivePage <= 1}
+              className="px-3 py-1.5 min-h-[32px] rounded-lg border border-slate-500 bg-white hover:bg-slate-50 text-slate-800 disabled:opacity-40 disabled:cursor-not-allowed font-semibold cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
             >
               Lote anterior
             </button>
             <button
               type="button"
-              onClick={() => handleChangeServerPage(Math.min(serverTotalPages, serverPage + 1))}
-              disabled={isLoading || serverPage >= serverTotalPages}
-              className="px-3 py-1.5 min-h-[32px] rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-800 disabled:opacity-40 disabled:cursor-not-allowed font-semibold cursor-pointer"
+              onClick={() => handleChangeServerPage(Math.min(serverTotalPages, effectivePage + 1))}
+              disabled={historyQuery.isFetching || effectivePage >= serverTotalPages}
+              className="px-3 py-1.5 min-h-[32px] rounded-lg border border-slate-500 bg-white hover:bg-slate-50 text-slate-800 disabled:opacity-40 disabled:cursor-not-allowed font-semibold cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
             >
               Siguiente lote
             </button>
@@ -278,6 +260,7 @@ export const AdminHistoryScreen: React.FC = () => {
           if (!open) setInspectedRecord(null);
         }}
       />
-    </div>
+      </div>
+    </AppMain>
   );
 };

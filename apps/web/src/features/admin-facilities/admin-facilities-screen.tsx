@@ -40,6 +40,8 @@ import { FacilityFormDialog } from './facility-form-dialog';
 import { AssignPharmacistDialog } from './assign-pharmacist-dialog';
 import { DeleteFacilityDialog } from './delete-facility-dialog';
 import { UsersManagementPanel } from '../admin-users';
+import { AppMain } from '../../app/app-main';
+import { PageHeader } from '../../app/page-header';
 
 const FACILITY_STATUS_COLOR: Record<FacilityStatus, 'green' | 'amber' | 'gray'> = {
   [FacilityStatus.ACTIVE]: 'green',
@@ -169,36 +171,28 @@ export const AdminFacilitiesScreen: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] p-6 lg:p-8 space-y-6">
-      {/* ═══════════════ HEADER SUPERIOR ═══════════════ */}
-      <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <div className="flex items-center text-xs">
-            <span className="font-mono font-bold text-blue-700">SCR-ADM-005</span>
-            <span className="text-slate-400 mx-1.5" aria-hidden="true">
-              ·
-            </span>
-            <span className="text-slate-600">Red Hospitalaria y Puntos de Atención</span>
-          </div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight mt-1">
-            [SCR-ADM-005] Gestión de Sedes y Usuarios Asociados
-          </h1>
-          <p className="text-sm text-slate-600 mt-1">
-            Administra sedes hospitalarias, define la sede primaria activa y vincula profesionales farmacéuticos a cada ventanilla.
-          </p>
-        </div>
-
-        <Button
-          type="button"
-          color="teal"
-          size="2"
-          onClick={handleOpenCreate}
-          className="min-h-[36px] cursor-pointer"
-        >
-          <Plus size={15} aria-hidden="true" />
-          Registrar Nueva Sede
-        </Button>
-      </header>
+    <AppMain
+      header={
+        <PageHeader
+          section="Red Hospitalaria y Puntos de Atención"
+          title="Gestión de Sedes y Usuarios Asociados"
+          description="Administra sedes hospitalarias, define la sede primaria activa y vincula profesionales farmacéuticos a cada ventanilla."
+          action={
+            <Button
+              type="button"
+              color="teal"
+              size="2"
+              onClick={handleOpenCreate}
+              className="min-h-[36px] cursor-pointer"
+            >
+              <Plus size={15} aria-hidden="true" />
+              Registrar Nueva Sede
+            </Button>
+          }
+        />
+      }
+    >
+      <div className="space-y-6">
 
       {statusFeedback && (
         <Callout.Root color="teal" role="status" aria-live="polite">
@@ -216,7 +210,7 @@ export const AdminFacilitiesScreen: React.FC = () => {
             <button
               type="button"
               onClick={() => void facilitiesQuery.refetch()}
-              className="underline font-semibold ml-1 cursor-pointer"
+              className="inline-flex items-center min-h-[32px] px-2 rounded underline font-semibold ml-1 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
             >
               Reintentar
             </button>
@@ -226,7 +220,7 @@ export const AdminFacilitiesScreen: React.FC = () => {
 
       {facilitiesQuery.isLoading && (
         <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center text-sm text-slate-600 flex items-center justify-center gap-2">
-          <RefreshCw size={15} className="animate-spin text-blue-700" aria-hidden="true" />
+          <RefreshCw size={15} className="motion-safe:animate-spin text-teal-700" aria-hidden="true" />
           Cargando red de sedes hospitalarias…
         </div>
       )}
@@ -243,8 +237,8 @@ export const AdminFacilitiesScreen: React.FC = () => {
                   key={facility.id}
                   className={`bg-white rounded-2xl p-4 border transition-colors shadow-2xs flex flex-col justify-between gap-3 ${
                     isSelected
-                      ? 'border-[#0B5793] ring-1 ring-[#0B5793]/25'
-                      : 'border-slate-200/90 hover:border-slate-300'
+                      ? 'border-[#0F766E] ring-1 ring-[#0F766E]/25'
+                      : 'border-slate-200/90 hover:border-slate-400'
                   }`}
                 >
                   <div>
@@ -272,9 +266,9 @@ export const AdminFacilitiesScreen: React.FC = () => {
                       type="button"
                       onClick={() => setSelectedFacilityId(facility.id)}
                       aria-pressed={isSelected}
-                      className="text-left w-full group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0B5793] rounded-lg"
+                      className="text-left w-full group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] rounded-lg"
                     >
-                      <h2 className="text-sm font-bold text-slate-900 group-hover:text-[#0B5793] transition-colors">
+                      <h2 className="text-sm font-bold text-slate-900 group-hover:text-[#115E59] transition-colors">
                         {facility.name}
                       </h2>
                       <p className="text-xs text-slate-600 mt-1 flex items-center gap-1">
@@ -292,9 +286,9 @@ export const AdminFacilitiesScreen: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => setSelectedFacilityId(facility.id)}
-                      className={`min-h-[30px] px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0B5793] ${
+                      className={`min-h-[32px] px-2.5 py-1 rounded-md text-xs font-semibold transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] ${
                         isSelected
-                          ? 'bg-blue-50 text-blue-800 border border-blue-200'
+                          ? 'bg-teal-50 text-teal-900 border border-teal-600'
                           : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                       }`}
                     >
@@ -333,7 +327,7 @@ export const AdminFacilitiesScreen: React.FC = () => {
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-mono text-xs font-bold text-blue-800 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded">
+                  <span className="font-mono text-xs font-bold text-teal-800 bg-teal-50 border border-teal-200 px-2 py-0.5 rounded">
                     {selectedFacility.code}
                   </span>
                   <Badge
@@ -387,7 +381,7 @@ export const AdminFacilitiesScreen: React.FC = () => {
 
             <dl className="bg-slate-50 border border-slate-200/80 rounded-xl p-4 space-y-2.5 text-xs">
               <div className="flex items-start gap-2">
-                <MapPin size={14} className="text-slate-500 mt-0.5 flex-shrink-0" aria-hidden="true" />
+                <MapPin size={14} className="text-slate-600 mt-0.5 flex-shrink-0" aria-hidden="true" />
                 <div>
                   <dt className="font-semibold text-slate-700">Dirección</dt>
                   <dd className="text-slate-900 mt-0.5">
@@ -397,7 +391,7 @@ export const AdminFacilitiesScreen: React.FC = () => {
               </div>
 
               <div className="flex items-start gap-2">
-                <Phone size={14} className="text-slate-500 mt-0.5 flex-shrink-0" aria-hidden="true" />
+                <Phone size={14} className="text-slate-600 mt-0.5 flex-shrink-0" aria-hidden="true" />
                 <div>
                   <dt className="font-semibold text-slate-700">Teléfono de Guardia</dt>
                   <dd className="text-slate-900 mt-0.5 font-mono">
@@ -407,7 +401,7 @@ export const AdminFacilitiesScreen: React.FC = () => {
               </div>
 
               <div className="flex items-start gap-2">
-                <Clock size={14} className="text-slate-500 mt-0.5 flex-shrink-0" aria-hidden="true" />
+                <Clock size={14} className="text-slate-600 mt-0.5 flex-shrink-0" aria-hidden="true" />
                 <div>
                   <dt className="font-semibold text-slate-700">Horario de Atención</dt>
                   <dd className="text-slate-900 mt-0.5">
@@ -417,7 +411,7 @@ export const AdminFacilitiesScreen: React.FC = () => {
               </div>
 
               <div className="flex items-start gap-2">
-                <Building2 size={14} className="text-slate-500 mt-0.5 flex-shrink-0" aria-hidden="true" />
+                <Building2 size={14} className="text-slate-600 mt-0.5 flex-shrink-0" aria-hidden="true" />
                 <div>
                   <dt className="font-semibold text-slate-700">Capacidad Parametrizada</dt>
                   <dd className="text-slate-900 mt-0.5">
@@ -497,7 +491,7 @@ export const AdminFacilitiesScreen: React.FC = () => {
           <div className="lg:col-span-7 bg-white border border-slate-200/90 rounded-2xl p-5 shadow-2xs space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-200">
               <div className="flex items-center gap-2">
-                <Users size={16} className="text-blue-700" aria-hidden="true" />
+                <Users size={16} className="text-teal-700" aria-hidden="true" />
                 <h2 className="text-base font-bold text-slate-900">
                   Usuarios y Farmacéuticos Asociados ({selectedFacility.pharmacists.length})
                 </h2>
@@ -520,7 +514,7 @@ export const AdminFacilitiesScreen: React.FC = () => {
             </div>
 
             {selectedFacility.pharmacists.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/70 p-6 text-center space-y-2">
+              <div className="rounded-xl border border-dashed border-slate-400 bg-slate-50/70 p-6 text-center space-y-2">
                 <Text as="p" size="2" weight="bold" className="text-slate-800">
                   Sin farmacéuticos asociados actualmente
                 </Text>
@@ -591,13 +585,13 @@ export const AdminFacilitiesScreen: React.FC = () => {
             <div className="pt-3 border-t border-slate-200 flex items-center justify-between gap-2 flex-wrap">
               <Link
                 to="/admin/farmaceuticos"
-                className="text-xs font-semibold text-blue-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0B5793] rounded"
+                className="text-xs font-semibold text-teal-700 hover:text-teal-900 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] rounded"
               >
                 Administrar en Directorio de Farmacéuticos →
               </Link>
               <Link
                 to="/admin/cubiculos"
-                className="text-xs font-semibold text-slate-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0B5793] rounded"
+                className="text-xs font-semibold text-slate-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] rounded"
               >
                 Ir a Configuración de Cubículos →
               </Link>
@@ -639,7 +633,8 @@ export const AdminFacilitiesScreen: React.FC = () => {
         errorMessage={deleteError}
         onConfirmDelete={handleConfirmDeleteFacility}
       />
-    </div>
+      </div>
+    </AppMain>
   );
 };
 

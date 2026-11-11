@@ -42,6 +42,8 @@ import {
 } from './api';
 import { PharmacistFormDialog } from './pharmacist-form-dialog';
 import { DeletePharmacistDialog } from './delete-pharmacist-dialog';
+import { AppMain } from '../../app/app-main';
+import { PageHeader } from '../../app/page-header';
 
 const ROLE_BADGE_COLOR: Record<
   PharmacistOperationalRole,
@@ -179,45 +181,39 @@ export const AdminPharmacistsScreen: React.FC = () => {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-[#F8FAFC] p-6 lg:p-8 space-y-6">
-      {/* ═══════════════ HEADER SUPERIOR ═══════════════ */}
-      <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <div className="flex items-center text-xs">
-            <span className="font-mono font-bold text-blue-700">SCR-ADM-004</span>
-            <span className="text-slate-400 mx-1.5" aria-hidden="true">
-              ·
-            </span>
-            <span className="text-slate-600">Personal Operativo de Dispensación</span>
-          </div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight mt-1">
-            [SCR-ADM-004] Gestión de Farmacéuticos Registrados
-          </h1>
-          <p className="text-sm text-slate-600 mt-1">
-            Directorio profesional, matrícula habilitante y vinculación con sedes y cubículos de atención.
-          </p>
-        </div>
+  const headerActions = (
+    <div className="flex items-center gap-2.5 flex-wrap">
+      <Link
+        to="/admin/cubiculos"
+        className="inline-flex items-center min-h-[36px] px-3.5 py-1.5 rounded-lg border border-slate-500 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-2"
+      >
+        Configurar Cubículos
+      </Link>
+      <Button
+        type="button"
+        color="teal"
+        size="2"
+        onClick={handleOpenCreate}
+        className="min-h-[36px] cursor-pointer"
+      >
+        <Plus size={15} aria-hidden="true" />
+        Registrar Farmacéutico
+      </Button>
+    </div>
+  );
 
-        <div className="flex items-center gap-2.5 flex-wrap">
-          <Link
-            to="/admin/cubiculos"
-            className="inline-flex items-center min-h-[36px] px-3.5 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0B5793]"
-          >
-            Configurar Cubículos
-          </Link>
-          <Button
-            type="button"
-            color="teal"
-            size="2"
-            onClick={handleOpenCreate}
-            className="min-h-[36px] cursor-pointer"
-          >
-            <Plus size={15} aria-hidden="true" />
-            Registrar Farmacéutico
-          </Button>
-        </div>
-      </header>
+  return (
+    <AppMain
+      header={
+        <PageHeader
+          section="Personal Operativo de Dispensación"
+          title="Gestión de Farmacéuticos Registrados"
+          description="Directorio profesional, matrícula habilitante y vinculación con sedes y cubículos de atención."
+          action={headerActions}
+        />
+      }
+    >
+      <div className="space-y-6">
 
       {/* Región viva accesible para confirmar mutaciones (WCAG 4.1.3 AA) */}
       {statusFeedback && (
@@ -291,7 +287,7 @@ export const AdminPharmacistsScreen: React.FC = () => {
           <div className="mt-2">
             <Link
               to="/admin/sedes"
-              className="text-xs font-semibold text-blue-700 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0B5793] rounded"
+              className="text-xs font-semibold text-teal-700 hover:text-teal-900 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] rounded"
             >
               Ver mapa y sedes →
             </Link>
@@ -318,7 +314,7 @@ export const AdminPharmacistsScreen: React.FC = () => {
             onChange={(e) => setSearchQuery(e.target.value)}
           >
             <TextField.Slot>
-              <Search size={14} className="text-slate-500" aria-hidden="true" />
+              <Search size={14} className="text-slate-600" aria-hidden="true" />
             </TextField.Slot>
           </TextField.Root>
         </div>
@@ -412,7 +408,7 @@ export const AdminPharmacistsScreen: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => void pharmacistsQuery.refetch()}
-                  className="underline font-semibold ml-1 cursor-pointer"
+                  className="inline-flex items-center min-h-[32px] px-2 rounded underline font-semibold ml-1 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
                 >
                   Reintentar
                 </button>
@@ -423,7 +419,7 @@ export const AdminPharmacistsScreen: React.FC = () => {
 
         {pharmacistsQuery.isLoading && (
           <div className="p-8 text-center text-sm text-slate-600 flex items-center justify-center gap-2">
-            <RefreshCw size={15} className="animate-spin text-blue-700" aria-hidden="true" />
+            <RefreshCw size={15} className="motion-safe:animate-spin text-teal-700" aria-hidden="true" />
             Cargando profesionales farmacéuticos registrados…
           </div>
         )}
@@ -517,7 +513,7 @@ export const AdminPharmacistsScreen: React.FC = () => {
                       <div className="flex items-start gap-1.5">
                         <Building2
                           size={14}
-                          className="text-slate-500 mt-0.5 flex-shrink-0"
+                          className="text-slate-600 mt-0.5 flex-shrink-0"
                           aria-hidden="true"
                         />
                         <div className="text-xs">
@@ -642,6 +638,7 @@ export const AdminPharmacistsScreen: React.FC = () => {
         errorMessage={deleteError}
         onConfirmDelete={handleConfirmDelete}
       />
-    </div>
+      </div>
+    </AppMain>
   );
 };

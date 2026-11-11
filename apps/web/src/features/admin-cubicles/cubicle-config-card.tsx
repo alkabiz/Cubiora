@@ -135,7 +135,7 @@ export const CubicleConfigCard: React.FC<CubicleConfigCardProps> = ({
           <div className="flex items-center gap-3">
             <div
               className={`w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center font-mono font-bold text-sm ${
-                item.isEnabled ? 'text-blue-900' : 'text-slate-600'
+                item.isEnabled ? 'text-teal-800' : 'text-slate-600'
               }`}
             >
               <span className="sr-only">Estación </span>
@@ -148,7 +148,7 @@ export const CubicleConfigCard: React.FC<CubicleConfigCardProps> = ({
             </div>
           </div>
           <span
-            className={`text-[10px] font-mono font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-md ${
+            className={`text-[11px] font-mono font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-md ${
               BADGE_STYLES[item.badgeStatus]
             }`}
           >
@@ -195,11 +195,11 @@ export const CubicleConfigCard: React.FC<CubicleConfigCardProps> = ({
             <div
               role="status"
               aria-live="polite"
-              className="h-4 text-[11px] flex items-center gap-1.5 mt-1.5"
+              className="min-h-[24px] text-[11px] flex items-center gap-1.5 mt-1.5"
             >
               {saveStatus === 'saving' && (
-                <span className="text-blue-700 flex items-center gap-1 font-medium">
-                  <RefreshCw className="w-3 h-3 animate-spin" aria-hidden="true" />
+                <span className="text-teal-700 flex items-center gap-1 font-medium">
+                  <RefreshCw className="w-3 h-3 motion-safe:animate-spin" aria-hidden="true" />
                   Guardando…
                 </span>
               )}
@@ -215,7 +215,7 @@ export const CubicleConfigCard: React.FC<CubicleConfigCardProps> = ({
                   <button
                     type="button"
                     onClick={() => void executeAssign(selectedValue)}
-                    className="text-xs text-blue-700 underline font-semibold ml-1 cursor-pointer focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-700"
+                    className="inline-flex items-center min-h-[32px] px-2 rounded text-xs text-teal-700 underline font-semibold ml-1 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
                   >
                     Reintentar
                   </button>
@@ -233,7 +233,7 @@ export const CubicleConfigCard: React.FC<CubicleConfigCardProps> = ({
 
           <div className="flex items-center justify-between text-xs">
             <span className="text-slate-700 font-medium">Turnos atendidos hoy:</span>
-            <span className="font-mono font-bold text-blue-800">
+            <span className="font-mono font-bold text-teal-800">
               {item.dailyProcessedCount} turnos
             </span>
           </div>
@@ -254,7 +254,7 @@ export const CubicleConfigCard: React.FC<CubicleConfigCardProps> = ({
           <button
             type="button"
             onClick={() => void onToggleStatus(item.id)}
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 min-h-[36px] rounded-lg border border-slate-300 bg-white hover:bg-red-50 hover:border-red-300 text-red-700 text-xs font-semibold transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0B5793] focus-visible:ring-offset-2"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 min-h-[36px] rounded-lg border border-slate-500 bg-white hover:bg-red-50 hover:border-red-400 text-red-700 text-xs font-semibold transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-2"
           >
             <Power className="w-3.5 h-3.5 text-red-600" aria-hidden="true" />
             Desactivar
@@ -263,7 +263,7 @@ export const CubicleConfigCard: React.FC<CubicleConfigCardProps> = ({
           <button
             type="button"
             onClick={() => void onToggleStatus(item.id)}
-            className="inline-flex items-center gap-1.5 px-4 py-1.5 min-h-[36px] rounded-lg bg-[#2F6F5E] hover:bg-[#25584B] text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0B5793] focus-visible:ring-offset-2"
+            className="inline-flex items-center gap-1.5 px-4 py-1.5 min-h-[36px] rounded-lg bg-[#0F766E] hover:bg-[#115E59] text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-2"
           >
             <Power className="w-3.5 h-3.5 text-white" aria-hidden="true" />
             Habilitar

@@ -145,7 +145,7 @@ export const UsersManagementPanel: React.FC<UsersManagementPanelProps> = ({ faci
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3 border-b border-slate-200">
         <div>
           <div className="flex items-center gap-2">
-            <ShieldCheck size={16} className="text-blue-700" aria-hidden="true" />
+            <ShieldCheck size={16} className="text-teal-700" aria-hidden="true" />
             <h2 className="text-base font-bold text-slate-900">
               Cuentas Operativas del Sistema ({users.length})
             </h2>
@@ -194,7 +194,7 @@ export const UsersManagementPanel: React.FC<UsersManagementPanelProps> = ({ faci
             <button
               type="button"
               onClick={() => void usersQuery.refetch()}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded bg-white border border-red-300 text-xs font-semibold text-red-800 hover:bg-red-50 cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[32px] rounded bg-white border border-red-300 text-xs font-semibold text-red-800 hover:bg-red-50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
             >
               <RefreshCw size={12} aria-hidden="true" />
               Reintentar
@@ -210,7 +210,7 @@ export const UsersManagementPanel: React.FC<UsersManagementPanelProps> = ({ faci
             Buscar cuenta operativa
           </label>
           <Search
-            className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+            className="w-4 h-4 text-slate-600 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
             aria-hidden="true"
           />
           <input
@@ -219,7 +219,7 @@ export const UsersManagementPanel: React.FC<UsersManagementPanelProps> = ({ faci
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Buscar por usuario, nombre o cubículo..."
-            className="w-full bg-[#F8FAFC] border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 placeholder:text-slate-600 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#0B5793]"
+            className="w-full bg-[#F8FAFC] border border-slate-500 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 placeholder:text-slate-600 focus:outline-none focus:bg-white focus:ring-2 focus:ring-[#0F766E] focus:border-[#0F766E]"
           />
         </div>
 
@@ -300,7 +300,7 @@ export const UsersManagementPanel: React.FC<UsersManagementPanelProps> = ({ faci
                       ) : missingCubicleForCashier ? (
                         <span className="font-medium text-amber-800">Sin cubículo asignado</span>
                       ) : (
-                        <span className="text-slate-500">—</span>
+                        <span className="text-slate-600">—</span>
                       )}
                     </td>
 
@@ -319,7 +319,7 @@ export const UsersManagementPanel: React.FC<UsersManagementPanelProps> = ({ faci
                           color="gray"
                           onClick={() => handleOpenEdit(user)}
                           aria-label={`Editar cuenta ${user.username}`}
-                          className="cursor-pointer"
+                          className="min-h-[32px] cursor-pointer"
                         >
                           <Pencil size={12} aria-hidden="true" />
                           Editar
@@ -332,7 +332,7 @@ export const UsersManagementPanel: React.FC<UsersManagementPanelProps> = ({ faci
                           color="blue"
                           onClick={() => setResetTarget(user)}
                           aria-label={`Restablecer contraseña de ${user.username}`}
-                          className="cursor-pointer"
+                          className="min-h-[32px] cursor-pointer"
                         >
                           <KeyRound size={12} aria-hidden="true" />
                           Contraseña
@@ -346,7 +346,7 @@ export const UsersManagementPanel: React.FC<UsersManagementPanelProps> = ({ faci
                           disabled={updateMutation.isPending}
                           onClick={() => void handleToggleActive(user)}
                           aria-label={`${user.active ? 'Desactivar' : 'Activar'} cuenta ${user.username}`}
-                          className="cursor-pointer"
+                          className="min-h-[32px] cursor-pointer"
                         >
                           <Power size={12} aria-hidden="true" />
                           {user.active ? 'Desactivar' : 'Activar'}

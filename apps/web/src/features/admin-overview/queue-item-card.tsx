@@ -11,7 +11,11 @@ export const QueueItemCard: React.FC<QueueItemCardProps> = React.memo(({ ticket 
   const isPreferential = ticket.priority === 'PREFERENCIAL';
 
   return (
-    <article className="border-l-4 border-l-amber-500 bg-white rounded-xl p-3.5 border border-slate-200 shadow-[0_1px_3px_rgb(0_0_0/0.06)]">
+    <article
+      className={`bg-white rounded-xl p-3.5 border shadow-[0_1px_3px_rgb(0_0_0/0.06)] ${
+        isPreferential ? 'border-purple-200' : 'border-amber-200/90'
+      }`}
+    >
       {/* ── Fila superior ── */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2.5 min-w-0">
@@ -27,7 +31,7 @@ export const QueueItemCard: React.FC<QueueItemCardProps> = React.memo(({ ticket 
 
         {/* Badge de prioridad */}
         <span
-          className={`text-[10px] font-bold px-2 py-0.5 rounded flex-shrink-0 ${
+          className={`text-[11px] font-bold px-2 py-0.5 rounded flex-shrink-0 ${
             isPreferential
               ? 'bg-purple-50 text-purple-700'
               : 'bg-amber-50 text-amber-800'

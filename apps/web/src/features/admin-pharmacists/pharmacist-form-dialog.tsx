@@ -78,7 +78,7 @@ export const PharmacistFormDialog: React.FC<PharmacistFormDialogProps> = ({
       shift: initialPharmacist?.shift ?? WorkShift.MORNING,
       status: initialPharmacist?.status ?? PharmacistStatus.ACTIVE,
       email: initialPharmacist?.email ?? '',
-      phone: initialPharmacist?.phone ?? '+54 11 4964-',
+      phone: initialPharmacist?.phone ?? '+57 300 ',
     },
   });
 
@@ -99,7 +99,7 @@ export const PharmacistFormDialog: React.FC<PharmacistFormDialogProps> = ({
         shift: initialPharmacist?.shift ?? WorkShift.MORNING,
         status: initialPharmacist?.status ?? PharmacistStatus.ACTIVE,
         email: initialPharmacist?.email ?? '',
-        phone: initialPharmacist?.phone ?? '+54 11 4964-8000',
+        phone: initialPharmacist?.phone ?? '+57 300 ',
       });
     }
   }, [open, initialPharmacist, facilities, reset]);
@@ -253,7 +253,7 @@ export const PharmacistFormDialog: React.FC<PharmacistFormDialogProps> = ({
               <TextField.Root
                 id="pharmacist-phone"
                 type="tel"
-                placeholder="+54 11 4964-8001"
+                placeholder="+57 300 555-0101"
                 {...register('phone')}
               />
               {errors.phone && (

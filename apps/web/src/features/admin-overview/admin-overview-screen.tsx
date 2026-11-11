@@ -1,10 +1,7 @@
 // ─── SCR-ADM-001 · CMP-ADM-001 — Estado General Operativo ────────────────────
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
 import {
   RefreshCw,
-  LayoutGrid,
-  History,
   Megaphone,
   AlertTriangle,
   Users,
@@ -18,6 +15,9 @@ import {
   WifiOff,
 } from 'lucide-react';
 
+import { AppMain } from '../../app/app-main';
+import { PageHeader } from '../../app/page-header';
+import { BroadcastNoticeDialog } from './broadcast-notice-dialog';
 import { CubicleCard } from './cubicle-card';
 import { QueueItemCard } from './queue-item-card';
 import { KpiCard } from './kpi-card';
@@ -69,7 +69,7 @@ const SlaAlertBanner: React.FC<SlaAlertBannerProps> = ({
           </div>
         </div>
         <div className="text-right flex-shrink-0">
-          <span className="text-xs text-slate-500 block">SLA General:</span>
+          <span className="text-xs text-slate-600 block">SLA General:</span>
           <span className="text-sm font-mono font-bold text-slate-900">
             {complianceDisplay}
           </span>
@@ -146,9 +146,9 @@ const KpiSummaryGrid: React.FC<KpiSummaryGridProps> = ({ kpis, slaThresholdSecon
     const mins = Math.round(kpis.averageWaitSeconds / 60);
     waitText = `${mins}m prom.`;
     if (kpis.averageWaitSeconds > 1500) {
-      waitClass = 'text-red-600 bg-red-50 px-1.5 py-0.5 rounded font-extrabold';
+      waitClass = 'text-red-700 bg-red-50 px-1.5 py-0.5 rounded font-extrabold';
     } else if (kpis.averageWaitSeconds > 900) {
-      waitClass = 'animate-pulse text-amber-500 font-extrabold';
+      waitClass = 'motion-safe:animate-pulse text-amber-700 font-extrabold';
     }
   }
 
@@ -164,7 +164,7 @@ const KpiSummaryGrid: React.FC<KpiSummaryGridProps> = ({ kpis, slaThresholdSecon
         secondaryLabel="Espera promedio (AWT)"
         footer={
           <div className="flex items-center gap-1.5 text-xs text-slate-600">
-            <Clock size={12} className="text-slate-500 flex-shrink-0" />
+            <Clock size={12} className="text-slate-600 flex-shrink-0" aria-hidden="true" />
             <span>
               {kpis.waitingCount > 0
                 ? 'Pacientes aguardando llamado en sala'
@@ -190,7 +190,7 @@ const KpiSummaryGrid: React.FC<KpiSummaryGridProps> = ({ kpis, slaThresholdSecon
           <div className="space-y-1">
             <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
               <div
-                className="h-full bg-[#0284C7] rounded-full transition-all duration-500"
+                className="h-full bg-[#0F766E] rounded-full transition-all duration-500"
                 style={{ width: `${Math.min(100, Math.max(0, activePercent))}%` }}
               />
             </div>
@@ -208,7 +208,7 @@ const KpiSummaryGrid: React.FC<KpiSummaryGridProps> = ({ kpis, slaThresholdSecon
         secondaryLabel={slaTargetMins !== null ? `SLA ≤ ${slaTargetMins} min` : 'Cumplimiento SLA'}
         footer={
           <div className="flex items-center gap-1.5 text-xs text-slate-600">
-            <Timer size={12} className="text-slate-500 flex-shrink-0" />
+            <Timer size={12} className="text-slate-600 flex-shrink-0" aria-hidden="true" />
             <span>
               {kpis.averageServiceSeconds !== undefined && kpis.averageServiceSeconds !== null
                 ? `TMM hoy: ${formatElapsedTime(kpis.averageServiceSeconds)}`
@@ -228,7 +228,7 @@ const KpiSummaryGrid: React.FC<KpiSummaryGridProps> = ({ kpis, slaThresholdSecon
         secondaryLabel="Tasa de abandono"
         footer={
           <div className="flex items-center gap-1.5 text-xs text-slate-600">
-            <Activity size={12} className="text-slate-500 flex-shrink-0" />
+            <Activity size={12} className="text-slate-600 flex-shrink-0" aria-hidden="true" />
             <span>Reingreso bloqueado por sistema</span>
           </div>
         }
@@ -274,7 +274,7 @@ const HourlyFlowWidget: React.FC<HourlyFlowWidgetProps> = ({ flow }) => {
       </div>
 
       {flow.length === 0 ? (
-        <div className="py-6 text-center text-xs text-slate-500">
+        <div className="py-6 text-center text-xs text-slate-600">
           Sin datos de flujo horario para la jornada actual.
         </div>
       ) : (
@@ -286,7 +286,7 @@ const HourlyFlowWidget: React.FC<HourlyFlowWidgetProps> = ({ flow }) => {
               return (
                 <div key={entry.hour} className="flex flex-col items-center gap-1 flex-1">
                   <span
-                    className={`text-[10px] font-mono tabular-nums font-bold ${
+                    className={`text-[11px] font-mono tabular-nums font-bold ${
                       entry.isCurrentHour ? 'text-blue-700' : 'text-slate-600'
                     }`}
                   >
@@ -327,11 +327,11 @@ const HourlyFlowWidget: React.FC<HourlyFlowWidgetProps> = ({ flow }) => {
 const FifoInfoCard: React.FC = () => (
   <div className="bg-slate-50/90 border border-slate-200/80 rounded-xl p-4 mt-4">
     <div className="flex items-center gap-2 mb-1.5">
-      <Cpu size={14} className="text-blue-600 flex-shrink-0" />
+      <Cpu size={14} className="text-blue-700 flex-shrink-0" />
       <span className="text-xs font-bold text-slate-800">Algoritmo de Asignación FIFO</span>
     </div>
-    <p className="text-xs text-slate-500 leading-relaxed">
-      Modo <span className="font-semibold text-slate-700">FIFO Dinámico</span> activo. El sistema
+    <p className="text-xs text-slate-600 leading-relaxed">
+      Modo <span className="font-semibold text-slate-800">FIFO Dinámico</span> activo. El sistema
       asigna automáticamente los turnos al primer puesto con estado disponible &lt; 2 minutos de
       ocio.
     </p>
@@ -352,7 +352,7 @@ const BottleneckCard: React.FC<BottleneckCardProps> = ({ recommendation }) => {
       data-testid="bottleneck-recommendation-card"
     >
       <div className="flex items-center gap-2 mb-1.5">
-        <AlertTriangle size={15} className="text-amber-700 flex-shrink-0 animate-pulse" />
+        <AlertTriangle size={15} className="text-amber-700 flex-shrink-0 motion-safe:animate-pulse" />
         <span className="text-xs font-bold text-amber-900 uppercase tracking-wide">
           Cuello de Botella Detectado
         </span>
@@ -362,7 +362,7 @@ const BottleneckCard: React.FC<BottleneckCardProps> = ({ recommendation }) => {
       </p>
       {recommendation.suggestedAction && (
         <div className="mt-2.5 pt-2 border-t border-amber-200/80 flex items-start gap-2">
-          <span className="bg-amber-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider flex-shrink-0">
+          <span className="bg-amber-600 text-white text-[11px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider flex-shrink-0">
             Acción Sugerida
           </span>
           <span className="text-xs text-amber-900 font-semibold">
@@ -394,6 +394,7 @@ export const AdminOverviewScreen: React.FC = () => {
   } = useOperationalTelemetry(true);
 
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [broadcastDialogOpen, setBroadcastDialogOpen] = useState(false);
   const [densityMode, setDensityMode] = useState<'standard' | 'compact'>('standard');
   const [noticeFeedback, setNoticeFeedback] = useState<{
     type: 'success' | 'error';
@@ -408,24 +409,7 @@ export const AdminOverviewScreen: React.FC = () => {
 
   const handleBroadcastClick = () => {
     setNoticeFeedback(null);
-    const message = window.prompt(
-      'Ingrese el mensaje de aviso general para proyectar en pantallas de sala:',
-      'Atención: favor verificar número de cubículo en pantalla antes de avanzar.',
-    );
-    if (message && message.trim().length > 0) {
-      const sent = sendBroadcastNotice(message.trim(), 'info');
-      if (sent) {
-        setNoticeFeedback({
-          type: 'success',
-          text: 'Aviso general enviado en tiempo real a monitores de sala.',
-        });
-      } else {
-        setNoticeFeedback({
-          type: 'error',
-          text: 'Sin conexión WebSocket activa: no fue posible emitir el aviso general.',
-        });
-      }
-    }
+    setBroadcastDialogOpen(true);
   };
 
   const wsStatusLabel =
@@ -445,95 +429,65 @@ export const AdminOverviewScreen: React.FC = () => {
       ? 'SIN SEDE'
       : 'SINCRONIZANDO';
 
-  return (
-    <div className="min-h-screen bg-[#F8FAFC]">
-      {/* ═══════════════ TOP NAVIGATION BAR ═══════════════ */}
-      <header className="flex items-center justify-between py-3 px-6 bg-white border-b border-slate-200 sticky top-0 z-30">
-        {/* Izquierda */}
-        <div className="min-w-0 mr-4">
-          {/* Breadcrumb */}
-          <div className="flex items-center gap-1 text-xs font-mono mb-0.5">
-            <span className="text-blue-600 font-semibold">SCR-ADM-001</span>
-            <span className="text-slate-300">·</span>
-            <span className="text-blue-600 font-semibold">CMP-ADM-001</span>
-            <span className="text-slate-300">·</span>
-            <span className="text-slate-600 font-medium">Supervisión Operativa en Tiempo Real</span>
-          </div>
+  const headerActions = (
+    <div className="flex items-center gap-2 flex-wrap justify-end">
+      {/* WebSocket pill con botón de refresco conectado a forceRefresh() */}
+      <button
+        type="button"
+        onClick={handleRefreshClick}
+        title="Estado de conexión WebSocket. Clic para solicitar snapshot actualizado"
+        className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-500 rounded-full px-3 py-1.5 min-h-[36px] text-xs hover:bg-slate-100 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-2"
+      >
+        <span
+          className={`w-2 h-2 rounded-full flex-shrink-0 ${
+            connectionStatus === 'connected'
+              ? 'bg-blue-500 motion-safe:animate-pulse'
+              : connectionStatus === 'connecting'
+                ? 'bg-amber-500 motion-safe:animate-pulse'
+                : 'bg-red-500'
+          }`}
+        />
+        <span className="text-slate-600">WebSocket</span>
+        <span className="font-mono font-bold text-slate-900 tabular-nums">
+          {wsStatusLabel}
+        </span>
+        <RefreshCw
+          size={11}
+          className={`text-slate-600 transition-transform ${isRefreshing ? 'motion-safe:animate-spin text-blue-600' : ''}`}
+        />
+      </button>
 
-          {/* Título + badge */}
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <h1 className="text-xl font-bold text-slate-900 leading-tight">
-              CMP-ADM-001 · Estado General Operativo
-            </h1>
+      {/* CTA primario — Aviso General */}
+      <button
+        type="button"
+        onClick={handleBroadcastClick}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[36px] text-xs font-bold text-white bg-[#0F172A] rounded-lg hover:bg-slate-800 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-2"
+      >
+        <Megaphone size={13} aria-hidden="true" />
+        Aviso General
+      </button>
+    </div>
+  );
+
+  return (
+    <AppMain
+      header={
+        <PageHeader
+          section="Supervisión Operativa en Tiempo Real"
+          title="Estado General Operativo"
+          titleBadge={
             <span
               title={facilityName ?? undefined}
-              className="bg-sky-50 text-sky-700 border border-sky-200 text-xs font-mono px-2 py-0.5 rounded flex-shrink-0"
+              className="bg-teal-50 text-teal-800 border border-teal-200 text-xs font-mono px-2 py-0.5 rounded flex-shrink-0"
             >
               {facilityBadgeText}
             </span>
-          </div>
-        </div>
-
-        {/* Derecha — controles y telemetría */}
-        <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
-          {/* WebSocket pill con botón de refresco conectado a forceRefresh() */}
-          <button
-            type="button"
-            onClick={handleRefreshClick}
-            title="Estado de conexión WebSocket. Clic para solicitar snapshot actualizado"
-            className="inline-flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-full px-3 py-1.5 text-xs hover:bg-slate-100 transition-colors cursor-pointer"
-          >
-            <span
-              className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                connectionStatus === 'connected'
-                  ? 'bg-blue-500 animate-pulse'
-                  : connectionStatus === 'connecting'
-                    ? 'bg-amber-500 animate-pulse'
-                    : 'bg-red-500'
-              }`}
-            />
-            <span className="text-slate-600">WebSocket</span>
-            <span className="font-mono font-bold text-slate-900 tabular-nums">
-              {wsStatusLabel}
-            </span>
-            <RefreshCw
-              size={11}
-              className={`text-slate-600 transition-transform ${isRefreshing ? 'animate-spin text-blue-600' : ''}`}
-            />
-          </button>
-
-          {/* Cubículos */}
-          <Link
-            to="/admin/cubiculos"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
-          >
-            <LayoutGrid size={13} />
-            Cubículos [SCR-ADM-002]
-          </Link>
-
-          {/* Historial */}
-          <Link
-            to="/admin/historial"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
-          >
-            <History size={13} />
-            Historial [SCR-ADM-003]
-          </Link>
-
-          {/* CTA primario — Aviso General */}
-          <button
-            type="button"
-            onClick={handleBroadcastClick}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-[#0F172A] rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
-          >
-            <Megaphone size={13} />
-            Aviso General
-          </button>
-        </div>
-      </header>
-
-      {/* ═══════════════ CONTENIDO PRINCIPAL ═══════════════ */}
-      <main className="p-6 space-y-5">
+          }
+          action={headerActions}
+        />
+      }
+    >
+      <div className="space-y-5">
         {(connectionStatus === 'offline' || connectionStatus === 'disconnected') && (
           <div
             role="alert"
@@ -682,7 +636,20 @@ export const AdminOverviewScreen: React.FC = () => {
             <BottleneckCard recommendation={bottleneckRecommendation} />
           </div>
         </div>
-      </main>
-    </div>
+      </div>
+
+      <BroadcastNoticeDialog
+        open={broadcastDialogOpen}
+        onOpenChange={setBroadcastDialogOpen}
+        isConnected={connectionStatus === 'connected'}
+        onSendNotice={sendBroadcastNotice}
+        onSentSuccess={() => {
+          setNoticeFeedback({
+            type: 'success',
+            text: 'Aviso general enviado en tiempo real a monitores de sala.',
+          });
+        }}
+      />
+    </AppMain>
   );
 };

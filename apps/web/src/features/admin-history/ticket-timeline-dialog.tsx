@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Badge, Button, Callout, Dialog, Flex, Separator } from '@radix-ui/themes';
 import {
   AlertCircle,
@@ -63,40 +64,26 @@ export const TicketTimelineDialog: React.FC<TicketTimelineDialogProps> = ({
   ticketCode,
   onOpenChange,
 }) => {
-  const [timeline, setTimeline] = useState<TicketTimelineDto | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  const loadTimeline = useCallback(async () => {
-    if (!open || !publicId) return;
-    setIsLoading(true);
-    setLoadError(null);
-    try {
+  const timelineQuery = useQuery({
+    queryKey: ['ticket-timeline', publicId],
+    enabled: open && Boolean(publicId),
+    queryFn: async () => {
+      if (!publicId) return null;
       const response = await apiClient<WrappedApiResponse<TicketTimelineDto>>(
         `/tickets/${encodeURIComponent(publicId)}/history`,
       );
-      setTimeline(unwrapApiData(response));
-    } catch (error) {
-      setTimeline(null);
-      setLoadError(
-        error instanceof Error
-          ? error.message
-          : 'No fue posible consultar la trazabilidad del turno.',
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  }, [open, publicId]);
+      return unwrapApiData(response);
+    },
+  });
 
-  useEffect(() => {
-    if (open && publicId) {
-      void loadTimeline();
-    } else if (!open) {
-      setTimeline(null);
-      setLoadError(null);
-      setIsLoading(false);
-    }
-  }, [open, publicId, loadTimeline]);
+  const timeline = open && publicId ? (timelineQuery.data ?? null) : null;
+  const isLoading = open && Boolean(publicId) && timelineQuery.isPending;
+  const loadError =
+    timelineQuery.isError && !timelineQuery.isFetching
+      ? timelineQuery.error instanceof Error
+        ? timelineQuery.error.message
+        : 'No fue posible consultar la trazabilidad del turno.'
+      : null;
 
   const ticket = timeline?.ticket;
   const dispensation = timeline?.dispensation;
@@ -109,7 +96,7 @@ export const TicketTimelineDialog: React.FC<TicketTimelineDialogProps> = ({
         className="max-h-[85vh] overflow-y-auto"
       >
         <Dialog.Title className="flex items-center gap-2 text-slate-900">
-          <History className="w-4 h-4 text-blue-700" aria-hidden="true" />
+          <History className="w-4 h-4 text-teal-700" aria-hidden="true" />
           <span>Trazabilidad del turno {ticket?.publicCode ?? ticketCode}</span>
         </Dialog.Title>
         <Dialog.Description id="ticket-timeline-description" size="2" color="gray" mb="4">
@@ -121,7 +108,7 @@ export const TicketTimelineDialog: React.FC<TicketTimelineDialogProps> = ({
             role="status"
             className="py-10 flex items-center justify-center gap-2 text-xs font-medium text-slate-600"
           >
-            <RefreshCw className="w-4 h-4 animate-spin text-blue-700" aria-hidden="true" />
+            <RefreshCw className="w-4 h-4 motion-safe:animate-spin text-teal-700" aria-hidden="true" />
             Cargando línea de tiempo del turno…
           </div>
         )}
@@ -138,8 +125,8 @@ export const TicketTimelineDialog: React.FC<TicketTimelineDialogProps> = ({
                 size="1"
                 variant="soft"
                 color="red"
-                onClick={() => void loadTimeline()}
-                className="cursor-pointer"
+                onClick={() => void timelineQuery.refetch()}
+                className="min-h-[32px] cursor-pointer"
               >
                 Reintentar
               </Button>
@@ -152,7 +139,7 @@ export const TicketTimelineDialog: React.FC<TicketTimelineDialogProps> = ({
             {/* Resumen operativo */}
             <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <span className="text-slate-500 font-semibold block">Estado final / actual</span>
+                <span className="text-slate-600 font-semibold block">Estado final / actual</span>
                 <div className="mt-1 flex items-center gap-2">
                   <Badge color="blue" variant="soft">
                     {TICKET_STATUS_LABELS_ES[ticket.status] ?? ticket.status}
@@ -164,21 +151,21 @@ export const TicketTimelineDialog: React.FC<TicketTimelineDialogProps> = ({
               </div>
 
               <div>
-                <span className="text-slate-500 font-semibold block">Puesto y operador</span>
+                <span className="text-slate-600 font-semibold block">Puesto y operador</span>
                 <p className="mt-1 font-medium text-slate-900">
                   {ticket.assignedStation} · {ticket.operatorName}
                 </p>
               </div>
 
               <div>
-                <span className="text-slate-500 font-semibold block">Documento (enmascarado)</span>
+                <span className="text-slate-600 font-semibold block">Documento (enmascarado)</span>
                 <p className="mt-1 font-mono text-slate-800">
                   {ticket.maskedDocument ?? 'Sin documento registrado'}
                 </p>
               </div>
 
               <div>
-                <span className="text-slate-500 font-semibold block">Tiempos de gestión</span>
+                <span className="text-slate-600 font-semibold block">Tiempos de gestión</span>
                 <p className="mt-1 font-mono text-slate-800">
                   Espera: {formatDurationSeconds(ticket.waitingDurationSeconds)} · Atención:{' '}
                   {formatDurationSeconds(ticket.serviceDurationSeconds)}
@@ -187,7 +174,7 @@ export const TicketTimelineDialog: React.FC<TicketTimelineDialogProps> = ({
 
               {timeline.terminalReason && (
                 <div className="sm:col-span-2 pt-2 border-t border-slate-200">
-                  <span className="text-slate-500 font-semibold block">Motivo terminal registrado</span>
+                  <span className="text-slate-600 font-semibold block">Motivo terminal registrado</span>
                   <p className="mt-1 text-slate-900 font-medium">{timeline.terminalReason}</p>
                 </div>
               )}

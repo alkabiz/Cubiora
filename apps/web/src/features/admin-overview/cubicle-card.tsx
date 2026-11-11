@@ -14,8 +14,7 @@ import { formatWaitTime } from './use-operational-telemetry';
 const STATUS_CONFIG: Record<
   CubicleStatus,
   {
-    borderLeft: string;
-    borderOuter: string;
+    border: string;
     badge: string;
     centerBlock: string;
     timeText: string;
@@ -23,43 +22,38 @@ const STATUS_CONFIG: Record<
   }
 > = {
   ATENDIENDO: {
-    borderLeft: 'border-l-4 border-l-blue-600',
-    borderOuter: 'border-slate-200/80',
+    border: 'border-blue-200/90',
     badge: 'bg-blue-50 text-blue-700',
     centerBlock: 'bg-slate-50/80',
     timeText: 'text-blue-700 font-bold font-mono tabular-nums',
     label: 'ATENDIENDO',
   },
   SLA_EXCEDIDO: {
-    borderLeft: 'border-l-4 border-l-red-600',
-    borderOuter: 'border-red-300',
+    border: 'border-red-300 ring-1 ring-red-200',
     badge: 'bg-red-100 text-red-700',
     centerBlock: 'bg-red-50/50',
-    timeText: 'text-red-600 font-bold font-mono tabular-nums',
+    timeText: 'text-red-700 font-bold font-mono tabular-nums',
     label: 'SLA EXCEDIDO',
   },
   LLAMANDO: {
-    borderLeft: 'border-l-4 border-l-purple-600',
-    borderOuter: 'border-slate-200/80',
+    border: 'border-purple-200/90',
     badge: 'bg-purple-50 text-purple-700',
     centerBlock: 'bg-purple-50/40',
     timeText: 'text-purple-700 font-bold font-mono tabular-nums',
     label: 'LLAMANDO',
   },
   DISPONIBLE: {
-    borderLeft: 'border-l-4 border-l-emerald-500',
-    borderOuter: 'border-slate-200/80',
+    border: 'border-emerald-200/90',
     badge: 'bg-emerald-50 text-emerald-700',
     centerBlock: 'bg-emerald-50/40',
     timeText: 'text-emerald-700 font-bold font-mono tabular-nums',
     label: 'DISPONIBLE',
   },
   INACTIVO: {
-    borderLeft: 'border-l-4 border-l-slate-600',
-    borderOuter: 'border-slate-200/80',
-    badge: 'bg-slate-100 text-slate-600',
+    border: 'border-slate-200/90',
+    badge: 'bg-slate-100 text-slate-700',
     centerBlock: 'bg-slate-50',
-    timeText: 'text-blue-600 font-semibold font-mono tabular-nums',
+    timeText: 'text-slate-700 font-semibold font-mono tabular-nums',
     label: 'INACTIVO',
   },
 };
@@ -71,11 +65,11 @@ function StatusFooterIcon({ status }: { status: CubicleStatus }) {
     case 'DISPONIBLE':
       return <CheckCircle2 size={12} className="text-emerald-600 flex-shrink-0" />;
     case 'SLA_EXCEDIDO':
-      return <AlertTriangle size={12} className="text-red-500 flex-shrink-0" />;
+      return <AlertTriangle size={12} className="text-red-600 flex-shrink-0" />;
     case 'LLAMANDO':
       return <Volume2 size={12} className="text-purple-600 flex-shrink-0" />;
     case 'INACTIVO':
-      return <Wrench size={12} className="text-slate-400 flex-shrink-0" />;
+      return <Wrench size={12} className="text-slate-600 flex-shrink-0" />;
   }
 }
 
@@ -92,8 +86,7 @@ export const CubicleCard: React.FC<CubicleCardProps> = React.memo(({ station }) 
     <article
       className={[
         'bg-white rounded-xl border shadow-xs overflow-hidden flex flex-col',
-        cfg.borderLeft,
-        cfg.borderOuter,
+        cfg.border,
         station.fullWidth ? 'md:col-span-2' : '',
       ]
         .filter(Boolean)
@@ -104,7 +97,7 @@ export const CubicleCard: React.FC<CubicleCardProps> = React.memo(({ station }) 
         <div className="flex items-center gap-2 min-w-0">
           {/* Estado badge */}
           <span
-            className={`text-[10px] font-bold px-2 py-0.5 rounded tracking-wider ${cfg.badge}`}
+            className={`text-[11px] font-bold px-2 py-0.5 rounded tracking-wider ${cfg.badge}`}
           >
             {cfg.label}
           </span>
@@ -112,7 +105,7 @@ export const CubicleCard: React.FC<CubicleCardProps> = React.memo(({ station }) 
           <span className="text-xs font-semibold text-slate-700 truncate">{station.name}</span>
         </div>
         {/* Módulo badge */}
-        <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700 ml-2 flex-shrink-0">
+        <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700 ml-2 flex-shrink-0">
           {station.moduleCode}
         </span>
       </div>
@@ -133,14 +126,14 @@ export const CubicleCard: React.FC<CubicleCardProps> = React.memo(({ station }) 
             >
               {station.assignedTicket ?? 'Sin turno asignado'}
             </p>
-            <p className="text-xs text-slate-500 mt-0.5 truncate">
+            <p className="text-xs text-slate-600 mt-0.5 truncate">
               {station.operatorName ?? 'Sin operador asignado'}
             </p>
           </div>
 
           {/* Tiempo / Estado temporal */}
           <div className="flex-shrink-0 flex items-center gap-1.5">
-            {!isInactive && <Clock size={13} className="text-slate-400" />}
+            {!isInactive && <Clock size={13} className="text-slate-600" aria-hidden="true" />}
             <span className={`text-sm ${cfg.timeText}`}>
               {station.elapsedTimeFormatted}
             </span>

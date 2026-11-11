@@ -1,8 +1,10 @@
 // ─── [SCR-ADM-002] Administración · Configuración de Cubículos ──────────────
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Building2, Users, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Building2, Users, AlertTriangle, RefreshCw } from 'lucide-react';
 import { Badge, Callout, Select } from '@radix-ui/themes';
+import { AppMain } from '../../app/app-main';
+import { PageHeader } from '../../app/page-header';
 import {
   CubicleStatus,
   type AdminCubicleConfigDto,
@@ -291,94 +293,82 @@ export const AdminCubiclesScreen: React.FC = () => {
     void pharmacistsQuery.refetch();
   };
 
+  const headerActions = (
+    <div className="flex items-center gap-2 flex-wrap">
+      {facilities.length > 1 && (
+        <div className="flex items-center gap-2">
+          <label
+            htmlFor="admin-cubicles-facility-select"
+            className="text-xs font-semibold text-slate-700 whitespace-nowrap"
+          >
+            Sede:
+          </label>
+          <Select.Root
+            value={activeFacility?.id ?? ''}
+            onValueChange={(value) => {
+              manuallyToggledIds.current.clear();
+              setSelectedFacilityId(value);
+            }}
+          >
+            <Select.Trigger
+              id="admin-cubicles-facility-select"
+              aria-label="Seleccionar sede hospitalaria"
+              className="bg-white min-w-[230px]"
+            />
+            <Select.Content>
+              {facilities.map((fac) => (
+                <Select.Item key={fac.id} value={fac.id}>
+                  {`${fac.name} (${fac.code})${fac.isPrimary ? ' · Primaria' : ''}`}
+                </Select.Item>
+              ))}
+            </Select.Content>
+          </Select.Root>
+        </div>
+      )}
+      <Link
+        to="/admin/farmaceuticos"
+        className="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-500 rounded-lg px-3.5 py-2 min-h-[36px] text-xs font-semibold shadow-2xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-2"
+      >
+        <Users size={13} aria-hidden="true" />
+        Directorio de Farmacéuticos
+      </Link>
+      <Link
+        to="/admin/sedes"
+        className="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-500 rounded-lg px-3.5 py-2 min-h-[36px] text-xs font-semibold shadow-2xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-2"
+      >
+        <Building2 size={13} aria-hidden="true" />
+        Cambiar Sede
+      </Link>
+      <Link
+        to="/admin"
+        className="inline-flex items-center bg-white hover:bg-slate-50 text-slate-700 border border-slate-500 rounded-lg px-3.5 py-2 min-h-[36px] text-xs font-semibold shadow-2xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-2"
+      >
+        ← Volver al Panel General
+      </Link>
+    </div>
+  );
+
   return (
-    <div className="min-h-screen bg-[#F8FAFC] p-6 lg:p-8 space-y-5">
-      {/* ═══════════════ HEADER SUPERIOR DE PÁGINA ═══════════════ */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-        {/* Izquierda: Breadcrumbs y Título Principal */}
-        <div>
-          <div className="flex items-center text-xs flex-wrap gap-1.5">
-            <span className="font-mono font-bold text-blue-700">SCR-ADM-002</span>
-            <span className="text-slate-400">·</span>
-            <span className="text-slate-600">Parametrización de Puestos y Ventanillas</span>
-            <span className="sr-only">SCR-ADM-002 · Administración</span>
-            {activeFacility && (
+    <AppMain
+      header={
+        <PageHeader
+          section="Administración · Parametrización de Puestos"
+          eyebrowBadge={
+            activeFacility ? (
               <Badge size="1" variant="soft" color="teal">
                 <Building2 size={11} aria-hidden="true" />
                 {activeFacility.name} ({activeFacility.code})
               </Badge>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2.5 mt-1">
-            <Link
-              to="/admin"
-              aria-label="Volver al panel general"
-              className="text-blue-800 hover:text-blue-950 transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </Link>
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-              [SCR-ADM-002] Administración · Configuración de Cubículos
-            </h1>
-            <h2 className="sr-only">Cubículos</h2>
-          </div>
-        </div>
-
-        {/* Derecha: Selector de sede (si hay > 1) y accesos a Directorio de Farmacéuticos, Sedes y Panel General */}
-        <div className="flex items-center gap-2 flex-wrap">
-          {facilities.length > 1 && (
-            <div className="flex items-center gap-2">
-              <label
-                htmlFor="admin-cubicles-facility-select"
-                className="text-xs font-semibold text-slate-700 whitespace-nowrap"
-              >
-                Sede:
-              </label>
-              <Select.Root
-                value={activeFacility?.id ?? ''}
-                onValueChange={(value) => {
-                  manuallyToggledIds.current.clear();
-                  setSelectedFacilityId(value);
-                }}
-              >
-                <Select.Trigger
-                  id="admin-cubicles-facility-select"
-                  aria-label="Seleccionar sede hospitalaria"
-                  className="bg-white min-w-[230px]"
-                />
-                <Select.Content>
-                  {facilities.map((fac) => (
-                    <Select.Item key={fac.id} value={fac.id}>
-                      {`${fac.name} (${fac.code})${fac.isPrimary ? ' · Primaria' : ''}`}
-                    </Select.Item>
-                  ))}
-                </Select.Content>
-              </Select.Root>
-            </div>
-          )}
-          <Link
-            to="/admin/farmaceuticos"
-            className="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg px-3.5 py-2 text-xs font-semibold shadow-2xs transition-colors"
-          >
-            <Users size={13} aria-hidden="true" />
-            Directorio de Farmacéuticos
-          </Link>
-          <Link
-            to="/admin/sedes"
-            className="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg px-3.5 py-2 text-xs font-semibold shadow-2xs transition-colors"
-          >
-            <Building2 size={13} aria-hidden="true" />
-            Cambiar Sede
-          </Link>
-          <Link
-            to="/admin"
-            className="bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg px-3.5 py-2 text-xs font-semibold shadow-2xs transition-colors inline-block"
-          >
-            ← Volver al Panel General
-          </Link>
-        </div>
-      </div>
+            ) : undefined
+          }
+          backTo="/admin"
+          backLabel="Volver al panel general"
+          title="Configuración de Cubículos"
+          action={headerActions}
+        />
+      }
+    >
+      <div className="space-y-5">
 
       {hasLoadError && (
         <Callout.Root color="red" role="alert">
@@ -435,6 +425,7 @@ export const AdminCubiclesScreen: React.FC = () => {
           ))}
         </div>
       )}
-    </div>
+      </div>
+    </AppMain>
   );
 };

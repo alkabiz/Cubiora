@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { Theme } from '@radix-ui/themes';
 import React from 'react';
@@ -145,5 +145,83 @@ describe('AdminOverviewScreen · Escalabilidad Mega-Centro y Prescripción de Cu
     expect(screen.queryByText('98.2%')).toBeNull();
     expect(screen.queryByText('1.33%')).toBeNull();
     expect(screen.queryByText('DISP-CENTRAL')).toBeNull();
+  });
+
+  it('abre BroadcastNoticeDialog al pulsar "Aviso General", valida mensaje corto, envía mensaje personalizado y maneja desconexión WebSocket', async () => {
+    const sendBroadcastNoticeMock = vi.fn().mockReturnValueOnce(true).mockReturnValueOnce(false);
+    vi.spyOn(telemetryHook, 'useOperationalTelemetry').mockReturnValue({
+      facilityCode: 'SEDE-CEN-01',
+      facilityName: 'Sede Central',
+      slaThresholdSeconds: 600,
+      isLoaded: true,
+      cubicles: [],
+      queue: [],
+      kpis: {
+        waitingCount: 2,
+        activeCubicles: 1,
+        totalCubicles: 2,
+        closedTodayCount: 5,
+        slaCompliancePercentage: 100,
+        noShowTodayCount: 0,
+        noShowRate: 0,
+        averageWaitSeconds: 120,
+        averageServiceSeconds: 180,
+      },
+      slaAlert: {
+        isActive: false,
+        worstCubicleCode: null,
+        worstCubicleDisplay: null,
+        affectedTicketCode: null,
+        elapsedSeconds: null,
+        thresholdSeconds: 600,
+        slaCompliancePercentage: 100,
+      },
+      bottleneckRecommendation: null,
+      hourlyFlow: [],
+      connectionStatus: 'connected',
+      latencyMs: 15,
+      forceRefresh: vi.fn(),
+      sendBroadcastNotice: sendBroadcastNoticeMock,
+    });
+
+    renderWithProviders(<AdminOverviewScreen />);
+
+    // Abrir modal sin usar window.prompt
+    fireEvent.click(screen.getByRole('button', { name: /aviso general/i }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Emitir Aviso General a Sala')).toBeDefined();
+
+    const messageInput = within(dialog).getByLabelText(/mensaje para pantallas de sala/i) as HTMLTextAreaElement;
+    // Validar mensaje demasiado corto (< 5 caracteres)
+    fireEvent.change(messageInput, { target: { value: 'Hola' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /emitir aviso en sala/i }));
+
+    expect(await within(dialog).findByText('El mensaje debe contener al menos 5 caracteres.')).toBeDefined();
+    expect(sendBroadcastNoticeMock).not.toHaveBeenCalled();
+
+    // Enviar mensaje válido
+    fireEvent.change(messageInput, { target: { value: 'Priorizar entregas de Alto Costo en ventanilla 2.' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: /emitir aviso en sala/i }));
+
+    await waitFor(() => {
+      expect(sendBroadcastNoticeMock).toHaveBeenCalledWith(
+        'Priorizar entregas de Alto Costo en ventanilla 2.',
+        'info',
+      );
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+
+    // Reabrir y simular fallo cuando sendBroadcastNotice devuelve false
+    fireEvent.click(screen.getByRole('button', { name: /aviso general/i }));
+    const retryDialog = await screen.findByRole('dialog');
+    fireEvent.click(within(retryDialog).getByRole('button', { name: /emitir aviso en sala/i }));
+
+    expect(
+      await within(retryDialog).findByText(
+        'Sin conexión WebSocket activa: no fue posible emitir el aviso general.',
+      ),
+    ).toBeDefined();
   });
 });

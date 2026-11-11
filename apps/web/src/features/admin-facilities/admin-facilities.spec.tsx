@@ -290,7 +290,7 @@ describe('[SCR-ADM-005] Gestión de Sedes y Usuarios Asociados', () => {
     expect(
       screen.getByRole('heading', {
         level: 1,
-        name: /\[SCR-ADM-005\] Gestión de Sedes y Usuarios Asociados/i,
+        name: /Gestión de Sedes y Usuarios Asociados/i,
       }),
     ).toBeDefined();
 

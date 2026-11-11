@@ -337,10 +337,9 @@ describe('[SCR-ADM-002] Administración · Configuración de Cubículos', () => 
   it('1. Renderiza Header con sede activa y accesos a Farmacéuticos y Sedes', async () => {
     renderComponent();
 
-    expect(screen.getByText('SCR-ADM-002')).toBeDefined();
-    expect(screen.getByText('Parametrización de Puestos y Ventanillas')).toBeDefined();
+    expect(screen.getByText('Administración · Parametrización de Puestos')).toBeDefined();
     expect(
-      screen.getByText('[SCR-ADM-002] Administración · Configuración de Cubículos'),
+      screen.getByRole('heading', { level: 1, name: 'Configuración de Cubículos' }),
     ).toBeDefined();
     expect(screen.getByRole('link', { name: /Directorio de Farmacéuticos/i })).toBeDefined();
     expect(screen.getByRole('link', { name: /Cambiar Sede/i })).toBeDefined();

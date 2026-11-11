@@ -53,9 +53,9 @@ export const FacilityFormDialog: React.FC<FacilityFormDialogProps> = ({
       code: initialFacility?.code ?? '',
       name: initialFacility?.name ?? '',
       address: initialFacility?.address ?? '',
-      city: initialFacility?.city ?? 'CABA',
-      phone: initialFacility?.phone ?? '+54 11 ',
-      openingHours: initialFacility?.openingHours ?? '07:00 a 20:00 hs',
+      city: initialFacility?.city ?? 'Bogotá D.C.',
+      phone: initialFacility?.phone ?? '+57 601 ',
+      openingHours: initialFacility?.openingHours ?? '07:00 a 19:00',
       enabledCubiclesCount: initialFacility?.enabledCubiclesCount ?? 3,
       status: initialFacility?.status ?? FacilityStatus.ACTIVE,
       isPrimary: initialFacility?.isPrimary ?? false,
@@ -69,9 +69,9 @@ export const FacilityFormDialog: React.FC<FacilityFormDialogProps> = ({
         code: initialFacility?.code ?? '',
         name: initialFacility?.name ?? '',
         address: initialFacility?.address ?? '',
-        city: initialFacility?.city ?? 'CABA',
-        phone: initialFacility?.phone ?? '+54 11 4964-8000',
-        openingHours: initialFacility?.openingHours ?? '07:00 a 20:00 hs',
+        city: initialFacility?.city ?? 'Bogotá D.C.',
+        phone: initialFacility?.phone ?? '+57 601 ',
+        openingHours: initialFacility?.openingHours ?? '07:00 a 19:00',
         enabledCubiclesCount: initialFacility?.enabledCubiclesCount ?? 3,
         status: initialFacility?.status ?? FacilityStatus.ACTIVE,
         isPrimary: initialFacility?.isPrimary ?? false,
@@ -204,7 +204,7 @@ export const FacilityFormDialog: React.FC<FacilityFormDialogProps> = ({
               </label>
               <TextField.Root
                 id="facility-address-input"
-                placeholder="Av. Córdoba 2351, Planta Baja"
+                placeholder="Cra. 7 # 71-21, Local 1"
                 {...register('address')}
               />
               {errors.address && (
@@ -223,7 +223,7 @@ export const FacilityFormDialog: React.FC<FacilityFormDialogProps> = ({
               </label>
               <TextField.Root
                 id="facility-city-input"
-                placeholder="Ej. CABA"
+                placeholder="Ej. Bogotá D.C."
                 {...register('city')}
               />
               {errors.city && (
@@ -244,7 +244,7 @@ export const FacilityFormDialog: React.FC<FacilityFormDialogProps> = ({
               </label>
               <TextField.Root
                 id="facility-phone-input"
-                placeholder="+54 11 4964-8000"
+                placeholder="+57 601 555-0100"
                 {...register('phone')}
               />
               {errors.phone && (
@@ -263,7 +263,7 @@ export const FacilityFormDialog: React.FC<FacilityFormDialogProps> = ({
               </label>
               <TextField.Root
                 id="facility-hours-input"
-                placeholder="07:00 a 20:00 hs"
+                placeholder="07:00 a 19:00"
                 {...register('openingHours')}
               />
               {errors.openingHours && (

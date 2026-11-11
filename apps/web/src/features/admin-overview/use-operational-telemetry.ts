@@ -1,5 +1,6 @@
 // ─── SCR-ADM-001 · Hook de telemetría operativa bidireccional en tiempo real ──
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useState, useEffect, useCallback, useRef, useContext } from 'react';
+import { Outlet } from 'react-router-dom';
 import { io, type Socket } from 'socket.io-client';
 import {
   TELEMETRY_EVENTS,
@@ -152,9 +153,11 @@ function mapServerQueue(serverQueue: TelemetryQueuedTicket[]): QueuedTicket[] {
   });
 }
 
-// ─── Hook principal ───────────────────────────────────────────────────────────
+// ─── Contexto compartido para rutas de administración ────────────────────────
 
-export function useOperationalTelemetry(enabled = true): OperationalTelemetryHookResult {
+const OperationalTelemetryContext = createContext<OperationalTelemetryHookResult | null>(null);
+
+function useOperationalTelemetryConnection(enabled: boolean): OperationalTelemetryHookResult {
   const [facilityCode, setFacilityCode] = useState<string | null>(null);
   const [facilityName, setFacilityName] = useState<string | null>(null);
   const [slaThresholdSeconds, setSlaThresholdSeconds] = useState<number | null>(null);
@@ -431,4 +434,29 @@ export function useOperationalTelemetry(enabled = true): OperationalTelemetryHoo
     forceRefresh,
     sendBroadcastNotice,
   };
+}
+
+export const OperationalTelemetryProvider: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => {
+  const telemetry = useOperationalTelemetryConnection(true);
+  return React.createElement(
+    OperationalTelemetryContext.Provider,
+    { value: telemetry },
+    children,
+  );
+};
+
+export const OperationalTelemetryLayout: React.FC = () => (
+  React.createElement(
+    OperationalTelemetryProvider,
+    null,
+    React.createElement(Outlet, null),
+  )
+);
+
+export function useOperationalTelemetry(enabled = true): OperationalTelemetryHookResult {
+  const sharedTelemetry = useContext(OperationalTelemetryContext);
+  const localTelemetry = useOperationalTelemetryConnection(enabled && sharedTelemetry === null);
+  return enabled && sharedTelemetry !== null ? sharedTelemetry : localTelemetry;
 }
