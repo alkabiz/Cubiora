@@ -59,8 +59,8 @@ src/
 ---
 
 ## 5. Tokens de Diseño y Accesibilidad
-- **Fuente única de verdad visual**: Radix Themes `<Theme accentColor="teal" grayColor="slate" radius="medium">`.
-- **Colores**: Exclusivamente provenientes de Radix Themes y tokens de Tailwind (`var(--accent-*)`, `var(--gray-*)`). Prohibidos códigos hexadecimales dispersos.
+- **Fuente única de verdad visual**: Radix Themes `<Theme accentColor="blue" grayColor="slate" radius="medium">` con tokens CSS de marca definidos en `src/styles/index.css` y `src/styles/app-shell.css`.
+- **Colores obligatorios de marca**: Exclusivamente `#2c73d2` (primario Cobalto / foco), `#0081cf` (activo Cerúleo), `#0089ba` (informativo), `#008e9b` (llamado / progreso) y `#008f7a` (confirmación / hall), combinados únicamente con neutros Slate (`#f1f5f9`, `#ffffff`, `#f8fafc`, `#e2e8f0`, `#64748b`, `#475569`, `#0f172a`, `#020617`) y Rojo/Ámbar clínicos restringidos a errores, acciones destructivas y alertas. Prohibida cualquier referencia a otro color de marca o acento.
 - **Espaciado**: Escala estándar de Tailwind (`p-1`, `p-2`, `p-4`, `p-6`, `p-8`).
 - **Responsive**: Mobile-First mandatorio (Mobile, Tablet, Desktop).
 - **Accesibilidad**: Cumplimiento WCAG AA (contraste, foco visible, navegación teclado, aria-labels, aria-live).
