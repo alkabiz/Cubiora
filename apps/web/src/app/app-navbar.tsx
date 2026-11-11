@@ -26,9 +26,9 @@ const CONNECTION_LABEL: Record<ConnectionStatus, string> = {
   checking: 'Verificando',
 };
 
-const CONNECTION_COLOR: Record<ConnectionStatus, 'green' | 'ruby' | 'amber'> = {
-  online: 'green',
-  offline: 'ruby',
+const CONNECTION_COLOR: Record<ConnectionStatus, 'gray' | 'red' | 'amber'> = {
+  online: 'gray',
+  offline: 'red',
   checking: 'amber',
 };
 
@@ -118,7 +118,6 @@ export const AppNavbar: React.FC<AppNavbarProps> = ({
         <Badge
           size="1"
           variant="soft"
-          color="blue"
           radius="full"
           className="app-role-context"
         >

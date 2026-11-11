@@ -7,12 +7,63 @@
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
-/* ─── Base Operativa Cubiora (Radix Themes + Tailwind v4) ──────────────────── */
+/* ─── Paleta Oficial de Marca Cubiora (Tokens Base + Radix Themes Override) ─ */
 :root {
+  --brand-cobalt: #2c73d2;
+  --brand-cerulean: #0081cf;
+  --brand-ocean: #0089ba;
+  --brand-lagoon: #008e9b;
+  --brand-confirm: #008f7a;
   --default-font-family: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   scrollbar-color: var(--app-border-strong) transparent;
+}
+
+:is(.radix-themes, .radix-themes [data-accent-color='blue']) {
+  --accent-1: #ffffff;
+  --accent-2: rgb(44 115 210 / 0.05);
+  --accent-3: rgb(44 115 210 / 0.1);
+  --accent-4: rgb(44 115 210 / 0.16);
+  --accent-5: rgb(0 129 207 / 0.22);
+  --accent-6: rgb(0 129 207 / 0.34);
+  --accent-7: rgb(0 129 207 / 0.55);
+  --accent-8: #0081cf;
+  --accent-9: #2c73d2;
+  --accent-10: #2c73d2;
+  --accent-11: #2c73d2;
+  --accent-12: #0f172a;
+  --accent-a1: rgb(44 115 210 / 0.03);
+  --accent-a2: rgb(44 115 210 / 0.06);
+  --accent-a3: rgb(44 115 210 / 0.12);
+  --accent-a4: rgb(44 115 210 / 0.18);
+  --accent-a5: rgb(0 129 207 / 0.24);
+  --accent-a6: rgb(0 129 207 / 0.34);
+  --accent-a7: rgb(0 129 207 / 0.52);
+  --accent-a8: #0081cf;
+  --accent-a9: #2c73d2;
+  --accent-a10: #2c73d2;
+  --accent-a11: #2c73d2;
+  --accent-a12: #0f172a;
+  --accent-contrast: #ffffff;
+  --accent-surface: #ffffff;
+  --accent-indicator: #2c73d2;
+  --accent-track: #2c73d2;
+  --focus-8: #2c73d2;
+}
+
+.radix-themes .rt-Button:where(.rt-variant-solid):where([data-accent-color='blue'], :not([data-accent-color])):hover {
+  background-color: #2c73d2;
+  box-shadow: inset 0 0 0 100vmax rgb(2 6 23 / 0.14);
+}
+
+.radix-themes :is(.rt-Badge, .rt-CalloutRoot, .rt-Button, .rt-SelectTrigger):where(.rt-variant-soft, .rt-variant-surface):where([data-accent-color='blue'], :not([data-accent-color])) {
+  color: #0f172a;
+  border: 1px solid rgb(44 115 210 / 0.35);
+}
+
+.radix-themes :is(.rt-Button, .rt-SelectTrigger):where(.rt-variant-soft, .rt-variant-surface):where([data-accent-color='blue'], :not([data-accent-color])):hover {
+  color: #0f172a;
 }
 
 html,

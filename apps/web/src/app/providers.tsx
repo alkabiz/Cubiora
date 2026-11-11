@@ -10,7 +10,7 @@ interface ProvidersProps {
 export const Providers: React.FC<ProvidersProps> = ({ children }) => {
   return (
     <QueryClientProvider client={queryClient}>
-      <Theme accentColor="teal" grayColor="slate" radius="medium" scaling="100%">
+      <Theme accentColor="blue" grayColor="slate" radius="medium" scaling="100%">
         {children}
       </Theme>
     </QueryClientProvider>

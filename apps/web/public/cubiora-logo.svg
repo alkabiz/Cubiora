@@ -11,8 +11,8 @@
       }
     </style>
   </defs>
-  <!-- Background Solid Deep Blue (#0B5394) matching brand asset -->
-  <rect width="512" height="512" rx="64" fill="#0B5394" />
+  <!-- Cubiora Cobalt Primary (#2c73d2) -->
+  <rect width="512" height="512" rx="64" fill="#2c73d2" />
   
   <!-- Centered Serif Wordmark -->
   <text x="50%" y="54%" text-anchor="middle" dominant-baseline="middle" class="brand-text">Cubiora</text>
