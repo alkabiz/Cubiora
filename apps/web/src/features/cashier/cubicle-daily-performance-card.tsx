@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { Badge, Card, Flex, Heading, Separator, Skeleton, Text } from '@radix-ui/themes';
 import { CheckCircledIcon, ClockIcon, PersonIcon } from '@radix-ui/react-icons';
+import { useResolvedQueryClient } from '../../lib/query-client';
 import type { CubicleOutcome } from './types';
 import {
   dailyPerformanceQueryKey,
@@ -92,9 +92,12 @@ export const CubicleDailyPerformanceCard: React.FC<CubicleDailyPerformanceCardPr
   outcome = null,
   className = '',
 }) => {
-  const queryClient = useQueryClient();
+  const queryClient = useResolvedQueryClient();
   const lastInvalidatedCloseRef = useRef<string | null>(null);
-  const { data, isLoading, isError, isStale } = useCubicleDailyPerformance(cubicleCode);
+  const { data, isLoading, isError, isStale } = useCubicleDailyPerformance(
+    cubicleCode,
+    Boolean(cubicleCode),
+  );
 
   useEffect(() => {
     if (outcome?.type !== 'CLOSED') return;

@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { CubicleDailyPerformance } from '@cubiora/shared';
 import { ApiClientError, apiClient } from '../../lib/api';
+import { useResolvedQueryClient } from '../../lib/query-client';
 
 /** Clave de consulta compartida para invalidar el rendimiento tras cerrar un turno. */
 export function dailyPerformanceQueryKey(cubicleCode: string) {
@@ -134,14 +135,18 @@ export function useCubicleDailyPerformance(
   cubicleCode: string,
   enabled = true,
 ): UseCubicleDailyPerformanceResult {
-  const query = useQuery({
-    queryKey: dailyPerformanceQueryKey(cubicleCode),
-    queryFn: () => fetchDailyPerformance(cubicleCode),
-    enabled,
-    staleTime: 30_000,
-    refetchInterval: 60_000,
-    refetchOnWindowFocus: false,
-  });
+  const resolvedClient = useResolvedQueryClient();
+  const query = useQuery(
+    {
+      queryKey: dailyPerformanceQueryKey(cubicleCode),
+      queryFn: () => fetchDailyPerformance(cubicleCode),
+      enabled: enabled && Boolean(cubicleCode),
+      staleTime: 30_000,
+      refetchInterval: 60_000,
+      refetchOnWindowFocus: false,
+    },
+    resolvedClient,
+  );
 
   const hasData = query.data !== undefined;
   const online = useSyncExternalStore(

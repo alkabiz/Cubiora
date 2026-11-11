@@ -1,17 +1,38 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { Theme } from '@radix-ui/themes';
 import React from 'react';
 import { ReceptionPage } from './reception-page';
 import { CashierPage } from './cashier-page';
 import { DisplayPage } from './display-page';
+import type { AuthUser } from '../context/auth-context';
 import {
   TicketStatus,
   CubicleStatus,
   type CubicleActiveTicket,
   type CubicleSnapshot,
 } from '@cubiora/shared';
+
+const screenAuthMock = vi.hoisted(() => ({
+  user: null as AuthUser | null,
+  isLoading: false,
+  login: vi.fn(),
+  logout: vi.fn(async () => undefined),
+  refreshUser: vi.fn(async () => undefined),
+}));
+
+vi.mock('../context/auth-context', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../context/auth-context')>();
+  return {
+    ...actual,
+    useAuth: () => screenAuthMock,
+  };
+});
+
+vi.mock('../features/cashier/cubicle-daily-performance-card', () => ({
+  CubicleDailyPerformanceCard: () => null,
+}));
 
 const renderWithTheme = (ui: React.ReactElement) => {
   return render(
@@ -434,6 +455,22 @@ describe('Contrato Aprobado de Cubiora — Suite de Pantallas e Integración', (
   });
 
   describe('SCR-CAJ-001: Mi Cubículo (Caja)', () => {
+    beforeEach(() => {
+      screenAuthMock.user = {
+        publicId: 'usr_cashier_03',
+        username: 'cajero',
+        displayName: 'Carlos Ramírez',
+        role: 'CASHIER',
+        cubicleId: 'cub_03',
+        cubicleCode: 'CUB-03',
+        cubicleDisplayName: 'Cubículo 03',
+      };
+    });
+
+    afterEach(() => {
+      screenAuthMock.user = null;
+    });
+
     it('debe cargar snapshot inicial desde la API y mostrar turno asignado', async () => {
       window.fetch = vi.fn().mockResolvedValue(responseWith(makeSnapshot(makeTicket(), 3)));
 
@@ -1172,6 +1209,165 @@ describe('Contrato Aprobado de Cubiora — Suite de Pantallas e Integración', (
       });
 
       expect(screen.queryByText(/0 pacientes en espera/i)).toBeNull();
+    });
+
+    it('debe consultar dinámicamente el cubículo asignado al usuario (CUB-02) sin fallback fijo', async () => {
+      screenAuthMock.user = {
+        publicId: 'usr_cashier_02',
+        username: 'cajero2',
+        displayName: 'María López',
+        role: 'CASHIER',
+        cubicleId: 'cub_02',
+        cubicleCode: 'CUB-02',
+        cubicleDisplayName: 'Cubículo 02',
+      };
+
+      const cub2Snapshot: CubicleSnapshot = {
+        cubicle: {
+          id: 'cub_02',
+          code: 'CUB-02',
+          displayName: 'Cubículo 02',
+          status: CubicleStatus.AVAILABLE,
+          version: 1,
+        },
+        activeTicket: null,
+        waitingCount: 0,
+        serverTime: new Date().toISOString(),
+      };
+
+      const mockFetch = vi.fn().mockResolvedValue(responseWith(cub2Snapshot));
+      window.fetch = mockFetch;
+
+      renderWithTheme(<CashierPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Cubículo 02')).toBeDefined();
+      });
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/v1/cubicles/CUB-02/current'),
+        expect.anything(),
+      );
+    });
+
+    it('debe bloquear operación y no realizar sondeos si CASHIER no tiene cubículo asignado', () => {
+      screenAuthMock.user = {
+        publicId: 'usr_cashier_unassigned',
+        username: 'cajero_sin_cubiculo',
+        displayName: 'Operador Sin Cubículo',
+        role: 'CASHIER',
+        cubicleId: null,
+        cubicleCode: null,
+        cubicleDisplayName: null,
+      };
+
+      const mockFetch = vi.fn();
+      window.fetch = mockFetch;
+
+      renderWithTheme(<CashierPage />);
+
+      expect(screen.getByRole('alert')).toBeDefined();
+      expect(
+        screen.getByText(/Esta cuenta no tiene un cubículo asignado/i),
+      ).toBeDefined();
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('para ADMIN debe cargar GET /cubicles y permitir cambiar el cubículo inspeccionado', async () => {
+      screenAuthMock.user = {
+        publicId: 'usr_admin',
+        username: 'admin',
+        displayName: 'Ana Torres',
+        role: 'ADMIN',
+        cubicleId: null,
+        cubicleCode: null,
+        cubicleDisplayName: null,
+      };
+
+      const mockFetch = vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/api/v1/cubicles')) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              success: true,
+              data: [
+                {
+                  id: 'cub_01',
+                  code: 'CUB-01',
+                  displayName: 'Cubículo 01',
+                  status: CubicleStatus.AVAILABLE,
+                  active: true,
+                  facilityId: 'fac_01',
+                  facilityCode: 'SEDE-CEN-01',
+                  facilityName: 'Central',
+                },
+                {
+                  id: 'cub_04',
+                  code: 'CUB-04',
+                  displayName: 'Cubículo 04',
+                  status: CubicleStatus.AVAILABLE,
+                  active: true,
+                  facilityId: 'fac_01',
+                  facilityCode: 'SEDE-CEN-01',
+                  facilityName: 'Central',
+                },
+              ],
+            }),
+          };
+        }
+        if (url.includes('/cubicles/CUB-01/current')) {
+          return responseWith({
+            cubicle: {
+              id: 'cub_01',
+              code: 'CUB-01',
+              displayName: 'Cubículo 01',
+              status: CubicleStatus.AVAILABLE,
+              version: 1,
+            },
+            activeTicket: null,
+            waitingCount: 0,
+            serverTime: new Date().toISOString(),
+          });
+        }
+        if (url.includes('/cubicles/CUB-04/current')) {
+          return responseWith({
+            cubicle: {
+              id: 'cub_04',
+              code: 'CUB-04',
+              displayName: 'Cubículo 04',
+              status: CubicleStatus.AVAILABLE,
+              version: 2,
+            },
+            activeTicket: null,
+            waitingCount: 1,
+            serverTime: new Date().toISOString(),
+          });
+        }
+        return responseWith(makeSnapshot(null, 0));
+      });
+      window.fetch = mockFetch as unknown as typeof window.fetch;
+
+      renderWithTheme(<CashierPage />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Cubículo 01')).toBeDefined();
+      });
+
+      const selector = screen.getByRole('combobox', {
+        name: /Seleccionar cubículo operativo/i,
+      });
+      fireEvent.keyDown(selector, { key: 'Enter', code: 'Enter' });
+      const listbox = await screen.findByRole('listbox');
+      fireEvent.click(within(listbox).getByRole('option', { name: /Cubículo 04 \(CUB-04\)/i }));
+
+      await waitFor(() => {
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringContaining('/api/v1/cubicles/CUB-04/current'),
+          expect.anything(),
+        );
+        expect(screen.getByText('Cubículo 04')).toBeDefined();
+      });
     });
   });
 

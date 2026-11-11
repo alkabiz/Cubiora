@@ -7,6 +7,8 @@ export interface AuthUser {
   displayName: string;
   role: 'RECEPTION' | 'CASHIER' | 'ADMIN';
   cubicleId: string | null;
+  cubicleCode?: string | null;
+  cubicleDisplayName?: string | null;
 }
 
 interface AuthContextType {
@@ -93,7 +95,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 const defaultAuthContext: AuthContextType = {
   user: null,
   isLoading: false,
-  login: async () => ({ publicId: '', username: '', displayName: '', role: 'RECEPTION', cubicleId: null }),
+  login: async () => ({
+    publicId: '',
+    username: '',
+    displayName: '',
+    role: 'RECEPTION',
+    cubicleId: null,
+    cubicleCode: null,
+    cubicleDisplayName: null,
+  }),
   logout: async () => {},
   refreshUser: async () => {},
 };

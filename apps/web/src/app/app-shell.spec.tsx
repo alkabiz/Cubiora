@@ -16,6 +16,18 @@ import { ReceptionPage } from '../pages/reception-page';
 import { AdminCubiclesPage } from '../pages/admin-cubicles-page';
 import { AdminHistoryPage } from '../pages/admin-history-page';
 
+vi.mock('socket.io-client', () => {
+  const mockSocket = {
+    on: vi.fn(),
+    emit: vi.fn(),
+    disconnect: vi.fn(),
+    connected: false,
+  };
+  return {
+    io: vi.fn(() => mockSocket),
+  };
+});
+
 const authMock = vi.hoisted(() => ({
   current: {
     user: null as {
@@ -24,6 +36,8 @@ const authMock = vi.hoisted(() => ({
       displayName: string;
       role: 'RECEPTION' | 'CASHIER' | 'ADMIN';
       cubicleId: string | null;
+      cubicleCode?: string | null;
+      cubicleDisplayName?: string | null;
     } | null,
     isLoading: false,
     login: vi.fn(),
@@ -53,6 +67,8 @@ function makeUser(role: 'RECEPTION' | 'CASHIER' | 'ADMIN') {
     displayName: names[role],
     role,
     cubicleId: role === 'CASHIER' ? 'cub_03' : null,
+    cubicleCode: role === 'CASHIER' ? 'CUB-03' : null,
+    cubicleDisplayName: role === 'CASHIER' ? 'Cubículo 03' : null,
   };
 }
 
@@ -272,6 +288,12 @@ describe('Shell de aplicación Cubiora', () => {
     renderShellAt('/admin/cubiculos');
 
     const nav = getMainNavigation();
+    expect(
+      within(nav).getByRole('link', { name: 'Resumen operativo' }).getAttribute('href'),
+    ).toBe('/admin');
+    expect(
+      within(nav).getByRole('link', { name: 'Resumen operativo' }).getAttribute('aria-current'),
+    ).toBeNull();
     expect(
       within(nav).getByRole('link', { name: 'Cubículos' }).getAttribute('aria-current'),
     ).toBe('page');
@@ -589,7 +611,7 @@ describe('Separación del shell privado y la pantalla pública', () => {
       </Theme>,
     );
 
-    expect(await screen.findByRole('heading', { name: 'Cubículos' })).toBeDefined();
+    expect(await screen.findByRole('heading', { name: /Estado General Operativo/i })).toBeDefined();
     expect(screen.queryByRole('link', { name: 'Generar turno' })).toBeNull();
   });
 });

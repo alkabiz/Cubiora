@@ -73,4 +73,5 @@ export interface CubicleWorkspace {
 export interface UseCubicleWorkspaceOptions {
   cubicleCode: string;
   pollIntervalMs?: number;
+  enabled?: boolean;
 }

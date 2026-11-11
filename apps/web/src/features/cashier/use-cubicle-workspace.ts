@@ -87,12 +87,14 @@ function isAmbiguousMutationFailure(error: unknown): boolean {
 export function useCubicleWorkspace({
   cubicleCode,
   pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
+  enabled = true,
 }: UseCubicleWorkspaceOptions): CubicleWorkspace {
+  const isActive = enabled && Boolean(cubicleCode);
   const [snapshot, setSnapshot] = useState<CubicleSnapshot | null>(null);
   const [outcome, setOutcome] = useState<CubicleOutcome | null>(null);
   const [pendingAction, setPendingAction] = useState<CubicleCommand | null>(null);
   const [confirmAction, setConfirmActionState] = useState<'close' | 'no-show' | null>(null);
-  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [isInitialLoading, setIsInitialLoading] = useState(isActive);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isOnline, setIsOnlineState] = useState(true);
   const [isReconciling, setIsReconcilingState] = useState(false);
@@ -102,6 +104,7 @@ export function useCubicleWorkspace({
   const [syncError, setSyncError] = useState<string | null>(null);
 
   const snapshotRef = useRef<CubicleSnapshot | null>(null);
+  const prevTargetKeyRef = useRef<string>(`${enabled ? '1' : '0'}:${cubicleCode}`);
   const isPendingRef = useRef(false);
   const isOnlineRef = useRef(true);
   const isReconcilingRef = useRef(false);
@@ -169,6 +172,12 @@ export function useCubicleWorkspace({
 
   const loadSnapshot = useCallback(
     async (options: { silent?: boolean } = {}): Promise<CubicleSnapshot | null> => {
+      if (!isActive) {
+        setIsInitialLoading(false);
+        setIsRefreshing(false);
+        return null;
+      }
+
       const requestEpoch = requestEpochRef.current;
       snapshotRequestIdRef.current += 1;
       const requestId = snapshotRequestIdRef.current;
@@ -214,7 +223,7 @@ export function useCubicleWorkspace({
         }
       }
     },
-    [applySnapshot, cubicleCode, setOnline],
+    [applySnapshot, cubicleCode, isActive, setOnline],
   );
 
   useEffect(() => {
@@ -233,10 +242,35 @@ export function useCubicleWorkspace({
   }, [setOnline]);
 
   useEffect(() => {
+    const nextTargetKey = `${enabled ? '1' : '0'}:${cubicleCode}`;
+    if (prevTargetKeyRef.current !== nextTargetKey) {
+      prevTargetKeyRef.current = nextTargetKey;
+      requestEpochRef.current += 1;
+      snapshotRequestIdRef.current += 1;
+      snapshotRef.current = null;
+      isPendingRef.current = false;
+      setSnapshot(null);
+      setOutcome(null);
+      setPendingAction(null);
+      setConfirmAction(null);
+      setActionError(null);
+      setSyncError(null);
+      setUncertain(false);
+      setReconciling(false);
+      setIsInitialLoading(isActive);
+    }
+
+    if (!isActive) {
+      setIsInitialLoading(false);
+      return;
+    }
+
     void loadSnapshot();
-  }, [loadSnapshot]);
+  }, [cubicleCode, enabled, isActive, loadSnapshot, setConfirmAction, setReconciling, setUncertain]);
 
   useEffect(() => {
+    if (!isActive) return;
+
     const interval = window.setInterval(() => {
       if (isPendingRef.current || confirmAction !== null) return;
       if (isUncertain || isReconciling) return;
@@ -245,7 +279,7 @@ export function useCubicleWorkspace({
     }, pollIntervalMs);
 
     return () => window.clearInterval(interval);
-  }, [confirmAction, isReconciling, isUncertain, loadSnapshot, pollIntervalMs]);
+  }, [confirmAction, isActive, isReconciling, isUncertain, loadSnapshot, pollIntervalMs]);
 
   const step = useMemo<CubicleVisualStep>(() => {
     if (isReconciling) return 'RECONCILING';
