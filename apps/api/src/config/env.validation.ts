@@ -142,6 +142,16 @@ const envSchema = z
       .min(32, 'DISPLAY_TOKEN debe tener al menos 32 caracteres')
       .default('display_token_default_local_min_32_chars!'),
     CORS_ORIGINS: z.string().min(1, 'CORS_ORIGINS es obligatorio'),
+    COOKIE_SECURE: z
+      .preprocess(
+        (val) =>
+          typeof val === 'string' && val.trim() === ''
+            ? undefined
+            : typeof val === 'string'
+              ? val.trim().toLowerCase()
+              : val,
+        z.enum(['true', 'false', 'auto']).optional(),
+      ),
 
     // Logging
     LOG_LEVEL: z

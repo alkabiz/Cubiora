@@ -64,14 +64,21 @@ export class AuthGuard implements CanActivate {
       });
     }
 
-    const attachUser = () => {
+    const attachUser = (
+      freshCubicleId?: string | null,
+      freshCubicleCode?: string | null,
+    ) => {
       (request as unknown as { user: AuthenticatedUser }).user = {
         id: payload.sub,
         publicId: payload.publicId,
         username: payload.username,
         displayName: payload.displayName,
         role: payload.role,
-        cubicleId: payload.cubicleId,
+        cubicleId: freshCubicleId !== undefined ? freshCubicleId : payload.cubicleId,
+        cubicleCode:
+          freshCubicleCode !== undefined
+            ? freshCubicleCode
+            : (payload.cubicleCode ?? null),
       };
       return true;
     };
@@ -80,7 +87,11 @@ export class AuthGuard implements CanActivate {
       return this.prisma.user
         .findUnique({
           where: { id: payload.sub },
-          select: { active: true },
+          select: {
+            active: true,
+            cubicleId: true,
+            cubicle: { select: { code: true } },
+          },
         })
         .then((dbUser) => {
           if (dbUser && !dbUser.active) {
@@ -89,7 +100,13 @@ export class AuthGuard implements CanActivate {
               message: 'Acceso denegado: el usuario se encuentra inactivo.',
             });
           }
-          return attachUser();
+          const resolvedCubicleId =
+            dbUser && dbUser.cubicleId !== undefined ? dbUser.cubicleId : payload.cubicleId;
+          const resolvedCubicleCode =
+            dbUser && dbUser.cubicle !== undefined
+              ? (dbUser.cubicle?.code ?? null)
+              : (payload.cubicleCode ?? null);
+          return attachUser(resolvedCubicleId, resolvedCubicleCode);
         });
     }
 

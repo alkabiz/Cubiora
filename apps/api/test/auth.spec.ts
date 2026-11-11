@@ -3,7 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Reflector } from '@nestjs/core';
 import { ExecutionContext, UnauthorizedException, ForbiddenException } from '@nestjs/common';
 import { AuthService } from '../src/modules/auth/auth.service';
-import { AuthController } from '../src/modules/auth/auth.controller';
+import { AuthController, resolveCookieSecure } from '../src/modules/auth/auth.controller';
 import { AuthGuard } from '../src/common/guards/auth.guard';
 import { RolesGuard } from '../src/common/guards/roles.guard';
 import { PrismaService } from '../src/prisma/prisma.service';
@@ -108,6 +108,11 @@ describe('Fase 3a — Autenticación y Autorización (D-01, D-09, RolesGuard)', 
         displayName: 'Cajero 1',
         role: UserRole.CASHIER,
         cubicleId: 'cub_01',
+        cubicle: {
+          id: 'cub_01',
+          code: 'CUB-01',
+          displayName: 'Cubículo 01',
+        },
         active: true,
       });
 
@@ -116,6 +121,8 @@ describe('Fase 3a — Autenticación y Autorización (D-01, D-09, RolesGuard)', 
       expect(result.user.username).toBe('cajero1');
       expect(result.user.role).toBe(UserRole.CASHIER);
       expect(result.user.cubicleId).toBe('cub_01');
+      expect(result.user.cubicleCode).toBe('CUB-01');
+      expect(result.user.cubicleDisplayName).toBe('Cubículo 01');
     });
 
     it('debe normalizar mayúsculas y espacios en username al autenticar (ej. Admin_cubiora)', async () => {
@@ -128,15 +135,22 @@ describe('Fase 3a — Autenticación y Autorización (D-01, D-09, RolesGuard)', 
         displayName: 'Administrador del Sistema',
         role: UserRole.ADMIN,
         cubicleId: null,
+        cubicle: null,
         active: true,
       });
 
       const result = await authService.login('  Admin_cubiora ', 'CorrectPassword123!');
       expect(mockPrisma.user.findUnique).toHaveBeenCalledWith({
         where: { username: 'admin_cubiora' },
+        include: {
+          cubicle: {
+            select: { id: true, code: true, displayName: true },
+          },
+        },
       });
       expect(result.user.username).toBe('admin_cubiora');
       expect(result.user.role).toBe(UserRole.ADMIN);
+      expect(result.user.cubicleCode).toBeNull();
     });
 
     it('debe rechazar contraseñas incorrectas con UnauthorizedException', async () => {
@@ -166,6 +180,48 @@ describe('Fase 3a — Autenticación y Autorización (D-01, D-09, RolesGuard)', 
       await expect(authService.login('inactivo', 'Password123!')).rejects.toThrow(
         UnauthorizedException,
       );
+    });
+
+    it('debe responder 401 UnauthorizedException (y nunca 500) si passwordHash en BD está vacío o malformado', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'user_corrupt_1',
+        publicId: 'user_corrupt_pub_1',
+        username: 'corrupto',
+        passwordHash: '',
+        active: true,
+      });
+
+      await expect(authService.login('corrupto', 'Admin2026!*')).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+  });
+
+  describe('AuthController — Cookie Secure detrás de Cloudflare / Proxy TLS (COOKIE_SECURE)', () => {
+    it('debe usar secure=true cuando COOKIE_SECURE=auto y x-forwarded-proto=https en producción', () => {
+      const req = {
+        secure: false,
+        headers: { 'x-forwarded-proto': 'https' },
+      } as any;
+
+      expect(resolveCookieSecure(req, { NODE_ENV: 'production', COOKIE_SECURE: 'auto' })).toBe(true);
+    });
+
+    it('debe usar secure=false cuando COOKIE_SECURE=auto y la petición llega por HTTP local LAN', () => {
+      const req = {
+        secure: false,
+        headers: { 'x-forwarded-proto': 'http' },
+      } as any;
+
+      expect(resolveCookieSecure(req, { NODE_ENV: 'production', COOKIE_SECURE: 'auto' })).toBe(false);
+    });
+
+    it('debe respetar COOKIE_SECURE=true y COOKIE_SECURE=false de forma explícita', () => {
+      const httpReq = { secure: false, headers: {} } as any;
+      const httpsReq = { secure: true, headers: { 'x-forwarded-proto': 'https' } } as any;
+
+      expect(resolveCookieSecure(httpReq, { NODE_ENV: 'development', COOKIE_SECURE: 'true' })).toBe(true);
+      expect(resolveCookieSecure(httpsReq, { NODE_ENV: 'production', COOKIE_SECURE: 'false' })).toBe(false);
     });
   });
 

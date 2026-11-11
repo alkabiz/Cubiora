@@ -16,6 +16,7 @@ if (process.env['NODE_TLS_REJECT_UNAUTHORIZED'] === '0') {
 }
 
 import { NestFactory } from '@nestjs/core';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
@@ -31,8 +32,9 @@ async function bootstrap() {
   initEnv();
   const env = getEnv();
 
-  // 2. Crear la aplicación NestJS
-  const app = await NestFactory.create(AppModule);
+  // 2. Crear la aplicación NestJS (Express) y habilitar trust proxy (Cloudflare / Traefik / Nginx)
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  app.set('trust proxy', true);
 
   // 3. Seguridad con cabeceras HTTP (Helmet)
   app.use(helmet());
@@ -41,7 +43,9 @@ async function bootstrap() {
   app.use(cookieParser(env.SESSION_SECRET));
 
   // 5. Configurar CORS estricto
-  const allowedOrigins = env.CORS_ORIGINS.split(',').map((origin) => origin.trim());
+  const allowedOrigins = env.CORS_ORIGINS.split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
   app.enableCors({
     origin: allowedOrigins,
     credentials: true,

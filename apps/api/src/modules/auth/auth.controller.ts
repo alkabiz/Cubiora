@@ -3,21 +3,63 @@ import {
   Post,
   Get,
   Body,
+  Req,
   Res,
   HttpCode,
+  HttpException,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { UserRole } from '@cubiora/shared';
-import { getEnv } from '../../config/env.validation';
+import { AppEnv, getEnv } from '../../config/env.validation';
+
+export function resolveCookieSecure(
+  request: Request | undefined,
+  env: Pick<AppEnv, 'NODE_ENV' | 'COOKIE_SECURE'>,
+): boolean {
+  const mode = env.COOKIE_SECURE ?? 'auto';
+  if (mode === 'true') {
+    return true;
+  }
+  if (mode === 'false') {
+    return false;
+  }
+
+  if (request) {
+    if (request.secure) {
+      return true;
+    }
+
+    const forwardedProto = request.headers?.['x-forwarded-proto'];
+    if (typeof forwardedProto === 'string') {
+      return forwardedProto
+        .split(',')
+        .some((proto) => proto.trim().toLowerCase() === 'https');
+    }
+    if (Array.isArray(forwardedProto)) {
+      return forwardedProto.some((entry) =>
+        entry
+          .split(',')
+          .some((proto) => proto.trim().toLowerCase() === 'https'),
+      );
+    }
+
+    return false;
+  }
+
+  return env.NODE_ENV === 'production';
+}
 
 @Controller('auth')
 export class AuthController {
+  private readonly logger = new Logger(AuthController.name);
+
   constructor(private readonly authService: AuthService) {}
 
   @Public()
@@ -26,33 +68,52 @@ export class AuthController {
   async login(
     @Body() loginDto: LoginDto,
     @Res({ passthrough: true }) response: Response,
+    @Req() request?: Request,
   ) {
-    const result = await this.authService.login(loginDto.username, loginDto.password);
-    const env = getEnv();
+    try {
+      const result = await this.authService.login(loginDto.username, loginDto.password);
+      const env = getEnv();
+      const isSecureCookie = resolveCookieSecure(request, env);
 
-    // Establecer cookie HttpOnly protegida conforme a D-01
-    response.cookie('cubiora_session', result.token, {
-      httpOnly: true,
-      secure: env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 8 * 60 * 60 * 1000, // 8 horas
-      path: '/',
-    });
+      // Establecer cookie HttpOnly protegida conforme a D-01 y protocolo detectado detrás de proxy
+      response.cookie('cubiora_session', result.token, {
+        httpOnly: true,
+        secure: isSecureCookie,
+        sameSite: 'strict',
+        maxAge: 8 * 60 * 60 * 1000, // 8 horas
+        path: '/',
+      });
 
-    return {
-      success: true,
-      data: result.user,
-    };
+      return {
+        success: true,
+        data: result.user,
+      };
+    } catch (err) {
+      if (!(err instanceof HttpException)) {
+        this.logger.error(
+          `Excepción inesperada durante POST /auth/login para '${loginDto?.username ?? 'desconocido'}': ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+          err instanceof Error ? err.stack : undefined,
+        );
+      }
+      throw err;
+    }
   }
 
   @Roles(UserRole.RECEPTION, UserRole.CASHIER, UserRole.ADMIN)
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  async logout(@Res({ passthrough: true }) response: Response) {
+  async logout(
+    @Res({ passthrough: true }) response: Response,
+    @Req() request?: Request,
+  ) {
     const env = getEnv();
+    const isSecureCookie = resolveCookieSecure(request, env);
+
     response.clearCookie('cubiora_session', {
       httpOnly: true,
-      secure: env.NODE_ENV === 'production',
+      secure: isSecureCookie,
       sameSite: 'strict',
       path: '/',
     });

@@ -205,7 +205,26 @@ describe('Seguridad — Verificación de Remediaciones de Auditoría', () => {
 
       expect(clearCookieSpy).toHaveBeenCalledWith('cubiora_session', {
         httpOnly: true,
-        secure: true, // Debe ser true en production
+        secure: true, // Debe ser true en production sin req (fallback) o bajo HTTPS
+        sameSite: 'strict',
+        path: '/',
+      });
+    });
+
+    it('debe respetar X-Forwarded-Proto=https vs http en logout cuando COOKIE_SECURE=auto', async () => {
+      const authService: any = {};
+      const authController = new AuthController(authService);
+      const clearCookieSpy = vi.fn();
+      const mockResponse: any = { clearCookie: clearCookieSpy };
+
+      await authController.logout(mockResponse, {
+        secure: false,
+        headers: { 'x-forwarded-proto': 'http' },
+      } as any);
+
+      expect(clearCookieSpy).toHaveBeenCalledWith('cubiora_session', {
+        httpOnly: true,
+        secure: false,
         sameSite: 'strict',
         path: '/',
       });

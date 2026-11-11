@@ -8,6 +8,7 @@ export interface AuthenticatedUser {
   displayName: string;
   role: UserRole;
   cubicleId: string | null;
+  cubicleCode?: string | null;
 }
 
 /**

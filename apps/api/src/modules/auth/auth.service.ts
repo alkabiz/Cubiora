@@ -2,6 +2,8 @@ import {
   Injectable,
   UnauthorizedException,
   BadRequestException,
+  HttpException,
+  Logger,
 } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -17,11 +19,15 @@ export interface LoginResult {
     displayName: string;
     role: UserRole;
     cubicleId: string | null;
+    cubicleCode: string | null;
+    cubicleDisplayName: string | null;
   };
 }
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   /**
@@ -36,48 +42,100 @@ export class AuthService {
       });
     }
 
-    const user = await this.prisma.user.findUnique({
-      where: { username: normalizedUsername },
-    });
-
-    if (!user || !user.active) {
-      throw new UnauthorizedException({
-        code: ApiErrorCode.AUTH_REQUIRED,
-        message: 'Credenciales inválidas o usuario inactivo',
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { username: normalizedUsername },
+        include: {
+          cubicle: {
+            select: {
+              id: true,
+              code: true,
+              displayName: true,
+            },
+          },
+        },
       });
+
+      if (!user || !user.active) {
+        throw new UnauthorizedException({
+          code: ApiErrorCode.AUTH_REQUIRED,
+          message: 'Credenciales inválidas o usuario inactivo',
+        });
+      }
+
+      if (!user.passwordHash || typeof user.passwordHash !== 'string') {
+        this.logger.warn(
+          `Intento de login fallido para '${normalizedUsername}': hash de contraseña ausente o inválido.`,
+        );
+        throw new UnauthorizedException({
+          code: ApiErrorCode.AUTH_REQUIRED,
+          message: 'Credenciales inválidas o usuario inactivo',
+        });
+      }
+
+      let isMatch = false;
+      try {
+        isMatch = await bcrypt.compare(pass, user.passwordHash);
+      } catch (hashError) {
+        this.logger.warn(
+          `Error verificando hash bcrypt para '${normalizedUsername}': ${
+            hashError instanceof Error ? hashError.message : String(hashError)
+          }`,
+        );
+        throw new UnauthorizedException({
+          code: ApiErrorCode.AUTH_REQUIRED,
+          message: 'Credenciales inválidas o usuario inactivo',
+        });
+      }
+
+      if (!isMatch) {
+        throw new UnauthorizedException({
+          code: ApiErrorCode.AUTH_REQUIRED,
+          message: 'Credenciales inválidas o usuario inactivo',
+        });
+      }
+
+      const cubicleCode = user.cubicle?.code ?? null;
+      const cubicleDisplayName = user.cubicle?.displayName ?? null;
+
+      const env = getEnv();
+      const token = SessionTokenUtil.sign(
+        {
+          sub: user.id,
+          publicId: user.publicId,
+          username: user.username,
+          displayName: user.displayName,
+          role: user.role as UserRole,
+          cubicleId: user.cubicleId,
+          cubicleCode,
+        },
+        env.SESSION_SECRET,
+      );
+
+      return {
+        token,
+        user: {
+          publicId: user.publicId,
+          username: user.username,
+          displayName: user.displayName,
+          role: user.role as UserRole,
+          cubicleId: user.cubicleId,
+          cubicleCode,
+          cubicleDisplayName,
+        },
+      };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      this.logger.error(
+        `Error inesperado en AuthService.login para '${normalizedUsername}': ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+        error instanceof Error ? error.stack : undefined,
+      );
+      throw error;
     }
-
-    const isMatch = await bcrypt.compare(pass, user.passwordHash);
-    if (!isMatch) {
-      throw new UnauthorizedException({
-        code: ApiErrorCode.AUTH_REQUIRED,
-        message: 'Credenciales inválidas o usuario inactivo',
-      });
-    }
-
-    const env = getEnv();
-    const token = SessionTokenUtil.sign(
-      {
-        sub: user.id,
-        publicId: user.publicId,
-        username: user.username,
-        displayName: user.displayName,
-        role: user.role as UserRole,
-        cubicleId: user.cubicleId,
-      },
-      env.SESSION_SECRET,
-    );
-
-    return {
-      token,
-      user: {
-        publicId: user.publicId,
-        username: user.username,
-        displayName: user.displayName,
-        role: user.role as UserRole,
-        cubicleId: user.cubicleId,
-      },
-    };
   }
 
   /**
@@ -92,6 +150,12 @@ export class AuthService {
         displayName: true,
         role: true,
         cubicleId: true,
+        cubicle: {
+          select: {
+            code: true,
+            displayName: true,
+          },
+        },
         active: true,
         createdAt: true,
       },
@@ -110,6 +174,8 @@ export class AuthService {
       displayName: user.displayName,
       role: user.role as UserRole,
       cubicleId: user.cubicleId,
+      cubicleCode: user.cubicle?.code ?? null,
+      cubicleDisplayName: user.cubicle?.displayName ?? null,
       createdAt: user.createdAt,
     };
   }

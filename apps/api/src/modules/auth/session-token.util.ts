@@ -8,6 +8,7 @@ export interface SessionPayload {
   displayName: string;
   role: UserRole;
   cubicleId: string | null;
+  cubicleCode?: string | null;
   iat: number;
   exp: number;
 }
