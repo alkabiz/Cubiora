@@ -18,6 +18,7 @@ import { TicketCommandDto } from './dto/ticket-command.dto';
 import { PublicDisplayService } from '../public-display/public-display.service';
 import { CubiclesService } from '../cubicles/cubicles.service';
 import { resolveDailyTargetSeconds } from '../../config/sla-target.util';
+import { resolveEffectiveOperatorName } from '../../common/utils/cubicle-assignment-sync.util';
 import { OperationalTelemetryService } from '../operational-telemetry/operational-telemetry.service';
 import { WmsIntegrationService } from '../wms-integration/wms-integration.service';
 import {
@@ -249,6 +250,19 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       const ticketInternalId = ulid();
       const ticketPublicId = ulid();
 
+      let primaryFacilityId: string | null = null;
+      const txFacilityDelegate = (
+        tx as { facility?: { findFirst?: (...args: any[]) => Promise<any> } }
+      ).facility;
+      if (txFacilityDelegate?.findFirst) {
+        const primaryFacility = await txFacilityDelegate.findFirst({
+          where: { isPrimary: true },
+          orderBy: { code: 'asc' },
+          select: { id: true },
+        });
+        primaryFacilityId = primaryFacility?.id ?? null;
+      }
+
       // Inserción del ticket
       const ticket = await tx.ticket.create({
         data: {
@@ -265,6 +279,7 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
             resolvedCategory === QueueCategory.PREFERENTIAL
               ? (dto.operationalReason ?? 'CRITERIO_INSTITUCIONAL_AUTORIZADO')
               : null,
+          ...(primaryFacilityId ? { facilityId: primaryFacilityId } : {}),
           createdBy: actorUserId,
         },
       });
@@ -299,8 +314,10 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       try {
         let availableCubicle: any = null;
         try {
-          const cubicleRows = await tx.$queryRaw<Array<{ id: string; display_name: string }>>`
-            SELECT c.id, c.display_name 
+          const cubicleRows = await tx.$queryRaw<
+            Array<{ id: string; display_name: string; facility_id?: string | null }>
+          >`
+            SELECT c.id, c.display_name, c.facility_id
             FROM cubicles c
             LEFT JOIN facilities f ON f.id = c.facility_id
             LEFT JOIN tickets t ON t.cubicle_id = c.id AND t.status IN ('ASSIGNED', 'CALLED', 'IN_SERVICE')
@@ -347,11 +364,15 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
             },
           });
 
+          const cubicleFacilityId: string | null =
+            availableCubicle.facility_id ?? availableCubicle.facilityId ?? null;
+
           await tx.ticket.update({
             where: { id: ticket.id },
             data: {
               status: TicketStatus.ASSIGNED,
               cubicleId: availableCubicle.id,
+              ...(!primaryFacilityId && cubicleFacilityId ? { facilityId: cubicleFacilityId } : {}),
               assignedAt: new Date(),
               version: { increment: 1 },
             },
@@ -961,9 +982,42 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
         },
       });
 
-      // 1.2 Incrementar contador de despachos del farmacéutico asignado al cubículo
-      if (tx.pharmacist?.updateMany) {
-        await tx.pharmacist.updateMany({
+      // 1.2 Incrementar contador de despachos priorizando la trazabilidad por actor usuario (con respaldo por cubículo)
+      const txPharmacist = (
+        tx as {
+          pharmacist?: {
+            findFirst?: (...args: any[]) => Promise<any>;
+            update?: (...args: any[]) => Promise<any>;
+            updateMany?: (...args: any[]) => Promise<any>;
+          };
+        }
+      ).pharmacist;
+
+      if (txPharmacist?.findFirst && txPharmacist?.update) {
+        const creditedPharmacist =
+          (await txPharmacist.findFirst({
+            where: { userId: actorUserId },
+            select: { id: true },
+          })) ??
+          (await txPharmacist.findFirst({
+            where: {
+              cubicleId,
+              status: { not: PharmacistStatus.INACTIVE },
+            },
+            orderBy: { updatedAt: 'desc' },
+            select: { id: true },
+          }));
+
+        if (creditedPharmacist) {
+          await txPharmacist.update({
+            where: { id: creditedPharmacist.id },
+            data: {
+              dispatchesCount: { increment: 1 },
+            },
+          });
+        }
+      } else if (txPharmacist?.updateMany) {
+        await txPharmacist.updateMany({
           where: {
             cubicleId,
             status: { not: PharmacistStatus.INACTIVE },
@@ -1638,9 +1692,18 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     const slaCompliant =
       serviceDurationSeconds <= slaThresholdSeconds && t.status === TicketStatus.CLOSED;
 
+    const derivedCubicleOperatorName = t.cubicle
+      ? resolveEffectiveOperatorName({
+          pharmacists: t.cubicle.pharmacists,
+          currentOperator: t.cubicle.currentOperator,
+          legacyOperatorName: t.cubicle.operatorName,
+        })
+      : null;
+
     const operatorName =
-      t.cubicle?.operatorName ||
-      t.cubicle?.currentOperator?.displayName ||
+      t.dispensation?.operatorUser?.pharmacistProfile?.fullName ||
+      derivedCubicleOperatorName ||
+      t.dispensation?.operatorUser?.displayName ||
       t.creator?.displayName ||
       'Sin operador asignado';
 
@@ -1712,18 +1775,34 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       where.queueCategory = queueCategory;
     }
 
+    const andConditions: Prisma.TicketWhereInput[] = [];
+
     if (facilityId && facilityId.trim().length > 0 && facilityId !== 'ALL') {
-      where.cubicle = { is: { facilityId: facilityId.trim() } };
+      const normalizedFacilityId = facilityId.trim();
+      andConditions.push({
+        OR: [
+          { facilityId: normalizedFacilityId },
+          { cubicle: { is: { facilityId: normalizedFacilityId } } },
+        ],
+      });
     }
 
     if (search && search.trim().length > 0) {
       const q = search.trim();
-      where.OR = [
-        { publicCode: { contains: q, mode: 'insensitive' } },
-        { patientName: { contains: q, mode: 'insensitive' } },
-        { patientDocument: { contains: q, mode: 'insensitive' } },
-        { prescriptionBarcode: { contains: q, mode: 'insensitive' } },
-      ];
+      andConditions.push({
+        OR: [
+          { publicCode: { contains: q, mode: 'insensitive' } },
+          { patientName: { contains: q, mode: 'insensitive' } },
+          { patientDocument: { contains: q, mode: 'insensitive' } },
+          { prescriptionBarcode: { contains: q, mode: 'insensitive' } },
+        ],
+      });
+    }
+
+    if (andConditions.length === 1 && andConditions[0]?.OR) {
+      where.OR = andConditions[0].OR;
+    } else if (andConditions.length > 1) {
+      where.AND = andConditions;
     }
 
     const slaThresholdSeconds = resolveDailyTargetSeconds();
@@ -1735,11 +1814,27 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     const historyInclude = {
       cubicle: {
         include: {
-          currentOperator: { select: { displayName: true } },
+          currentOperator: { select: { displayName: true, role: true, active: true } },
+          pharmacists: {
+            orderBy: { updatedAt: 'desc' as const },
+            take: 1,
+            select: { fullName: true, status: true },
+          },
         },
       },
       creator: { select: { displayName: true } },
-      dispensation: true,
+      dispensation: {
+        include: {
+          operatorUser: {
+            select: {
+              displayName: true,
+              pharmacistProfile: {
+                select: { fullName: true },
+              },
+            },
+          },
+        },
+      },
     };
 
     try {
@@ -1799,11 +1894,27 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       include: {
         cubicle: {
           include: {
-            currentOperator: { select: { displayName: true } },
+            currentOperator: { select: { displayName: true, role: true, active: true } },
+            pharmacists: {
+              orderBy: { updatedAt: 'desc' as const },
+              take: 1,
+              select: { fullName: true, status: true },
+            },
           },
         },
         creator: { select: { displayName: true } },
-        dispensation: true,
+        dispensation: {
+          include: {
+            operatorUser: {
+              select: {
+                displayName: true,
+                pharmacistProfile: {
+                  select: { fullName: true },
+                },
+              },
+            },
+          },
+        },
         statusHistory: {
           orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
           include: {
