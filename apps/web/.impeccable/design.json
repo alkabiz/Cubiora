@@ -1,0 +1,311 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-11T15:25:00-05:00",
+  "title": "Design System: Cubiora",
+  "extensions": {
+    "colorMeta": {
+      "clinical-teal": {
+        "role": "primary",
+        "displayName": "Clinical Teal",
+        "canonical": "#0f766e",
+        "tonalRamp": ["#042f2e", "#134e4a", "#115e59", "#0f766e", "#0d9488", "#14b8a6", "#99f6e4", "#f0fdfa"]
+      },
+      "clinical-teal-hover": {
+        "role": "primary",
+        "displayName": "Clinical Teal Hover",
+        "canonical": "#115e59",
+        "tonalRamp": ["#042f2e", "#134e4a", "#115e59", "#0f766e", "#0d9488", "#2dd4bf", "#99f6e4", "#f0fdfa"]
+      },
+      "clinical-teal-deep": {
+        "role": "primary",
+        "displayName": "Clinical Teal Deep",
+        "canonical": "#134e4a",
+        "tonalRamp": ["#042f2e", "#134e4a", "#115e59", "#0f766e", "#0d9488", "#2dd4bf", "#ccfbf1", "#f0fdfa"]
+      },
+      "mint-wash": {
+        "role": "primary",
+        "displayName": "Mint Wash",
+        "canonical": "#f0fdfa",
+        "tonalRamp": ["#042f2e", "#134e4a", "#115e59", "#0f766e", "#5eead4", "#99f6e4", "#ccfbf1", "#f0fdfa"]
+      },
+      "mint-tint": {
+        "role": "primary",
+        "displayName": "Mint Tint",
+        "canonical": "#ccfbf1",
+        "tonalRamp": ["#042f2e", "#134e4a", "#115e59", "#0f766e", "#5eead4", "#99f6e4", "#ccfbf1", "#f0fdfa"]
+      },
+      "ink-navy": {
+        "role": "neutral",
+        "displayName": "Ink Navy",
+        "canonical": "#0f2942",
+        "tonalRamp": ["#061320", "#0a1b2c", "#0f2942", "#1e3a5f", "#334155", "#64748b", "#cbd5e1", "#f8fafc"]
+      },
+      "ink-navy-hover": {
+        "role": "neutral",
+        "displayName": "Ink Navy Hover",
+        "canonical": "#0a1b2c",
+        "tonalRamp": ["#040c14", "#0a1b2c", "#0f2942", "#1e3a5f", "#334155", "#64748b", "#cbd5e1", "#f8fafc"]
+      },
+      "slate-muted": {
+        "role": "neutral",
+        "displayName": "Slate Muted",
+        "canonical": "#475569",
+        "tonalRamp": ["#0f172a", "#1e293b", "#334155", "#475569", "#64748b", "#94a3b8", "#e2e8f0", "#f8fafc"]
+      },
+      "slate-control-border": {
+        "role": "neutral",
+        "displayName": "Slate Control Border",
+        "canonical": "#64748b",
+        "tonalRamp": ["#0f172a", "#1e293b", "#334155", "#475569", "#64748b", "#94a3b8", "#dbe4ee", "#ffffff"]
+      },
+      "canvas-cool": {
+        "role": "neutral",
+        "displayName": "Cool Canvas",
+        "canonical": "#f3f6fa",
+        "tonalRamp": ["#0f2942", "#334155", "#64748b", "#94a3b8", "#cbd5e1", "#dbe4ee", "#f3f6fa", "#ffffff"]
+      },
+      "surface-white": {
+        "role": "neutral",
+        "displayName": "Surface White",
+        "canonical": "#ffffff",
+        "tonalRamp": ["#0f172a", "#334155", "#64748b", "#94a3b8", "#dbe4ee", "#f1f5f9", "#f8fafc", "#ffffff"]
+      },
+      "surface-subtle": {
+        "role": "neutral",
+        "displayName": "Surface Subtle",
+        "canonical": "#f8fafc",
+        "tonalRamp": ["#0f172a", "#334155", "#64748b", "#94a3b8", "#cbd5e1", "#e2e8f0", "#f8fafc", "#ffffff"]
+      },
+      "hairline-border": {
+        "role": "neutral",
+        "displayName": "Hairline Border",
+        "canonical": "#dbe4ee",
+        "tonalRamp": ["#0f2942", "#334155", "#64748b", "#94a3b8", "#cbd5e1", "#dbe4ee", "#f1f5f9", "#ffffff"]
+      },
+      "status-success": {
+        "role": "neutral",
+        "displayName": "Status Success",
+        "canonical": "#047857",
+        "tonalRamp": ["#064e3b", "#065f46", "#047857", "#059669", "#10b981", "#6ee7b7", "#d1fae5", "#ecfdf5"]
+      },
+      "status-warning": {
+        "role": "neutral",
+        "displayName": "Status Warning",
+        "canonical": "#92400e",
+        "tonalRamp": ["#451a03", "#78350f", "#92400e", "#b45309", "#d97706", "#f59e0b", "#fde68a", "#fef3c7", "#fffbeb"]
+      },
+      "status-danger": {
+        "role": "neutral",
+        "displayName": "Status Danger",
+        "canonical": "#b42318",
+        "tonalRamp": ["#450a0a", "#7f1d1d", "#991b1b", "#b42318", "#dc2626", "#ef4444", "#fecaca", "#fee2e2", "#fef2f2"]
+      },
+      "hall-abyss": {
+        "role": "neutral",
+        "displayName": "Public Hall Abyss",
+        "canonical": "#020b14",
+        "tonalRamp": ["#020b14", "#04101e", "#041527", "#06203a", "#0f2942", "#334155", "#94a3b8", "#f8fafc"]
+      },
+      "hall-surface": {
+        "role": "neutral",
+        "displayName": "Public Hall Surface",
+        "canonical": "#041527",
+        "tonalRamp": ["#020b14", "#041222", "#041527", "#06203a", "#07203b", "#1e3a5f", "#cbd5e1", "#ffffff"]
+      },
+      "hall-emerald": {
+        "role": "neutral",
+        "displayName": "Public Hall Emerald",
+        "canonical": "#34d399",
+        "tonalRamp": ["#022c22", "#064e3b", "#047857", "#10b981", "#34d399", "#6ee7b7", "#a7f3d0", "#ecfdf5"]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display Ticket Code",
+        "purpose": "Giant 10-foot waiting room ticket codes and destination announcements."
+      },
+      "headline": {
+        "displayName": "Page Headline",
+        "purpose": "Top-level view headings inside PageHeader with balanced wrapping."
+      },
+      "headline-mobile": {
+        "displayName": "Mobile Page Headline",
+        "purpose": "Compact PageHeader heading scale below 768px."
+      },
+      "title": {
+        "displayName": "Section & Card Title",
+        "purpose": "Operational station headers, dialog titles, and workspace headings."
+      },
+      "body": {
+        "displayName": "Clinical Body Copy",
+        "purpose": "Form instructions, audit tables, guidance callouts, and labels."
+      },
+      "compact": {
+        "displayName": "Navigation & Compact Copy",
+        "purpose": "Sidebar links, skip links, and mobile helper descriptions."
+      },
+      "label": {
+        "displayName": "Operational Eyebrow & Badge",
+        "purpose": "Uppercase eyebrows, status badges, table headers, and form labels."
+      },
+      "micro": {
+        "displayName": "Dense Telemetry Micro Label",
+        "purpose": "11px legibility floor for status tags, table chips, and keyboard shortcut badges."
+      }
+    },
+    "shadows": [
+      {
+        "name": "header-hairline",
+        "value": "0 1px 0 rgb(15 41 66 / 2%)",
+        "purpose": "Minimal bottom separation under sticky app navbar."
+      },
+      {
+        "name": "card-resting",
+        "value": "0 1px 3px rgb(0 0 0 / 0.06)",
+        "purpose": "Subtle elevation on interactive queue items and compact workspace cards."
+      },
+      {
+        "name": "hall-hero-resting",
+        "value": "0 0 60px -15px rgba(16, 185, 129, 0.2)",
+        "purpose": "Low ambient emerald perimeter glow on the active call region in 10-foot display."
+      },
+      {
+        "name": "hall-hero-flashing",
+        "value": "0 0 80px -10px rgba(16, 185, 129, 0.35)",
+        "purpose": "Brief announcement glow reinforcement during a new waiting-room call."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-standard",
+        "value": "120ms ease",
+        "purpose": "Color, background, and border transitions on links, pills, and buttons."
+      },
+      {
+        "name": "hall-flash-transition",
+        "value": "500ms cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "Protected with motion-safe prefix for public hall call highlight."
+      },
+      {
+        "name": "reduced-motion-policy",
+        "value": "0s !important",
+        "purpose": "Global prefers-reduced-motion override disabling animations and keeping state markers legible."
+      }
+    ],
+    "breakpoints": [
+      { "name": "xs", "value": "420px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" },
+      { "name": "xl", "value": "1200px" },
+      { "name": "2xl", "value": "1280px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Dispatch Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "High-authority CTA reserved for calling or closing a pharmacy ticket.",
+      "html": "<button type=\"button\" class=\"ds-btn-primary\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><polygon points=\"6 3 20 12 6 21 6 3\"/></svg>Llamar turno</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 12px 24px; border: 0; border-radius: 8px; background: var(--app-text, #0f2942); color: #ffffff; font-family: var(--font-sans, 'IBM Plex Sans', sans-serif); font-size: 14px; font-weight: 700; cursor: pointer; box-shadow: 0 1px 2px rgb(0 0 0 / 0.05); transition: background-color 120ms ease; } .ds-btn-primary:hover { background: #0a1b2c; } .ds-btn-primary:focus-visible { outline: 2px solid var(--app-focus, #0f766e); outline-offset: 2px; }"
+    },
+    {
+      "name": "Clinical Teal CTA Button",
+      "kind": "button",
+      "refersTo": "button-accent",
+      "description": "Primary Clinical Teal button used for starting service, issuing tickets, or saving setup.",
+      "html": "<button type=\"button\" class=\"ds-btn-accent\">Iniciar atención<svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 12h14\"/><path d=\"m12 5 7 7-7 7\"/></svg></button>",
+      "css": ".ds-btn-accent { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 12px 24px; border: 0; border-radius: 8px; background: var(--app-primary, #0f766e); color: #ffffff; font-family: var(--font-sans, 'IBM Plex Sans', sans-serif); font-size: 14px; font-weight: 700; cursor: pointer; box-shadow: 0 1px 2px rgb(0 0 0 / 0.05); transition: background-color 120ms ease; } .ds-btn-accent:hover { background: var(--app-primary-hover, #115e59); } .ds-btn-accent:focus-visible { outline: 2px solid var(--app-focus, #0f766e); outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Action Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Neutral secondary control with WCAG 1.4.11 compliant >= 3.0:1 Slate border.",
+      "html": "<button type=\"button\" class=\"ds-btn-secondary\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8\"/><path d=\"M21 3v5h-5\"/><path d=\"M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16\"/><path d=\"M8 16H3v5\"/></svg>Actualizar estado</button>",
+      "css": ".ds-btn-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 10px 16px; border: 1px solid var(--app-border-strong, #64748b); border-radius: 4px; background: var(--app-surface, #ffffff); color: var(--app-text, #0f2942); font-family: var(--font-sans, 'IBM Plex Sans', sans-serif); font-size: 12px; font-weight: 600; cursor: pointer; transition: background-color 120ms ease; } .ds-btn-secondary:hover { background: var(--app-surface-subtle, #f8fafc); } .ds-btn-secondary:focus-visible { outline: 2px solid var(--app-focus, #0f766e); outline-offset: 2px; }"
+    },
+    {
+      "name": "Prescription Code Field",
+      "kind": "input",
+      "refersTo": "input-control",
+      "description": "Monospaced USB barcode / MIPRES text field with crisp border and Clinical Teal focus ring.",
+      "html": "<div class=\"ds-field-group\"><label class=\"ds-field-label\" for=\"ds-rx-sample\">Fórmula Médica / MIPRES</label><input id=\"ds-rx-sample\" class=\"ds-input-mono\" type=\"text\" value=\"RX-E2E-9001\" /></div>",
+      "css": ".ds-field-group { display: flex; flex-direction: column; gap: 4px; } .ds-field-label { font-family: var(--font-sans, 'IBM Plex Sans', sans-serif); font-size: 11px; font-weight: 700; color: #1e293b; } .ds-input-mono { width: 100%; border: 1px solid var(--app-border-strong, #64748b); border-radius: 4px; background: var(--app-surface, #ffffff); padding: 6px 10px; font-family: var(--font-mono, 'JetBrains Mono', monospace); font-size: 12px; color: #0f172a; transition: border-color 120ms ease, box-shadow 120ms ease; } .ds-input-mono:focus-visible { outline: 2px solid var(--app-focus, #0f766e); outline-offset: 1px; }"
+    },
+    {
+      "name": "Sidebar Active Nav Link",
+      "kind": "nav",
+      "refersTo": "nav-link-active",
+      "description": "Selected role-filtered sidebar destination with Clinical Teal left rail indicator.",
+      "html": "<a href=\"#\" aria-current=\"page\" class=\"ds-nav-link\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2\"/></svg><span>Resumen operativo</span></a>",
+      "css": ".ds-nav-link { position: relative; display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 10px 12px; border: 1px solid #99f6e4; border-radius: 10px; background: var(--app-primary-soft, #f0fdfa); color: var(--app-primary-hover, #115e59); font-family: var(--font-sans, 'IBM Plex Sans', sans-serif); font-size: 13px; font-weight: 600; text-decoration: none; } .ds-nav-link::before { content: ''; position: absolute; left: -1px; top: 50%; width: 3px; height: 22px; border-radius: 0 4px 4px 0; background: var(--app-primary, #0f766e); transform: translateY(-50%); } .ds-nav-link:hover { background: #ccfbf1; } .ds-nav-link:focus-visible { outline: 2px solid var(--app-focus, #0f766e); outline-offset: 2px; }"
+    },
+    {
+      "name": "Connection Status Badge",
+      "kind": "chip",
+      "refersTo": "status-badge-online",
+      "description": "Navbar AAA-contrast live telemetry connectivity status pill.",
+      "html": "<span role=\"status\" class=\"ds-status-badge\"><span class=\"ds-status-dot\" aria-hidden=\"true\"></span>En línea</span>",
+      "css": ".ds-status-badge { display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 999px; border: 1px solid #a7f3d0; background: #d1fae5; color: #064e3b; font-family: var(--font-sans, 'IBM Plex Sans', sans-serif); font-size: 11px; font-weight: 700; white-space: nowrap; } .ds-status-dot { width: 6px; height: 6px; border-radius: 999px; background: currentColor; box-shadow: 0 0 0 3px #ccfbf1; }"
+    },
+    {
+      "name": "Public Hall Call Card",
+      "kind": "card",
+      "refersTo": "card-surface",
+      "description": "Zero-PII 10-foot UI waiting room announcement card showing ticket code and cubicle only.",
+      "html": "<section class=\"ds-hall-card\" aria-label=\"Turno llamado actualmente\"><span class=\"ds-hall-pill\">TURNO LLAMADO</span><div class=\"ds-hall-code\">TUR-000042</div><div class=\"ds-hall-sub\">Diríjase al</div><div class=\"ds-hall-dest\">Cubículo 03</div></section>",
+      "css": ".ds-hall-card { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 28px; border-radius: 24px; background: #041527; border: 2px solid rgba(16, 185, 129, 0.4); box-shadow: 0 0 60px -15px rgba(16, 185, 129, 0.2); font-family: var(--font-sans, 'IBM Plex Sans', sans-serif); } .ds-hall-pill { padding: 6px 16px; border-radius: 999px; border: 1px solid rgba(16, 185, 129, 0.3); background: rgba(16, 185, 129, 0.1); color: #34d399; font-family: var(--font-mono, 'JetBrains Mono', monospace); font-size: 12px; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; } .ds-hall-code { margin: 12px 0; color: #ffffff; font-family: var(--font-mono, 'JetBrains Mono', monospace); font-size: 40px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; } .ds-hall-sub { color: #cbd5e1; font-size: 15px; font-weight: 500; } .ds-hall-dest { color: #34d399; font-size: 32px; font-weight: 800; letter-spacing: -0.02em; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Clinical Precision Bench",
+    "overview": "Cubiora está diseñado como un banco de instrumentación clínica: sereno, estructurado y de lectura instantánea bajo presión operativa. Cada estación —desde un quiosco táctil de admisión hasta un cubículo con 20+ puestos simultáneos o un televisor de sala a tres metros— privilegia la jerarquía tipográfica clara, superficies planas delimitadas por líneas nítidas y confirmaciones gobernadas por el servidor.\n\nEl sistema combina la sobriedad institucional de Radix Themes (accentColor=\"teal\", grayColor=\"slate\", radius=\"medium\") con tipografía autoalojada para operar en redes hospitalarias aisladas y entornos detrás de Cloudflare Tunnel sin depender de fuentes externas. Rechaza de raíz cualquier ornamento que compita con la seguridad farmacéutica: cero glassmorphism, cero neumorphism, cero gradientes decorativos y cero exposición pública de datos personales (Ley 1581 de 2012).",
+    "keyCharacteristics": [
+      "Paleta clínico-institucional única en Teal (#0f766e) y Azul Tinta (#0f2942) sobre lienzo frío #f3f6fa.",
+      "Dúo tipográfico técnico autoalojado: IBM Plex Sans para UI y flujos clínicos y JetBrains Mono tabular para códigos de turno y cronómetros.",
+      "Superficies planas estructuradas mediante bordes de 1px y contraste verificable WCAG 2.2 Nivel AA en modo claro operativo y pantalla oscura 10-foot UI.",
+      "Estados interactivos disciplinados que bloquean reintentos ambiguos y comunican pérdida de conectividad sin relleno visual."
+    ],
+    "rules": [
+      {
+        "name": "The One-Accent Clinical Rule",
+        "body": "El verde clínico (#0f766e) y los colores semánticos nunca se usan como decoración masiva de fondo; las tarjetas permanecen blancas y el color señala únicamente acción primaria, selección activa o desviación operativa.",
+        "section": "colors"
+      },
+      {
+        "name": "The Non-Textual Contrast Rule",
+        "body": "Todo campo de texto, selector, botón secundario y botón de paginación debe mantener un borde visible de al menos 3.0:1 (#64748b) frente a su superficie para garantizar su percepción en monitores de ventanilla mal calibrados.",
+        "section": "colors"
+      },
+      {
+        "name": "The Tabular Lock Rule",
+        "body": "Todo código de turno (TUR-000042), duración transcurrida (04:18), cumplimiento porcentual y conteo de cola debe declarar tabular-nums en fuente monoespaciada para evitar vibración visual en ticks de 1 segundo.",
+        "section": "typography"
+      },
+      {
+        "name": "The 11px Legibility Floor",
+        "body": "Ningún rótulo operativo, insignia, atajo <kbd> o cifra auxiliar puede descender de 11px (0.6875rem); las tablas e interfaces densas emplean 11px–12px como piso duro de legibilidad.",
+        "section": "typography"
+      },
+      {
+        "name": "The Hairline-Over-Drop-Shadow Rule",
+        "body": "Las tarjetas en reposo se separan del fondo mediante borde sólido de 1px y contraste tonal #f3f6fa/#ffffff; queda prohibido apilar sombras difusas múltiples para simular capas de vidrio.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do usar exclusivamente primitivas de @radix-ui/themes y lucide-react con los tokens definidos (#0f766e, #0f2942, IBM Plex Sans, JetBrains Mono) en toda nueva vista o diálogo.",
+      "Do mantener un piso tipográfico mínimo de 11px y objetivos táctiles >= 44px en acciones primarias y controles móviles/quiosco (y >= 32px con margen en botones secundarios densos).",
+      "Do marcar todo valor temporal, métrica o identificador de turno con tipografía monoespaciada y tabular-nums.",
+      "Do preservar prefers-reduced-motion: reduce comunicando cambios críticos mediante color, borde y texto explícito sin depender de animaciones.",
+      "Do garantizar Cero PII (solo código de turno, prioridad y cubículo asignado) en /pantalla y en la tabla de últimos turnos de /recepcion."
+    ],
+    "donts": [
+      "Don't introducir librerías de componentes externas, fuentes remotas (fonts.googleapis.com), ni sets de íconos mezclados fuera de lucide-react.",
+      "Don't emplear glassmorphism, backdrop-blur, neumorphism, sombras decorativas pesadas, bordes izquierdos decorativos (border-l-4) ni degradados ornamentales en tarjetas clínicas.",
+      "Don't mostrar códigos técnicos internos (SCR-*), textos heredados de piloto (Audifarma) ni formatos regionales ajenos a Colombia (+54, CABA, hs).",
+      "Don't habilitar reintentos automáticos o botones de cierre si la sincronización con backend se encuentra en estado OFFLINE o UNCERTAIN_RESULT."
+    ]
+  }
+}
