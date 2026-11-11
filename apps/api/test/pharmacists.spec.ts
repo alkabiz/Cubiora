@@ -285,5 +285,140 @@ describe('[SCR-ADM-004] PharmacistsModule – Servicio, DTOs y RBAC', () => {
       expect(roles).toEqual([UserRole.ADMIN]);
     }
   });
+
+  it('findAll deriva dispatchesCount en vivo desde dispensation_records y cierres legados sin doble conteo', async () => {
+    mockPrisma.dispensationRecord = {
+      groupBy: vi.fn().mockResolvedValue([
+        { operatorUserId: 'usr-1', cubicleId: 'cub-2', _count: { _all: 3 } },
+      ]),
+    };
+    mockPrisma.ticket.groupBy = vi.fn().mockResolvedValue([
+      { cubicleId: 'cub-1', _count: { _all: 4 } },
+    ]);
+
+    const rowList = [
+      {
+        id: 'ph-1',
+        userId: 'usr-1',
+        fullName: 'Lic. M. Arismendi',
+        licenseNumber: 'MN-3914',
+        operationalRole: PharmacistOperationalRole.TITULAR,
+        facilityId: 'fac-1',
+        cubicleId: 'cub-1',
+        shift: WorkShift.MORNING,
+        status: PharmacistStatus.ACTIVE,
+        email: 'm@cubiora.hospital',
+        phone: '',
+        dispatchesCount: 957,
+        facility: { id: 'fac-1', code: 'SEDE-CEN-01', name: 'Central' },
+        cubicle: { id: 'cub-1', code: 'CUB-01', displayName: 'Cubículo 01' },
+      },
+    ];
+    mockPrisma.pharmacist.findMany
+      .mockResolvedValueOnce(rowList)
+      .mockResolvedValueOnce([
+        {
+          id: 'ph-1',
+          userId: 'usr-1',
+          cubicleId: 'cub-1',
+          status: PharmacistStatus.ACTIVE,
+          dispatchesCount: 957,
+          facilityId: 'fac-1',
+        },
+      ]);
+
+    const res = await service.findAll({});
+    expect(res.items[0]?.dispatchesCount).toBe(7);
+    expect(res.metrics.totalDispatches).toBe(7);
+  });
+
+  it('create, updateStatus INACTIVE y remove mantienen sincronizado User.cubicleId en la misma transacción', async () => {
+    mockPrisma.user = { findUnique: vi.fn().mockResolvedValue({ id: 'usr-1' }) };
+    mockPrisma.__tx.user = { updateMany: vi.fn().mockResolvedValue({ count: 1 }) };
+    mockPrisma.pharmacist.findFirst.mockResolvedValueOnce(null);
+    mockPrisma.pharmacist.findUnique.mockResolvedValueOnce(null);
+    mockPrisma.cubicle.findUnique.mockResolvedValueOnce({ id: 'cub-1', facilityId: 'fac-1' });
+    mockPrisma.__tx.pharmacist.create.mockResolvedValueOnce({
+      id: 'ph-sync',
+      userId: 'usr-1',
+      fullName: 'Lic. M. Arismendi',
+      licenseNumber: 'MN-3914',
+      operationalRole: PharmacistOperationalRole.TITULAR,
+      facilityId: 'fac-1',
+      cubicleId: 'cub-1',
+      shift: WorkShift.MORNING,
+      status: PharmacistStatus.ACTIVE,
+      email: 'm@cubiora.hospital',
+      phone: '',
+      dispatchesCount: 0,
+      facility: { id: 'fac-1', code: 'SEDE-CEN-01', name: 'Central' },
+      cubicle: { id: 'cub-1', code: 'CUB-01', displayName: 'Cubículo 01' },
+    });
+
+    await service.create({
+      fullName: 'Lic. M. Arismendi',
+      licenseNumber: 'MN-3914',
+      operationalRole: PharmacistOperationalRole.TITULAR,
+      cubicleId: 'cub-1',
+      userId: 'usr-1',
+      shift: WorkShift.MORNING,
+      email: 'm@cubiora.hospital',
+    });
+
+    expect(mockPrisma.__tx.user.updateMany).toHaveBeenCalledWith({
+      where: { cubicleId: 'cub-1', id: { not: 'usr-1' } },
+      data: { cubicleId: null },
+    });
+    expect(mockPrisma.__tx.user.updateMany).toHaveBeenCalledWith({
+      where: { id: 'usr-1' },
+      data: { cubicleId: 'cub-1' },
+    });
+
+    // Desactivar farmacéutico debe liberar User.cubicleId
+    mockPrisma.__tx.user.updateMany.mockClear();
+    mockPrisma.pharmacist.findUnique.mockResolvedValueOnce({
+      id: 'ph-sync',
+      userId: 'usr-1',
+      fullName: 'Lic. M. Arismendi',
+      cubicleId: 'cub-1',
+    });
+    mockPrisma.__tx.pharmacist.update.mockResolvedValueOnce({
+      id: 'ph-sync',
+      userId: 'usr-1',
+      fullName: 'Lic. M. Arismendi',
+      licenseNumber: 'MN-3914',
+      operationalRole: PharmacistOperationalRole.TITULAR,
+      facilityId: 'fac-1',
+      cubicleId: 'cub-1',
+      shift: WorkShift.MORNING,
+      status: PharmacistStatus.INACTIVE,
+      email: 'm@cubiora.hospital',
+      phone: '',
+      dispatchesCount: 0,
+      facility: { id: 'fac-1', code: 'SEDE-CEN-01', name: 'Central' },
+      cubicle: { id: 'cub-1', code: 'CUB-01', displayName: 'Cubículo 01' },
+    });
+
+    await service.updateStatus('ph-sync', PharmacistStatus.INACTIVE);
+    expect(mockPrisma.__tx.user.updateMany).toHaveBeenCalledWith({
+      where: { id: 'usr-1' },
+      data: { cubicleId: null },
+    });
+
+    // Baja física debe liberar User.cubicleId
+    mockPrisma.__tx.user.updateMany.mockClear();
+    mockPrisma.pharmacist.findUnique.mockResolvedValueOnce({
+      id: 'ph-sync',
+      userId: 'usr-1',
+      fullName: 'Lic. M. Arismendi',
+      cubicleId: 'cub-1',
+    });
+
+    await service.remove('ph-sync');
+    expect(mockPrisma.__tx.user.updateMany).toHaveBeenCalledWith({
+      where: { id: 'usr-1' },
+      data: { cubicleId: null },
+    });
+  });
 });
 

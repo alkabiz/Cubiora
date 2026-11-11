@@ -306,5 +306,126 @@ describe('[SCR-ADM-005] FacilitiesModule – Sedes, Activación Primaria y Asign
       expect(roles).toEqual([UserRole.ADMIN]);
     }
   });
+
+  it('findAll deriva enabledCubiclesCount real desde cubículos activos y operatorName desde relación 3FN', async () => {
+    mockPrisma.facility.findMany.mockResolvedValueOnce([
+      {
+        id: 'fac-1',
+        code: 'SEDE-CEN-01',
+        name: 'Central',
+        address: 'Calle 1',
+        city: 'Bogotá',
+        phone: '123',
+        openingHours: '07:00 a 19:00',
+        enabledCubiclesCount: 99,
+        status: FacilityStatus.ACTIVE,
+        isPrimary: true,
+        cubicles: [
+          {
+            id: 'c1',
+            code: 'CUB-01',
+            displayName: 'Cubículo 01',
+            status: CubicleStatus.AVAILABLE,
+            active: true,
+            operatorName: 'Legacy',
+            currentOperator: null,
+            pharmacists: [{ id: 'ph-1', fullName: 'Lic. M. Arismendi', status: PharmacistStatus.ACTIVE }],
+          },
+          {
+            id: 'c2',
+            code: 'CUB-02',
+            displayName: 'Cubículo 02',
+            status: CubicleStatus.INACTIVE,
+            active: false,
+            operatorName: null,
+            currentOperator: null,
+            pharmacists: [],
+          },
+        ],
+        pharmacists: [],
+      },
+    ]);
+
+    const list = await service.findAll();
+    expect(list[0]?.enabledCubiclesCount).toBe(1);
+    expect(list[0]?.cubiclesCount).toBe(2);
+    expect(list[0]?.cubicles[0]?.operatorName).toBe('Lic. M. Arismendi');
+  });
+
+  it('update sincroniza enabledCubiclesCount real, assignPharmacist enlaza User.cubicleId y remove bloquea sedes con tickets', async () => {
+    mockPrisma.__tx.cubicle.count = vi.fn().mockResolvedValue(2);
+    mockPrisma.facility.findUnique
+      .mockResolvedValueOnce({
+        id: 'fac-2',
+        code: 'SEDE-NOR-02',
+        status: FacilityStatus.ACTIVE,
+        enabledCubiclesCount: 3,
+        isPrimary: false,
+        cubicles: [{ id: 'c1' }, { id: 'c2' }, { id: 'c3' }],
+      })
+      .mockResolvedValueOnce({
+        id: 'fac-2',
+        code: 'SEDE-NOR-02',
+        name: 'Norte',
+        address: 'Av 1',
+        city: 'Bogotá',
+        phone: '1',
+        openingHours: '07:00 a 19:00',
+        enabledCubiclesCount: 2,
+        status: FacilityStatus.ACTIVE,
+        isPrimary: false,
+        cubicles: [],
+        pharmacists: [],
+      });
+
+    await service.update('fac-2', { enabledCubiclesCount: 2 });
+    expect(mockPrisma.__tx.facility.update).toHaveBeenCalledWith({
+      where: { id: 'fac-2' },
+      data: { enabledCubiclesCount: 2 },
+    });
+
+    // assignPharmacist sincroniza también User.cubicleId
+    mockPrisma.__tx.user = { updateMany: vi.fn().mockResolvedValue({ count: 1 }) };
+    mockPrisma.facility.findUnique
+      .mockResolvedValueOnce({ id: 'fac-2', code: 'SEDE-NOR-02' })
+      .mockResolvedValueOnce({
+        id: 'fac-2',
+        code: 'SEDE-NOR-02',
+        name: 'Norte',
+        address: 'Av 1',
+        city: 'Bogotá',
+        phone: '1',
+        openingHours: '07:00 a 19:00',
+        enabledCubiclesCount: 2,
+        status: FacilityStatus.ACTIVE,
+        isPrimary: false,
+        cubicles: [],
+        pharmacists: [],
+      });
+    mockPrisma.pharmacist.findUnique.mockResolvedValueOnce({
+      id: 'ph-9',
+      userId: 'usr-9',
+      fullName: 'Farm. Prueba',
+      status: PharmacistStatus.ACTIVE,
+      cubicleId: 'c-old',
+    });
+    mockPrisma.cubicle.findUnique.mockResolvedValueOnce({ id: 'c-new', facilityId: 'fac-2' });
+
+    await service.assignPharmacist('fac-2', { pharmacistId: 'ph-9', cubicleId: 'c-new' });
+    expect(mockPrisma.__tx.user.updateMany).toHaveBeenCalledWith({
+      where: { id: 'usr-9' },
+      data: { cubicleId: 'c-new' },
+    });
+
+    // remove rechaza sede con tickets históricos (FK RESTRICT)
+    mockPrisma.facility.findUnique.mockResolvedValueOnce({
+      id: 'fac-with-tickets',
+      code: 'SEDE-NOR-02',
+      isPrimary: false,
+      _count: { tickets: 5 },
+      cubicles: [],
+    });
+    await expect(service.remove('fac-with-tickets')).rejects.toThrow(ConflictException);
+  });
 });
 

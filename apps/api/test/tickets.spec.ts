@@ -219,6 +219,29 @@ describe('Fase 3a — Creación de Turnos (CP-01, CP-02, CP-03)', () => {
         ),
       ).rejects.toThrow(ForbiddenException);
     });
+
+    it('debe persistir facilityId de la sede primaria al crear el turno cuando facility.findFirst existe', async () => {
+      const originalImpl = mockPrisma.$transaction.getMockImplementation();
+      mockPrisma.$transaction.mockImplementationOnce(async (callback: (tx: any) => Promise<any>) => {
+        return originalImpl!(async (tx: any) =>
+          callback({
+            ...tx,
+            facility: {
+              findFirst: vi.fn().mockResolvedValue({ id: 'fac-primary-01' }),
+            },
+          }),
+        );
+      });
+
+      const res = await ticketsService.createTicket(
+        { patientName: 'Paciente Multisede' },
+        'user_operator_reception',
+        'corr-fac-1',
+      );
+
+      expect(res.statusCode).toBe(201);
+      expect((createdTickets[0] as any).facilityId).toBe('fac-primary-01');
+    });
   });
 
   describe('CP-02: Idempotencia con Idempotency-Key', () => {

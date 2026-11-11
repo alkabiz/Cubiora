@@ -12,6 +12,8 @@ import { OperationalTelemetryModule } from '../src/modules/operational-telemetry
 import { OperationalTelemetryService } from '../src/modules/operational-telemetry/operational-telemetry.service';
 import { PharmacistsModule } from '../src/modules/pharmacists/pharmacists.module';
 import { FacilitiesModule } from '../src/modules/facilities/facilities.module';
+import { UsersModule } from '../src/modules/users/users.module';
+import { UsersService } from '../src/modules/users/users.service';
 
 describe('[SCR-ADM-002 <-> 004 <-> 005] Sincronización de Cubículos con Farmacéuticos y Sedes', () => {
   let mockPrisma: any;
@@ -66,7 +68,7 @@ describe('[SCR-ADM-002 <-> 004 <-> 005] Sincronización de Cubículos con Farmac
     service = new CubiclesService(mockPrisma, mockTelemetry);
   });
 
-  it('compila CubiclesModule + OperationalTelemetryModule + PharmacistsModule + FacilitiesModule en Nest DI sin errores circulares', async () => {
+  it('compila CubiclesModule + OperationalTelemetryModule + PharmacistsModule + FacilitiesModule + UsersModule en Nest DI sin errores circulares', async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [
         PrismaModule,
@@ -74,6 +76,7 @@ describe('[SCR-ADM-002 <-> 004 <-> 005] Sincronización de Cubículos con Farmac
         OperationalTelemetryModule,
         PharmacistsModule,
         FacilitiesModule,
+        UsersModule,
       ],
     })
       .overrideProvider(PrismaService)
@@ -83,9 +86,11 @@ describe('[SCR-ADM-002 <-> 004 <-> 005] Sincronización de Cubículos con Farmac
     const cubiclesService = moduleRef.get(CubiclesService);
     const telemetryService = moduleRef.get(OperationalTelemetryService);
     const adminCtrl = moduleRef.get(AdminCubiclesController);
+    const usersService = moduleRef.get(UsersService);
     expect(cubiclesService).toBeDefined();
     expect(telemetryService).toBeDefined();
     expect(adminCtrl).toBeDefined();
+    expect(usersService).toBeDefined();
     expect(
       (cubiclesService as unknown as { telemetryService?: OperationalTelemetryService })
         .telemetryService,
@@ -93,6 +98,10 @@ describe('[SCR-ADM-002 <-> 004 <-> 005] Sincronización de Cubículos con Farmac
     expect(
       (telemetryService as unknown as { cubiclesService?: CubiclesService }).cubiclesService,
     ).toBeInstanceOf(CubiclesService);
+    expect(
+      (usersService as unknown as { telemetryService?: OperationalTelemetryService })
+        .telemetryService,
+    ).toBeInstanceOf(OperationalTelemetryService);
 
     await moduleRef.close();
   });
@@ -224,5 +233,125 @@ describe('[SCR-ADM-002 <-> 004 <-> 005] Sincronización de Cubículos con Farmac
       const roles = Reflect.getMetadata('roles', AdminCubiclesController.prototype[method]);
       expect(roles).toEqual([UserRole.ADMIN]);
     }
+  });
+
+  it('assignPharmacistToCubicle sincroniza User.cubicleId en asignación y desvinculación 1:1:1 y deriva operatorName desde 3FN', async () => {
+    mockPrisma.__tx.user = {
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+    };
+
+    mockPrisma.cubicle.findFirst.mockResolvedValueOnce({ id: 'cub-01' });
+    mockPrisma.cubicle.findUnique
+      .mockResolvedValueOnce({ id: 'cub-01' })
+      .mockResolvedValueOnce({
+        id: 'cub-01',
+        code: 'CUB-01',
+        displayName: 'Cubículo 01',
+        operatorName: 'Obsoleto',
+        status: CubicleStatus.AVAILABLE,
+        active: true,
+        allowedCategories: [QueueCategory.GENERAL],
+        facilityId: 'fac-1',
+        facility: { id: 'fac-1', code: 'SEDE-CEN-01', name: 'Central' },
+        currentOperator: { displayName: 'Cajero', role: UserRole.CASHIER, active: true },
+        pharmacists: [
+          {
+            id: 'ph-3',
+            fullName: 'Lic. R. Mendoza',
+            licenseNumber: 'MN-4812',
+            status: PharmacistStatus.ACTIVE,
+          },
+        ],
+        version: 4,
+      });
+
+    mockPrisma.__tx.pharmacist.findUnique.mockResolvedValueOnce({
+      id: 'ph-3',
+      userId: 'usr-3',
+      fullName: 'Lic. R. Mendoza',
+      facilityId: 'fac-1',
+      cubicleId: 'cub-03',
+      status: PharmacistStatus.ACTIVE,
+    });
+
+    const assigned = await service.assignPharmacistToCubicle('CUB-01', 'ph-3');
+
+    expect(assigned.operatorName).toBe('Lic. R. Mendoza');
+    expect(mockPrisma.__tx.user.updateMany).toHaveBeenCalledWith({
+      where: { cubicleId: 'cub-01', id: { not: 'usr-3' } },
+      data: { cubicleId: null },
+    });
+    expect(mockPrisma.__tx.user.updateMany).toHaveBeenCalledWith({
+      where: { cubicleId: 'cub-03', id: 'usr-3' },
+      data: { cubicleId: null },
+    });
+    expect(mockPrisma.__tx.user.updateMany).toHaveBeenCalledWith({
+      where: { id: 'usr-3' },
+      data: { cubicleId: 'cub-01' },
+    });
+
+    // Ahora desvincular explícitamente
+    mockPrisma.cubicle.findFirst.mockResolvedValueOnce({ id: 'cub-01' });
+    mockPrisma.cubicle.findUnique
+      .mockResolvedValueOnce({ id: 'cub-01' })
+      .mockResolvedValueOnce({
+        id: 'cub-01',
+        code: 'CUB-01',
+        displayName: 'Cubículo 01',
+        operatorName: null,
+        status: CubicleStatus.AVAILABLE,
+        active: true,
+        allowedCategories: [QueueCategory.GENERAL],
+        facilityId: 'fac-1',
+        facility: { id: 'fac-1', code: 'SEDE-CEN-01', name: 'Central' },
+        currentOperator: null,
+        pharmacists: [],
+        version: 5,
+      });
+
+    await service.assignPharmacistToCubicle('CUB-01', null);
+    expect(mockPrisma.__tx.user.updateMany).toHaveBeenCalledWith({
+      where: { cubicleId: 'cub-01' },
+      data: { cubicleId: null },
+    });
+  });
+
+  it('updateAdminCubicleStatus sincroniza facility.enabledCubiclesCount dentro de la transacción', async () => {
+    mockPrisma.__tx.cubicle.count = vi.fn().mockResolvedValue(3);
+    mockPrisma.__tx.facility = {
+      update: vi.fn().mockResolvedValue({ id: 'fac-1', enabledCubiclesCount: 3 }),
+    };
+    mockPrisma.cubicle.count = mockPrisma.__tx.cubicle.count;
+    mockPrisma.facility.update = mockPrisma.__tx.facility.update;
+
+    mockPrisma.cubicle.findFirst.mockResolvedValueOnce({
+      id: 'cub-04',
+      status: CubicleStatus.AVAILABLE,
+      facilityId: 'fac-1',
+    });
+    mockPrisma.ticket.findFirst.mockResolvedValueOnce(null);
+    mockPrisma.cubicle.findUnique.mockResolvedValueOnce({
+      id: 'cub-04',
+      code: 'CUB-04',
+      displayName: 'Cubículo 04',
+      operatorName: null,
+      status: CubicleStatus.INACTIVE,
+      active: false,
+      allowedCategories: [QueueCategory.GENERAL],
+      facilityId: 'fac-1',
+      facility: { id: 'fac-1', code: 'SEDE-CEN-01', name: 'Central' },
+      currentOperator: null,
+      pharmacists: [],
+      version: 3,
+    });
+
+    await service.updateAdminCubicleStatus('cub-04', false);
+    expect(mockPrisma.__tx.cubicle.count).toHaveBeenCalledWith({
+      where: { facilityId: 'fac-1', active: true },
+    });
+    expect(mockPrisma.__tx.facility.update).toHaveBeenCalledWith({
+      where: { id: 'fac-1' },
+      data: { enabledCubiclesCount: 3 },
+    });
   });
 });

@@ -4,7 +4,7 @@ import { ConflictException, NotFoundException } from '@nestjs/common';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import * as bcrypt from 'bcryptjs';
-import { UserRole } from '@cubiora/shared';
+import { PharmacistStatus, UserRole } from '@cubiora/shared';
 import { UsersService } from '../src/modules/users/users.service';
 import { UsersController } from '../src/modules/users/users.controller';
 import { CreateUserDto } from '../src/modules/users/dto/create-user.dto';
@@ -199,6 +199,123 @@ describe('[SCR-ADM-005] UsersModule – Gestión de Cuentas Operativas', () => {
       const roles = Reflect.getMetadata('roles', UsersController.prototype[method]);
       expect(roles).toEqual([UserRole.ADMIN]);
     }
+  });
+
+  it('update en modo transaccional sincroniza Pharmacist vinculada (cubicleId, facilityId, fullName), Cubicle.operatorName y telemetría', async () => {
+    const telemetryMock = {
+      emitCubicleUpdate: vi.fn().mockResolvedValue(undefined),
+      broadcastSnapshot: vi.fn().mockResolvedValue(undefined),
+    };
+
+    const txClient: any = {
+      user: {
+        update: vi.fn().mockResolvedValue({
+          id: 'usr-c1',
+          publicId: 'pub-c1',
+          username: 'cajero1',
+          displayName: 'Lic. M. Arismendi Renombrada',
+          role: UserRole.CASHIER,
+          cubicleId: 'cub-2',
+          active: true,
+          createdAt: baseNow,
+          updatedAt: baseNow,
+          cubicle: { code: 'CUB-02', displayName: 'Cubículo 02' },
+        }),
+      },
+      cubicle: {
+        findUnique: vi.fn().mockImplementation(async ({ where }: any) => {
+          if (where.id === 'cub-2') {
+            return {
+              id: 'cub-2',
+              facilityId: 'fac-2',
+              currentOperator: {
+                displayName: 'Lic. M. Arismendi Renombrada',
+                role: UserRole.CASHIER,
+                active: true,
+              },
+              pharmacists: [
+                { fullName: 'Lic. M. Arismendi Renombrada', status: PharmacistStatus.ACTIVE },
+              ],
+            };
+          }
+          if (where.id === 'cub-1') {
+            return {
+              id: 'cub-1',
+              facilityId: 'fac-1',
+              currentOperator: null,
+              pharmacists: [],
+            };
+          }
+          return null;
+        }),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      pharmacist: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'ph-1',
+          fullName: 'Lic. M. Arismendi',
+          cubicleId: 'cub-1',
+          facilityId: 'fac-1',
+        }),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+        update: vi.fn().mockResolvedValue({ id: 'ph-1' }),
+      },
+    };
+
+    const fullPrisma: any = {
+      user: {
+        findFirst: vi
+          .fn()
+          .mockResolvedValueOnce({
+            id: 'usr-c1',
+            publicId: 'pub-c1',
+            username: 'cajero1',
+            displayName: 'Lic. M. Arismendi',
+            role: UserRole.CASHIER,
+            cubicleId: 'cub-1',
+            active: true,
+          })
+          .mockResolvedValueOnce(null),
+      },
+      cubicle: {
+        findUnique: vi.fn().mockResolvedValue({ id: 'cub-2', code: 'CUB-02' }),
+        update: txClient.cubicle.update,
+      },
+      pharmacist: txClient.pharmacist,
+      $transaction: vi.fn(async (cb: (tx: any) => Promise<unknown>) => cb(txClient)),
+    };
+
+    const syncedService = new UsersService(fullPrisma, telemetryMock as any);
+
+    const updated = await syncedService.update('usr-c1', {
+      displayName: 'Lic. M. Arismendi Renombrada',
+      cubicleId: 'cub-2',
+    });
+
+    expect(updated.cubicleId).toBe('cub-2');
+    expect(txClient.pharmacist.updateMany).toHaveBeenCalledWith({
+      where: { cubicleId: 'cub-2', id: { not: 'ph-1' } },
+      data: { cubicleId: null },
+    });
+    expect(txClient.pharmacist.update).toHaveBeenCalledWith({
+      where: { id: 'ph-1' },
+      data: {
+        cubicleId: 'cub-2',
+        facilityId: 'fac-2',
+        fullName: 'Lic. M. Arismendi Renombrada',
+      },
+    });
+    expect(txClient.cubicle.update).toHaveBeenCalledWith({
+      where: { id: 'cub-1' },
+      data: { operatorName: null, version: { increment: 1 } },
+    });
+    expect(txClient.cubicle.update).toHaveBeenCalledWith({
+      where: { id: 'cub-2' },
+      data: { operatorName: 'Lic. M. Arismendi Renombrada', version: { increment: 1 } },
+    });
+    expect(telemetryMock.emitCubicleUpdate).toHaveBeenCalledWith('cub-1');
+    expect(telemetryMock.emitCubicleUpdate).toHaveBeenCalledWith('cub-2');
+    expect(telemetryMock.broadcastSnapshot).toHaveBeenCalled();
   });
 });
 

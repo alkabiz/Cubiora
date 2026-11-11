@@ -555,5 +555,98 @@ describe('Auditoría Farmacéutica · Dispensación y Resolución 1604 (Fases 1,
       expect(timeline.calls).toHaveLength(1);
       expect(timeline.calls[0]?.callerName).toBe('Cajero 2');
     });
+
+    it('closeTicket acredita dispatchesCount por actorUserId cuando pharmacist.findFirst y update están disponibles', async () => {
+      const ticketInService = {
+        id: 'ticket-ph-credit',
+        publicId: '01JCREDIT001',
+        publicCode: 'TUR-000901-GE',
+        patientName: 'Paciente Crédito',
+        status: TicketStatus.IN_SERVICE,
+        cubicleId: 'cub-1',
+        version: 1,
+        createdAt: new Date(),
+      };
+      mockPrisma.ticket.findFirst.mockResolvedValueOnce(ticketInService);
+      mockPrisma.ticket.findUnique.mockResolvedValueOnce(ticketInService);
+      mockPrisma.dispensationRecord.create.mockResolvedValueOnce({ id: 'disp-c1' });
+      mockPrisma.pharmacist.findFirst = vi.fn().mockResolvedValueOnce({ id: 'ph-actor-1' });
+      mockPrisma.pharmacist.update = vi.fn().mockResolvedValueOnce({ id: 'ph-actor-1' });
+      mockCubiclesService.buildCubicleSnapshot.mockResolvedValueOnce({
+        cubicle: { id: 'cub-1', code: 'CUB-01', displayName: 'Cubículo 01', status: CubicleStatus.AVAILABLE },
+        activeTicket: null,
+      });
+
+      await ticketsService.closeTicket('01JCREDIT001', 'user-cashier-1', 'corr-cr-1', undefined, 1);
+
+      expect(mockPrisma.pharmacist.findFirst).toHaveBeenCalledWith({
+        where: { userId: 'user-cashier-1' },
+        select: { id: true },
+      });
+      expect(mockPrisma.pharmacist.update).toHaveBeenCalledWith({
+        where: { id: 'ph-actor-1' },
+        data: { dispatchesCount: { increment: 1 } },
+      });
+      expect(mockPrisma.pharmacist.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('getTicketHistory combina facilityId y search mediante AND y prioriza el operador real de la dispensación', async () => {
+      const now = new Date();
+      mockPrisma.ticket.count.mockResolvedValueOnce(1);
+      mockPrisma.ticket.findMany.mockResolvedValueOnce([
+        {
+          id: 'tick-fac-1',
+          publicId: '01JFAC001',
+          publicCode: 'TUR-000950-GE',
+          patientName: 'Camila Rojas',
+          patientDocument: '1011223344',
+          status: TicketStatus.CLOSED,
+          queueCategory: QueueCategory.GENERAL,
+          facilityId: 'fac-1',
+          createdAt: now,
+          calledAt: now,
+          serviceStartedAt: now,
+          closedAt: now,
+          cubicle: { code: 'CUB-01', displayName: 'Cubículo 01', operatorName: 'Nuevo En Ventanilla', pharmacists: [], currentOperator: null },
+          creator: { displayName: 'Recepción' },
+          dispensation: {
+            id: 'disp-h1',
+            ticketId: 'tick-fac-1',
+            cubicleId: 'cub-1',
+            operatorUserId: 'usr-hist-1',
+            resolution: DispensationResolution.TOTAL_DELIVERED,
+            prescriptionCode: null,
+            mipresNumber: null,
+            itemsDeliveredCount: 1,
+            itemsPendingCount: 0,
+            pendingDetailsJson: null,
+            deliveryAddress: null,
+            deliveryPhone: null,
+            deliveryDeadline: null,
+            createdAt: now,
+            operatorUser: {
+              displayName: 'Cajero Histórico',
+              pharmacistProfile: { fullName: 'Lic. Histórica Real' },
+            },
+          },
+        },
+      ]);
+
+      const res = await ticketsService.getTicketHistory({
+        facilityId: 'fac-1',
+        search: 'Camila',
+        page: 1,
+        limit: 10,
+      });
+
+      const countWhere = mockPrisma.ticket.count.mock.calls[0][0].where;
+      expect(countWhere.AND).toHaveLength(2);
+      expect(countWhere.AND[0]).toEqual({
+        OR: [{ facilityId: 'fac-1' }, { cubicle: { is: { facilityId: 'fac-1' } } }],
+      });
+      expect(countWhere.AND[1]).toHaveProperty('OR');
+      expect(res.items[0]?.operatorName).toBe('Lic. Histórica Real');
+      expect((res.items[0]?.dispensation as any)?.operatorUser).toBeUndefined();
+    });
   });
 });
