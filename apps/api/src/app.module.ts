@@ -15,6 +15,7 @@ import { OperationalTelemetryModule } from './modules/operational-telemetry/oper
 import { WmsIntegrationModule } from './modules/wms-integration/wms-integration.module';
 import { PharmacistsModule } from './modules/pharmacists/pharmacists.module';
 import { FacilitiesModule } from './modules/facilities/facilities.module';
+import { UsersModule } from './modules/users/users.module';
 import { CorrelationIdMiddleware } from './common/middleware/correlation-id.middleware';
 import { AuthGuard } from './common/guards/auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -41,6 +42,7 @@ import { RolesGuard } from './common/guards/roles.guard';
     WmsIntegrationModule,
     PharmacistsModule,
     FacilitiesModule,
+    UsersModule,
   ],
   providers: [
     {
