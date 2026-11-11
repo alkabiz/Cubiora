@@ -124,7 +124,7 @@ async function main() {
       city: 'CABA',
       phone: '+54 11 4964-8000 (Int. 142)',
       openingHours: '07:00 a 20:00 hs',
-      enabledCubiclesCount: 5,
+      enabledCubiclesCount: 4,
       status: FacilityStatus.ACTIVE,
       isPrimary: true,
     },
@@ -157,7 +157,7 @@ async function main() {
       city: 'Ramos Mejía',
       phone: '+54 11 4658-4210',
       openingHours: '08:00 a 18:00 hs',
-      enabledCubiclesCount: 2,
+      enabledCubiclesCount: 0,
       status: FacilityStatus.MAINTENANCE,
       isPrimary: false,
     },
@@ -497,7 +497,7 @@ async function main() {
       shift: WorkShift.MORNING,
       cubicleCode: 'CUB-03',
       status: PharmacistStatus.ACTIVE,
-      dispatchesCount: 142,
+      dispatchesCount: 0,
       email: 'r.mendoza@cubiora.hospital',
       phone: '+54 11 4964-8103',
       username: 'cajero',
@@ -510,7 +510,7 @@ async function main() {
       shift: WorkShift.MORNING,
       cubicleCode: 'CUB-01',
       status: PharmacistStatus.ACTIVE,
-      dispatchesCount: 188,
+      dispatchesCount: 0,
       email: 'm.arismendi@cubiora.hospital',
       phone: '+54 11 4964-8101',
       username: 'cajero1',
@@ -523,7 +523,7 @@ async function main() {
       shift: WorkShift.AFTERNOON,
       cubicleCode: 'CUB-02',
       status: PharmacistStatus.ACTIVE,
-      dispatchesCount: 96,
+      dispatchesCount: 0,
       email: 'j.duarte@cubiora.hospital',
       phone: '+54 11 4964-8102',
       username: 'cajero2',
@@ -536,7 +536,7 @@ async function main() {
       shift: WorkShift.ROTATING,
       cubicleCode: 'CUB-04',
       status: PharmacistStatus.ACTIVE,
-      dispatchesCount: 115,
+      dispatchesCount: 0,
       email: 's.quintero@cubiora.hospital',
       phone: '+54 11 4964-8104',
       username: 'cajero4',
@@ -549,7 +549,7 @@ async function main() {
       shift: WorkShift.MORNING,
       cubicleCode: 'NOR-CUB-01',
       status: PharmacistStatus.ACTIVE,
-      dispatchesCount: 130,
+      dispatchesCount: 0,
       email: 'v.benitez@cubiora.hospital',
       phone: '+54 11 4789-3101',
       username: null,
@@ -562,7 +562,7 @@ async function main() {
       shift: WorkShift.AFTERNOON,
       cubicleCode: null,
       status: PharmacistStatus.ON_LEAVE,
-      dispatchesCount: 84,
+      dispatchesCount: 0,
       email: 'c.paoli@cubiora.hospital',
       phone: '+54 11 4789-3102',
       username: null,
@@ -575,7 +575,7 @@ async function main() {
       shift: WorkShift.NIGHT,
       cubicleCode: 'SUR-CUB-01',
       status: PharmacistStatus.ACTIVE,
-      dispatchesCount: 162,
+      dispatchesCount: 0,
       email: 'd.carrizo@cubiora.hospital',
       phone: '+54 11 4208-7501',
       username: null,
@@ -588,7 +588,7 @@ async function main() {
       shift: WorkShift.ROTATING,
       cubicleCode: 'SUR-CUB-02',
       status: PharmacistStatus.ACTIVE,
-      dispatchesCount: 90,
+      dispatchesCount: 0,
       email: 'guardia.aux@cubiora.hospital',
       phone: '+54 11 4208-7502',
       username: null,
@@ -798,6 +798,7 @@ async function main() {
           prescriptionBarcode: item.prescriptionBarcode,
           preferentialReason: item.preferentialReason,
           cubicleId,
+          facilityId: centralFacilityId,
           assignedAt: calledAt,
           calledAt,
           serviceStartedAt,
@@ -816,6 +817,7 @@ async function main() {
           prescriptionBarcode: item.prescriptionBarcode,
           preferentialReason: item.preferentialReason,
           cubicleId,
+          facilityId: centralFacilityId,
           createdBy: defaultCreatorId,
           assignedAt: calledAt,
           calledAt,
@@ -941,6 +943,7 @@ async function main() {
           prescriptionBarcode: item.prescriptionBarcode,
           preferentialReason: item.preferentialReason,
           cubicleId: null,
+          facilityId: centralFacilityId,
           calledAt: null,
           serviceStartedAt: null,
           closedAt: null,
@@ -957,38 +960,58 @@ async function main() {
           prescriptionBarcode: item.prescriptionBarcode,
           preferentialReason: item.preferentialReason,
           cubicleId: null,
+          facilityId: centralFacilityId,
           createdBy: defaultCreatorId,
           createdAt,
         },
       });
     }
+
+    // Sincronizar dispatchesCount real tras sembrar los 4 turnos cerrados de demostración
+    const seededPharmacists = await prisma.pharmacist.findMany({
+      select: { id: true, userId: true, cubicleId: true },
+    });
+    for (const sp of seededPharmacists) {
+      if (!sp.userId && !sp.cubicleId) continue;
+      const realDispatches = await prisma.ticket.count({
+        where: {
+          status: TicketStatus.CLOSED,
+          OR: [
+            ...(sp.userId ? [{ dispensation: { is: { operatorUserId: sp.userId } } }] : []),
+            ...(sp.cubicleId ? [{ cubicleId: sp.cubicleId }] : []),
+          ],
+        },
+      });
+      await prisma.pharmacist.update({
+        where: { id: sp.id },
+        data: { dispatchesCount: realDispatches },
+      });
+    }
     console.log('✅ 4 Turnos en espera asegurados (HIGH_COST, PREFERENTIAL, GENERAL, BILLING)');
   }
 
-  // 5. Secuencia del sistema sincronizada sin retroceder el valor máximo actual
+  // 5. Secuencia del sistema única ('TICKETS') sincronizada sin retroceder el valor máximo actual
   const ticketSeqAgg = await prisma.ticket.aggregate({
     _max: { sequenceNumber: true },
   });
   const maxSequence = ticketSeqAgg._max.sequenceNumber ?? 0n;
   const minimumNextValue = maxSequence + 1n;
 
-  for (const sequenceName of ['TICKETS', 'ticket_public_sequence'] as const) {
-    const existingSeq = await prisma.systemSequence.findUnique({
-      where: { sequenceName },
-      select: { nextValue: true },
-    });
-    const nextValue =
-      existingSeq && existingSeq.nextValue > minimumNextValue
-        ? existingSeq.nextValue
-        : minimumNextValue;
+  const existingSeq = await prisma.systemSequence.findUnique({
+    where: { sequenceName: 'TICKETS' },
+    select: { nextValue: true },
+  });
+  const nextValue =
+    existingSeq && existingSeq.nextValue > minimumNextValue
+      ? existingSeq.nextValue
+      : minimumNextValue;
 
-    await prisma.systemSequence.upsert({
-      where: { sequenceName },
-      update: { nextValue },
-      create: { sequenceName, nextValue },
-    });
-  }
-  console.log(`✅ Secuencias sincronizadas (TICKETS / ticket_public_sequence >= ${minimumNextValue})`);
+  await prisma.systemSequence.upsert({
+    where: { sequenceName: 'TICKETS' },
+    update: { nextValue },
+    create: { sequenceName: 'TICKETS', nextValue },
+  });
+  console.log(`✅ Secuencia única sincronizada (TICKETS >= ${minimumNextValue})`);
   console.log('🌱 Seed de desarrollo completado exitosamente.');
 }
 

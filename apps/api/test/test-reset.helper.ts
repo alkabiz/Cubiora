@@ -50,13 +50,7 @@ export async function resetTestDatabase(
     await tx.idempotencyKey.deleteMany({});
     await tx.ticket.deleteMany({});
 
-    // B. Reconstrucción de secuencia
-    await tx.systemSequence.upsert({
-      where: { sequenceName: 'ticket_public_sequence' },
-      update: { nextValue: 1n },
-      create: { sequenceName: 'ticket_public_sequence', nextValue: 1n },
-    });
-
+    // B. Reconstrucción de secuencia única
     await tx.systemSequence.upsert({
       where: { sequenceName: 'TICKETS' },
       update: { nextValue: 1n },
