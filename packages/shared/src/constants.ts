@@ -31,6 +31,7 @@ import {
   FacilityStatus,
   PharmacistOperationalRole,
   PharmacistStatus,
+  UserRole,
   WorkShift,
 } from './enums.js';
 
@@ -92,4 +93,11 @@ export const PHARMACIST_STATUS_LABELS_ES: Record<PharmacistStatus, string> = {
   [PharmacistStatus.ACTIVE]: 'ACTIVO',
   [PharmacistStatus.ON_LEAVE]: 'LICENCIA',
   [PharmacistStatus.INACTIVE]: 'INACTIVO',
+};
+
+/** Etiquetas institucionales para roles de usuarios operativos del sistema (SCR-ADM-005). */
+export const USER_ROLE_LABELS_ES: Record<UserRole, string> = {
+  [UserRole.ADMIN]: 'Administrador',
+  [UserRole.CASHIER]: 'Operador de Cubículo',
+  [UserRole.RECEPTION]: 'Recepción',
 };

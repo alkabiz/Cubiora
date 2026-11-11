@@ -21,6 +21,7 @@ import {
   PharmacistOperationalRole,
   WorkShift,
   PharmacistStatus,
+  UserRole,
 } from './enums.js';
 
 export interface PublicCall {
@@ -34,6 +35,19 @@ export interface PublicCall {
   callNumber: number;
 }
 
+export type PublicBroadcastNoticeSeverity = 'info' | 'warning' | 'critical';
+
+/**
+ * Aviso operativo emitido hacia las pantallas públicas de sala.
+ * Cero PII: nunca debe incluir datos de pacientes.
+ */
+export interface PublicBroadcastNotice {
+  message: string;
+  severity: PublicBroadcastNoticeSeverity;
+  issuedAtIso: string;
+  expiresAtIso?: string;
+}
+
 /**
  * Snapshot del estado de la pantalla pública.
  * Cero PII: no contiene nombres de pacientes ni documentos.
@@ -41,15 +55,21 @@ export interface PublicCall {
 export interface PublicDisplaySnapshot {
   currentCall: PublicCall | null;
   recentCalls: PublicCall[];
+  activeNotice?: PublicBroadcastNotice | null;
 }
 
 /**
  * Evento emitido a través de SSE hacia la pantalla pública.
  */
-export interface PublicDisplayEvent {
-  type: 'ticket.called' | 'ticket.recalled';
-  data: PublicCall;
-}
+export type PublicDisplayEvent =
+  | {
+      type: 'ticket.called' | 'ticket.recalled';
+      data: PublicCall;
+    }
+  | {
+      type: 'admin.notice';
+      data: PublicBroadcastNotice;
+    };
 
 /**
  * Información de turno activo en un cubículo (para operador de caja).
@@ -211,6 +231,7 @@ export interface TicketHistoryItem {
   calledAt?: string | null;
   serviceStartedAt?: string | null;
   closedAt?: string | null;
+  terminalReason?: string | null;
   dispensation?: DispensationRecordDto | null;
 }
 
@@ -224,6 +245,7 @@ export interface TicketHistoryResponse {
   page: number;
   limit: number;
   totalPages: number;
+  slaThresholdSeconds?: number;
 }
 
 // ─── [SCR-ADM-004] & [SCR-ADM-005] Contratos de Sedes y Farmacéuticos ────────
@@ -447,4 +469,117 @@ export interface AssignCubiclePharmacistDto {
  */
 export interface UpdateAdminCubicleStatusDto {
   active: boolean;
+}
+
+// ─── Etapa C — Cubículos seleccionables, Trazabilidad de Turno y Usuarios ─────
+
+/**
+ * Opción de cubículo disponible para selección operativa (/cajero para ADMIN).
+ * @see GET /api/v1/cubicles
+ */
+export interface CubicleOptionDto {
+  id: string;
+  code: string;
+  displayName: string;
+  status: CubicleStatus;
+  active: boolean;
+  facilityId: string | null;
+  facilityCode: string | null;
+  facilityName: string | null;
+}
+
+/**
+ * Payload de cancelación explícita de turno desde recepción/caja/admin.
+ * @see POST /api/v1/tickets/:publicId/cancel
+ */
+export interface CancelTicketRequest {
+  expectedVersion?: number;
+  reason?: string;
+}
+
+export interface CancelTicketResponse {
+  cancelled: true;
+  publicId: string;
+  publicCode: string;
+  status: TicketStatus;
+  cubicleSnapshot?: CubicleSnapshot | null;
+}
+
+/**
+ * Entrada cronológica inmutable (WORM) del historial de estados de un turno.
+ */
+export interface TicketStatusHistoryEntryDto {
+  id: string;
+  fromStatus: TicketStatus | null;
+  toStatus: TicketStatus;
+  cubicleCode: string | null;
+  cubicleDisplayName: string | null;
+  actorName: string | null;
+  actorRole: UserRole | null;
+  reasonCode: string | null;
+  correlationId: string;
+  createdAt: string;
+}
+
+/**
+ * Registro de llamado emitido en sala para un turno específico.
+ */
+export interface TicketCallEntryDto {
+  id: string;
+  callNumber: number;
+  cubicleCode: string;
+  cubicleDisplayName: string;
+  callerName: string | null;
+  createdAt: string;
+}
+
+/**
+ * Línea de tiempo integral de trazabilidad de un turno para [SCR-ADM-003].
+ * @see GET /api/v1/tickets/:publicId/history
+ */
+export interface TicketTimelineDto {
+  ticket: TicketHistoryItem;
+  terminalReason: string | null;
+  statusHistory: TicketStatusHistoryEntryDto[];
+  calls: TicketCallEntryDto[];
+  dispensation: DispensationRecordDto | null;
+}
+
+/**
+ * Cuenta operativa del sistema para administración de accesos en [SCR-ADM-005].
+ * Nunca incluye passwordHash.
+ * @see GET /api/v1/admin/users
+ */
+export interface AdminUserDto {
+  id: string;
+  publicId: string;
+  username: string;
+  displayName: string;
+  role: UserRole;
+  cubicleId: string | null;
+  cubicleCode: string | null;
+  cubicleDisplayName: string | null;
+  active: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateAdminUserDto {
+  username: string;
+  displayName: string;
+  password: string;
+  role: UserRole;
+  cubicleId?: string | null | undefined;
+  active?: boolean | undefined;
+}
+
+export interface UpdateAdminUserDto {
+  displayName?: string | undefined;
+  role?: UserRole | undefined;
+  cubicleId?: string | null | undefined;
+  active?: boolean | undefined;
+}
+
+export interface ResetAdminUserPasswordDto {
+  newPassword: string;
 }

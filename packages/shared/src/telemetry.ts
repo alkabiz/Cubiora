@@ -12,7 +12,7 @@ import { CubicleStatus, QueueCategory } from './enums.js';
 // Mapeados desde CubicleStatus del dominio al estado visual de supervisor.
 export type AdminCubicleVisualStatus =
   | 'ATENDIENDO'   // CubicleStatus.BUSY + tiempo ≤ umbral SLA
-  | 'SLA_EXCEDIDO' // CubicleStatus.BUSY + tiempo > umbral SLA (720 s)
+  | 'SLA_EXCEDIDO' // CubicleStatus.BUSY + tiempo > umbral SLA (slaThresholdSeconds)
   | 'LLAMANDO'     // CubicleStatus.CALLING
   | 'DISPONIBLE'   // CubicleStatus.AVAILABLE | RESERVED
   | 'INACTIVO';    // CubicleStatus.INACTIVE
@@ -122,6 +122,9 @@ export interface BottleneckRecommendation {
 
 /** Snapshot completo emitido al conectar o tras `telemetry:request-snapshot` */
 export interface TelemetrySnapshotPayload {
+  facilityCode?: string | null;
+  facilityName?: string | null;
+  slaThresholdSeconds?: number;
   cubicles: TelemetryCubicleState[];
   queue: TelemetryQueuedTicket[];
   kpis: TelemetryDailyKpis;
