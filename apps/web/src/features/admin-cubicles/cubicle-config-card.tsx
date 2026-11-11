@@ -227,7 +227,7 @@ export const CubicleConfigCard: React.FC<CubicleConfigCardProps> = ({
           <div className="flex items-center justify-between text-xs pt-1">
             <span className="text-slate-700 font-medium">Umbral SLA:</span>
             <span className="font-mono font-bold text-slate-900">
-              {item.slaThresholdMinutes} min
+              {item.slaThresholdMinutes > 0 ? `${item.slaThresholdMinutes} min` : '—'}
             </span>
           </div>
 

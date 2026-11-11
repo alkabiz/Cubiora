@@ -1,13 +1,10 @@
 // ─── [SCR-ADM-002] Administración · Configuración de Cubículos ──────────────
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Building2, Users, AlertTriangle } from 'lucide-react';
-import { Badge, Callout } from '@radix-ui/themes';
+import { ArrowLeft, Building2, Users, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Badge, Callout, Select } from '@radix-ui/themes';
 import {
   CubicleStatus,
-  PharmacistOperationalRole,
-  PharmacistStatus,
-  WorkShift,
   type AdminCubicleConfigDto,
 } from '@cubiora/shared';
 import { useOperationalTelemetry } from '../admin-overview/use-operational-telemetry';
@@ -25,127 +22,6 @@ import type {
   PharmacistSelectOption,
 } from './types';
 import type { CubicleStation } from '../admin-overview/types';
-
-const INITIAL_CUBICLES: CubicleConfigurationItem[] = [
-  {
-    id: 'CUB-01',
-    code: 'CUB-01',
-    numberCode: '01',
-    name: 'Cubículo 01',
-    moduleLabel: 'Módulo MOD-A',
-    badgeStatus: 'BUSY',
-    assignedPharmacist: 'Lic. M. Arismendi',
-    pharmacistId: 'pharm-cub-01',
-    pharmacistLicenseNumber: 'MN-3914',
-    slaThresholdMinutes: 12,
-    dailyProcessedCount: 38,
-    isEnabled: true,
-  },
-  {
-    id: 'CUB-02',
-    code: 'CUB-02',
-    numberCode: '02',
-    name: 'Cubículo 02',
-    moduleLabel: 'Módulo MOD-A',
-    badgeStatus: 'EXCEEDED',
-    assignedPharmacist: 'Farm. J. Duarte',
-    pharmacistId: 'pharm-cub-02',
-    pharmacistLicenseNumber: 'MP-8921',
-    slaThresholdMinutes: 12,
-    dailyProcessedCount: 34,
-    isEnabled: true,
-  },
-  {
-    id: 'CUB-03',
-    code: 'CUB-03',
-    numberCode: '03',
-    name: 'Cubículo 03',
-    moduleLabel: 'Módulo MOD-B',
-    badgeStatus: 'CALLING',
-    assignedPharmacist: 'Lic. R. Mendoza',
-    pharmacistId: 'pharm-cub-03',
-    pharmacistLicenseNumber: 'MN-4812',
-    slaThresholdMinutes: 12,
-    dailyProcessedCount: 41,
-    isEnabled: true,
-  },
-  {
-    id: 'CUB-04',
-    code: 'CUB-04',
-    numberCode: '04',
-    name: 'Cubículo 04',
-    moduleLabel: 'Módulo MOD-B',
-    badgeStatus: 'AVAILABLE',
-    assignedPharmacist: 'Farm. S. Quintero',
-    pharmacistId: 'pharm-cub-04',
-    pharmacistLicenseNumber: 'MN-7230',
-    slaThresholdMinutes: 12,
-    dailyProcessedCount: 35,
-    isEnabled: true,
-  },
-  {
-    id: 'CUB-05',
-    code: 'CUB-05',
-    numberCode: '05',
-    name: 'Cubículo 05',
-    moduleLabel: 'Módulo MOD-C',
-    badgeStatus: 'INACTIVE',
-    assignedPharmacist: 'Farm. Auxiliar Guardia',
-    pharmacistId: 'pharm-cub-05',
-    pharmacistLicenseNumber: 'MN-0042',
-    slaThresholdMinutes: 12,
-    dailyProcessedCount: 0,
-    isEnabled: false,
-  },
-];
-
-const FALLBACK_PHARMACISTS: PharmacistSelectOption[] = [
-  {
-    id: 'pharm-cub-01',
-    fullName: 'Lic. M. Arismendi',
-    licenseNumber: 'MN-3914',
-    operationalRole: PharmacistOperationalRole.TITULAR,
-    shift: WorkShift.MORNING,
-    status: PharmacistStatus.ACTIVE,
-    facilityId: null,
-  },
-  {
-    id: 'pharm-cub-02',
-    fullName: 'Farm. J. Duarte',
-    licenseNumber: 'MP-8921',
-    operationalRole: PharmacistOperationalRole.ADJUNTO,
-    shift: WorkShift.AFTERNOON,
-    status: PharmacistStatus.ACTIVE,
-    facilityId: null,
-  },
-  {
-    id: 'pharm-cub-03',
-    fullName: 'Lic. R. Mendoza',
-    licenseNumber: 'MN-4812',
-    operationalRole: PharmacistOperationalRole.TITULAR,
-    shift: WorkShift.MORNING,
-    status: PharmacistStatus.ACTIVE,
-    facilityId: null,
-  },
-  {
-    id: 'pharm-cub-04',
-    fullName: 'Farm. S. Quintero',
-    licenseNumber: 'MN-7230',
-    operationalRole: PharmacistOperationalRole.DISPENSADOR,
-    shift: WorkShift.ROTATING,
-    status: PharmacistStatus.ACTIVE,
-    facilityId: null,
-  },
-  {
-    id: 'pharm-cub-05',
-    fullName: 'Farm. Auxiliar Guardia',
-    licenseNumber: 'MN-0042',
-    operationalRole: PharmacistOperationalRole.GUARDIA,
-    shift: WorkShift.ROTATING,
-    status: PharmacistStatus.ACTIVE,
-    facilityId: null,
-  },
-];
 
 function mapTelemetryStatusToBadge(status: string): CubicleBadgeCode {
   switch (status) {
@@ -191,15 +67,19 @@ function mapAdminCubicleDtoToItem(dto: AdminCubicleConfigDto): CubicleConfigurat
     facilityId: dto.facilityId,
     facilityCode: dto.facilityCode,
     facilityName: dto.facilityName,
-    slaThresholdMinutes: Math.max(1, Math.round((dto.slaThresholdSeconds || 720) / 60)),
+    slaThresholdMinutes:
+      typeof dto.slaThresholdSeconds === 'number' && dto.slaThresholdSeconds > 0
+        ? Math.max(1, Math.round(dto.slaThresholdSeconds / 60))
+        : 0,
     dailyProcessedCount: dto.dailyCompletedCount ?? 0,
     isEnabled: dto.active && dto.status !== CubicleStatus.INACTIVE,
   };
 }
 
 export const AdminCubiclesScreen: React.FC = () => {
-  const [cubicles, setCubicles] = useState<CubicleConfigurationItem[]>(INITIAL_CUBICLES);
+  const [cubicles, setCubicles] = useState<CubicleConfigurationItem[]>([]);
   const [toggleError, setToggleError] = useState<string | null>(null);
+  const [selectedFacilityId, setSelectedFacilityId] = useState<string | null>(null);
   const manuallyToggledIds = useRef<Set<string>>(new Set());
 
   const facilitiesQuery = useFacilitiesQuery({ retry: false });
@@ -207,9 +87,28 @@ export const AdminCubiclesScreen: React.FC = () => {
     () => (Array.isArray(facilitiesQuery.data) ? facilitiesQuery.data : []),
     [facilitiesQuery.data],
   );
+
+  useEffect(() => {
+    if (facilities.length === 0) {
+      setSelectedFacilityId(null);
+      return;
+    }
+    setSelectedFacilityId((current) => {
+      if (current && facilities.some((f) => f.id === current)) {
+        return current;
+      }
+      const primary = facilities.find((f) => f.isPrimary) ?? facilities[0] ?? null;
+      return primary?.id ?? null;
+    });
+  }, [facilities]);
+
   const activeFacility = useMemo(
-    () => facilities.find((f) => f.isPrimary) ?? facilities[0] ?? null,
-    [facilities],
+    () =>
+      facilities.find((f) => f.id === selectedFacilityId) ??
+      facilities.find((f) => f.isPrimary) ??
+      facilities[0] ??
+      null,
+    [facilities, selectedFacilityId],
   );
 
   const adminCubiclesQuery = useAdminCubiclesQuery(activeFacility?.id, { retry: false });
@@ -223,7 +122,7 @@ export const AdminCubiclesScreen: React.FC = () => {
 
   const selectablePharmacists: PharmacistSelectOption[] = useMemo(() => {
     const serverItems = pharmacistsQuery.data?.items;
-    if (Array.isArray(serverItems) && serverItems.length > 0) {
+    if (Array.isArray(serverItems)) {
       return serverItems.map((p) => ({
         id: p.id,
         fullName: p.fullName,
@@ -234,16 +133,18 @@ export const AdminCubiclesScreen: React.FC = () => {
         facilityId: p.facilityId,
       }));
     }
-    return FALLBACK_PHARMACISTS;
+    return [];
   }, [pharmacistsQuery.data]);
 
-  // Hidratar desde API cuando llegan los cubículos persistidos de la sede activa
+  // Hidratar desde API cuando llegan los cubículos persistidos de la sede seleccionada
   useEffect(() => {
     const serverCubicles = adminCubiclesQuery.data;
-    if (!Array.isArray(serverCubicles) || serverCubicles.length === 0) return;
-
-    setCubicles(serverCubicles.map(mapAdminCubicleDtoToItem));
-  }, [adminCubiclesQuery.data]);
+    if (Array.isArray(serverCubicles)) {
+      setCubicles(serverCubicles.map(mapAdminCubicleDtoToItem));
+    } else if (adminCubiclesQuery.isLoading) {
+      setCubicles([]);
+    }
+  }, [adminCubiclesQuery.data, adminCubiclesQuery.isLoading]);
 
   // Sincronización en vivo con telemetría operativa WebSocket
   const { cubicles: telemetryStations } = useOperationalTelemetry(true);
@@ -380,6 +281,16 @@ export const AdminCubiclesScreen: React.FC = () => {
     }
   };
 
+  const isLoading = adminCubiclesQuery.isLoading && cubicles.length === 0;
+  const hasLoadError =
+    adminCubiclesQuery.isError || facilitiesQuery.isError || pharmacistsQuery.isError;
+
+  const handleRetryLoad = () => {
+    void facilitiesQuery.refetch();
+    void adminCubiclesQuery.refetch();
+    void pharmacistsQuery.refetch();
+  };
+
   return (
     <div className="min-h-screen bg-[#F8FAFC] p-6 lg:p-8 space-y-5">
       {/* ═══════════════ HEADER SUPERIOR DE PÁGINA ═══════════════ */}
@@ -414,8 +325,38 @@ export const AdminCubiclesScreen: React.FC = () => {
           </div>
         </div>
 
-        {/* Derecha: Enlaces a Directorio de Farmacéuticos, Sedes y Panel General */}
+        {/* Derecha: Selector de sede (si hay > 1) y accesos a Directorio de Farmacéuticos, Sedes y Panel General */}
         <div className="flex items-center gap-2 flex-wrap">
+          {facilities.length > 1 && (
+            <div className="flex items-center gap-2">
+              <label
+                htmlFor="admin-cubicles-facility-select"
+                className="text-xs font-semibold text-slate-700 whitespace-nowrap"
+              >
+                Sede:
+              </label>
+              <Select.Root
+                value={activeFacility?.id ?? ''}
+                onValueChange={(value) => {
+                  manuallyToggledIds.current.clear();
+                  setSelectedFacilityId(value);
+                }}
+              >
+                <Select.Trigger
+                  id="admin-cubicles-facility-select"
+                  aria-label="Seleccionar sede hospitalaria"
+                  className="bg-white min-w-[230px]"
+                />
+                <Select.Content>
+                  {facilities.map((fac) => (
+                    <Select.Item key={fac.id} value={fac.id}>
+                      {`${fac.name} (${fac.code})${fac.isPrimary ? ' · Primaria' : ''}`}
+                    </Select.Item>
+                  ))}
+                </Select.Content>
+              </Select.Root>
+            </div>
+          )}
           <Link
             to="/admin/farmaceuticos"
             className="inline-flex items-center gap-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg px-3.5 py-2 text-xs font-semibold shadow-2xs transition-colors"
@@ -439,6 +380,27 @@ export const AdminCubiclesScreen: React.FC = () => {
         </div>
       </div>
 
+      {hasLoadError && (
+        <Callout.Root color="red" role="alert">
+          <Callout.Icon>
+            <AlertTriangle size={16} aria-hidden="true" />
+          </Callout.Icon>
+          <div className="flex items-center justify-between gap-3 flex-wrap w-full">
+            <Callout.Text>
+              No fue posible cargar la configuración de cubículos o farmacéuticos desde el servidor.
+            </Callout.Text>
+            <button
+              type="button"
+              onClick={handleRetryLoad}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 min-h-[32px] rounded-lg bg-white border border-red-300 text-red-800 hover:bg-red-50 text-xs font-semibold cursor-pointer"
+            >
+              <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
+              Reintentar
+            </button>
+          </div>
+        </Callout.Root>
+      )}
+
       {toggleError && (
         <Callout.Root color="red" role="alert">
           <Callout.Icon>
@@ -449,17 +411,30 @@ export const AdminCubiclesScreen: React.FC = () => {
       )}
 
       {/* ═══════════════ GRILLA DE CONFIGURACIÓN DE CUBÍCULOS ═══════════════ */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
-        {cubicles.map((cubicle) => (
-          <CubicleConfigCard
-            key={cubicle.id}
-            item={cubicle}
-            pharmacists={selectablePharmacists}
-            onAssignPharmacist={handleAssignPharmacist}
-            onToggleStatus={handleToggleStatus}
-          />
-        ))}
-      </div>
+      {isLoading ? (
+        <div
+          role="status"
+          className="bg-white border border-slate-200/90 rounded-2xl p-8 text-center text-sm text-slate-600"
+        >
+          Cargando configuración de cubículos...
+        </div>
+      ) : !adminCubiclesQuery.isError && cubicles.length === 0 ? (
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-8 text-center text-sm text-slate-600">
+          No hay cubículos registrados para la sede seleccionada.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+          {cubicles.map((cubicle) => (
+            <CubicleConfigCard
+              key={cubicle.id}
+              item={cubicle}
+              pharmacists={selectablePharmacists}
+              onAssignPharmacist={handleAssignPharmacist}
+              onToggleStatus={handleToggleStatus}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 };

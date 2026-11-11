@@ -351,10 +351,10 @@ describe('[SCR-ADM-002] Administración · Configuración de Cubículos', () => 
     });
   });
 
-  it('2. Renderiza los 5 cubículos con sus nombres, números y módulos', () => {
+  it('2. Hidrata desde API los cubículos con sus nombres, números y módulos', async () => {
     renderComponent();
 
-    expect(screen.getByText('Cubículo 01')).toBeDefined();
+    expect(await screen.findByText('Cubículo 01')).toBeDefined();
     expect(screen.getByText('Cubículo 02')).toBeDefined();
     expect(screen.getByText('Cubículo 03')).toBeDefined();
     expect(screen.getByText('Cubículo 04')).toBeDefined();
@@ -371,13 +371,14 @@ describe('[SCR-ADM-002] Administración · Configuración de Cubículos', () => 
     expect(screen.getByText('Módulo MOD-C')).toBeDefined();
   });
 
-  it('3. Renderiza los badges semánticos de estado y métricas iniciales', () => {
+  it('3. Renderiza los badges semánticos de estado y métricas reales recibidas del servidor', async () => {
     renderComponent();
 
+    await screen.findByText('Cubículo 01');
+
     expect(screen.getByText('ATENDIENDO')).toBeDefined();
-    expect(screen.getByText('SLA EXCEDIDO')).toBeDefined();
     expect(screen.getByText('LLAMANDO')).toBeDefined();
-    expect(screen.getByText('DISPONIBLE')).toBeDefined();
+    expect(screen.getAllByText('DISPONIBLE').length).toBe(2);
     expect(screen.getByText('INACTIVO')).toBeDefined();
 
     expect(screen.getAllByText('12 min').length).toBe(5);
@@ -532,6 +533,113 @@ describe('[SCR-ADM-002] Administración · Configuración de Cubículos', () => 
 
     await waitFor(() => {
       expect(screen.getByText('Guardado')).toBeDefined();
+    });
+  });
+
+  it('9. Muestra error y ningún cubículo ficticio cuando falla la carga inicial desde la API', async () => {
+    vi.mocked(apiClient).mockImplementation(async (endpoint: string) => {
+      if (endpoint.startsWith('/admin/facilities')) {
+        return { success: true, data: [MOCK_FACILITY] };
+      }
+      throw new Error('Backend unavailable');
+    });
+
+    renderComponent();
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeDefined();
+      expect(
+        screen.getByText(/No fue posible cargar la configuración de cubículos o farmacéuticos/i),
+      ).toBeDefined();
+    });
+
+    expect(screen.queryByText('Cubículo 01')).toBeNull();
+    expect(screen.queryByText(/Lic\. M\. Arismendi/i)).toBeNull();
+  });
+
+  it('10. Cuando existen múltiples sedes permite cambiar de sede y carga los cubículos de la sede seleccionada', async () => {
+    const northFacility: FacilityDto = {
+      id: 'fac-nor-02',
+      code: 'SEDE-NOR-02',
+      name: 'Centro Ambulatorio Norte',
+      address: 'Av. Libertador 6420',
+      city: 'CABA',
+      phone: '+54 11 4788-2100',
+      openingHours: '08:00 a 18:00 hs',
+      enabledCubiclesCount: 1,
+      status: FacilityStatus.ACTIVE,
+      isPrimary: false,
+      cubiclesCount: 1,
+      pharmacistsCount: 0,
+      cubicles: [],
+      pharmacists: [],
+    };
+
+    const northCubicles: AdminCubicleConfigDto[] = [
+      {
+        id: 'cub-n01',
+        code: 'CUB-N01',
+        displayName: 'Cubículo Norte 01',
+        operatorName: null,
+        status: CubicleStatus.AVAILABLE,
+        active: true,
+        allowedCategories: [QueueCategory.GENERAL],
+        facilityId: 'fac-nor-02',
+        facilityCode: 'SEDE-NOR-02',
+        facilityName: 'Centro Ambulatorio Norte',
+        pharmacistId: null,
+        pharmacistName: null,
+        pharmacistLicenseNumber: null,
+        dailyCompletedCount: 7,
+        slaThresholdSeconds: 720,
+        version: 1,
+      },
+    ];
+
+    const centralCubicles = createInitialCubicleDtos();
+
+    vi.mocked(apiClient).mockImplementation(async (endpoint: string) => {
+      if (endpoint.startsWith('/admin/facilities')) {
+        return { success: true, data: [MOCK_FACILITY, northFacility] };
+      }
+      if (endpoint.startsWith('/admin/pharmacists')) {
+        return {
+          success: true,
+          data: {
+            items: endpoint.includes('facilityId=fac-nor-02') ? [] : MOCK_PHARMACISTS,
+            metrics: {
+              totalRegistered: 4,
+              activeToday: 4,
+              onLeaveCount: 0,
+              totalDispatches: 541,
+              averageServiceMinutes: 6.4,
+              assignedFacilitiesCount: 2,
+            },
+          },
+        };
+      }
+      if (endpoint === '/admin/cubicles?facilityId=fac-nor-02') {
+        return { success: true, data: northCubicles };
+      }
+      if (endpoint.startsWith('/admin/cubicles')) {
+        return { success: true, data: centralCubicles };
+      }
+      return { success: true, data: {} };
+    });
+
+    renderComponent();
+
+    expect(await screen.findByText('Cubículo 01')).toBeDefined();
+
+    const facilitySelect = screen.getByRole('combobox', {
+      name: /Seleccionar sede hospitalaria/i,
+    });
+    await selectRadixOption(facilitySelect, /Centro Ambulatorio Norte \(SEDE-NOR-02\)/i);
+
+    await waitFor(() => {
+      expect(apiClient).toHaveBeenCalledWith('/admin/cubicles?facilityId=fac-nor-02');
+      expect(screen.getByText('Cubículo Norte 01')).toBeDefined();
+      expect(screen.queryByText('Cubículo 01')).toBeNull();
     });
   });
 });
