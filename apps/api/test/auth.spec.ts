@@ -118,6 +118,27 @@ describe('Fase 3a — Autenticación y Autorización (D-01, D-09, RolesGuard)', 
       expect(result.user.cubicleId).toBe('cub_01');
     });
 
+    it('debe normalizar mayúsculas y espacios en username al autenticar (ej. Admin_cubiora)', async () => {
+      const hashedPassword = await bcrypt.hash('CorrectPassword123!', 10);
+      mockPrisma.user.findUnique.mockResolvedValue({
+        id: 'user_admin_1',
+        publicId: 'user_admin_pub_1',
+        username: 'admin_cubiora',
+        passwordHash: hashedPassword,
+        displayName: 'Administrador del Sistema',
+        role: UserRole.ADMIN,
+        cubicleId: null,
+        active: true,
+      });
+
+      const result = await authService.login('  Admin_cubiora ', 'CorrectPassword123!');
+      expect(mockPrisma.user.findUnique).toHaveBeenCalledWith({
+        where: { username: 'admin_cubiora' },
+      });
+      expect(result.user.username).toBe('admin_cubiora');
+      expect(result.user.role).toBe(UserRole.ADMIN);
+    });
+
     it('debe rechazar contraseñas incorrectas con UnauthorizedException', async () => {
       const hashedPassword = await bcrypt.hash('CorrectPassword123!', 10);
       mockPrisma.user.findUnique.mockResolvedValue({

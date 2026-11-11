@@ -28,7 +28,8 @@ export class AuthService {
    * Valida credenciales contra la base de datos y emite token de sesión seguro.
    */
   async login(username: string, pass: string): Promise<LoginResult> {
-    if (!username || !pass) {
+    const normalizedUsername = typeof username === 'string' ? username.trim().toLowerCase() : '';
+    if (!normalizedUsername || !pass) {
       throw new BadRequestException({
         code: ApiErrorCode.REQUEST_INVALID,
         message: 'Usuario y contraseña son requeridos',
@@ -36,7 +37,7 @@ export class AuthService {
     }
 
     const user = await this.prisma.user.findUnique({
-      where: { username },
+      where: { username: normalizedUsername },
     });
 
     if (!user || !user.active) {
