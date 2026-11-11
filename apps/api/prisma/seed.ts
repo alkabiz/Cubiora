@@ -1,4 +1,5 @@
 import * as dotenv from 'dotenv';
+import * as fs from 'fs';
 import * as path from 'path';
 import {
   PrismaClient,
@@ -36,14 +37,14 @@ if (!connectionString) {
   process.exit(1);
 }
 
-// 3. Guarda de host local: prohibida cualquier IP o dominio externo (a menos que sea contenedor interno 'postgres')
+// 3. Guarda de host local: prohibida cualquier IP o dominio externo (salvo red interna configurada)
 try {
   const parsedUrl = new URL(connectionString);
   const host = parsedUrl.hostname.toLowerCase();
-  const allowedHosts = ['localhost', '127.0.0.1', '::1', 'postgres'];
+  const allowedHosts = ['localhost', '127.0.0.1', '::1', '192.168.1.33', 'postgres'];
   if (!allowedHosts.includes(host) && process.env.ALLOW_SEED_IN_PRODUCTION !== 'true') {
     console.error(
-      `❌ ERROR_SEGURIDAD_HOST_NO_LOCAL: El seed solo puede ejecutarse contra localhost, 127.0.0.1, ::1 o postgres. Host detectado: '${host}'. Conexión remota prohibida.`,
+      `❌ ERROR_SEGURIDAD_HOST_NO_LOCAL: El seed solo puede ejecutarse contra localhost, 127.0.0.1, ::1, 192.168.1.33 o postgres. Host detectado: '${host}'. Conexión remota prohibida.`,
     );
     process.exit(1);
   }
@@ -54,14 +55,55 @@ try {
 
 // 4. Exigir contraseña obligatoria por entorno (con fallback a DEFAULT_ADMIN_PASSWORD si está definido)
 const devPassword = process.env.DEV_SEED_USER_PASSWORD || process.env.DEFAULT_ADMIN_PASSWORD;
-if (!devPassword || devPassword.length < 8) {
+const adminPassword = process.env.DEFAULT_ADMIN_PASSWORD || process.env.DEV_SEED_USER_PASSWORD;
+if (!devPassword || devPassword.length < 8 || !adminPassword || adminPassword.length < 8) {
   console.error(
     '❌ ERROR DE SEGURIDAD: La variable DEV_SEED_USER_PASSWORD o DEFAULT_ADMIN_PASSWORD es obligatoria en el entorno (mínimo 8 caracteres) para crear usuarios.',
   );
   process.exit(1);
 }
 
-const pool = new Pool({ connectionString });
+// 5. Configurar TLS compatible con certificado autofirmado en red interna Docker / LXC (ALLOW_DOCKER_INTERNAL_DB=true)
+const isDockerInternal = process.env.ALLOW_DOCKER_INTERNAL_DB === 'true';
+const lowerConn = connectionString.toLowerCase();
+const sslDisabled = lowerConn.includes('sslmode=disable');
+const urlRequestsSsl =
+  lowerConn.includes('sslmode=require') ||
+  lowerConn.includes('sslmode=verify-ca') ||
+  lowerConn.includes('sslmode=verify-full');
+
+let caCert: string | undefined;
+const caCertPath = process.env.DATABASE_CA_CERT_PATH || path.resolve(process.cwd(), 'ca-cert.crt');
+const caCertPathAlt = path.resolve(process.cwd(), 'apps/api/ca-cert.crt');
+const caCertPathSeed = path.resolve(__dirname, '../ca-cert.crt');
+if (fs.existsSync(caCertPath)) {
+  caCert = fs.readFileSync(caCertPath, 'utf8');
+} else if (fs.existsSync(caCertPathAlt)) {
+  caCert = fs.readFileSync(caCertPathAlt, 'utf8');
+} else if (fs.existsSync(caCertPathSeed)) {
+  caCert = fs.readFileSync(caCertPathSeed, 'utf8');
+} else if (process.env.DATABASE_CA_CERT) {
+  caCert = process.env.DATABASE_CA_CERT;
+}
+
+let ssl: { rejectUnauthorized: boolean; ca?: string } | undefined;
+if (isDockerInternal) {
+  ssl = sslDisabled ? undefined : { rejectUnauthorized: false };
+} else if (urlRequestsSsl) {
+  if (caCert) {
+    ssl = { rejectUnauthorized: true, ca: caCert };
+  } else if (lowerConn.includes('sslmode=require')) {
+    ssl = { rejectUnauthorized: false };
+  } else {
+    ssl = { rejectUnauthorized: true };
+  }
+}
+
+const sanitizedConnectionString = ssl
+  ? connectionString.replace(/([?&])sslmode=[^&]+(&|$)/gi, '$1').replace(/[?&]$/, '')
+  : connectionString;
+
+const pool = new Pool({ connectionString: sanitizedConnectionString, ssl });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
@@ -300,8 +342,6 @@ async function main() {
       update: {
         displayName: cubicle.displayName,
         operatorName: cubicle.operatorName,
-        status: cubicle.status,
-        active: cubicle.active,
         allowedCategories: cubicle.allowedCategories,
         facilityId: cubicle.facilityId,
       },
@@ -323,6 +363,8 @@ async function main() {
   // 2. Usuarios de prueba para desarrollo local con publicId e id ULID válidos
   const salt = await bcrypt.genSalt(10);
   const passwordHash = await bcrypt.hash(devPassword, salt);
+  const adminPasswordHash =
+    adminPassword === devPassword ? passwordHash : await bcrypt.hash(adminPassword, salt);
 
   const testUsers = [
     {
@@ -350,7 +392,16 @@ async function main() {
       displayName: 'Administrador Sistema',
       role: UserRole.ADMIN,
       cubicleId: null,
-      passwordHash,
+      passwordHash: adminPasswordHash,
+    },
+    {
+      id: ulid(),
+      publicId: ulid(),
+      username: 'admin_cubiora',
+      displayName: 'Administrador del Sistema',
+      role: UserRole.ADMIN,
+      cubicleId: null,
+      passwordHash: adminPasswordHash,
     },
     {
       id: ulid(),
@@ -398,12 +449,14 @@ async function main() {
         cubicleId: user.cubicleId,
         displayName: user.displayName,
         role: user.role,
+        active: true,
+        ...(user.role === UserRole.ADMIN ? { passwordHash: user.passwordHash } : {}),
       },
       create: user,
     });
     userIds.set(persisted.username, persisted.id);
   }
-  console.log('✅ Usuarios de prueba asegurados con asignación a cubículos CUB-01..CUB-04');
+  console.log('✅ Usuarios asegurados (incluye admin/admin_cubiora y asignación a cubículos CUB-01..CUB-04)');
 
   // 2b. Farmacéuticos registrados vinculados a sedes y cubículos (SCR-ADM-004)
   const pharmacistsData = [
@@ -550,319 +603,347 @@ async function main() {
   }
   console.log('✅ 8 Farmacéuticos registrados asegurados y sincronizados con sedes y cubículos');
 
-  const defaultCreatorId = userIds.get('recepcion') ?? userIds.get('receptor') ?? userIds.get('admin')!;
+  const defaultCreatorId =
+    userIds.get('recepcion') ??
+    userIds.get('receptor') ??
+    userIds.get('admin') ??
+    userIds.get('admin_cubiora')!;
   const now = new Date();
 
-  // 3. Muestra inicial de turnos cerrados con dispensación (Resolución 1604 MinSalud)
-  const closedTicketsData = [
-    {
-      sequenceNumber: 1n,
-      publicCode: 'TUR-000001-PR',
-      queueCategory: QueueCategory.PREFERENTIAL,
-      patientName: 'Héctor Fabio Ramírez',
-      patientDocument: '70123456',
-      prescriptionBarcode: 'RX-2026-00101',
-      preferentialReason: 'SIAU_ADULTO_MAYOR',
-      terminalReason: 'DISPENSED_PENDING_48H',
-      cubicleCode: 'CUB-01',
-      operatorUsername: 'cajero1',
-      createdOffsetMinutes: 120,
-      calledOffsetMinutes: 115,
-      serviceStartedOffsetMinutes: 114,
-      closedOffsetMinutes: 105,
-      dispensation: {
-        resolution: DispensationResolution.PENDING_48H,
-        prescriptionCode: 'RX-2026-00101',
-        mipresNumber: '202611070001',
-        itemsDeliveredCount: 2,
-        itemsPendingCount: 1,
-        pendingDetailsJson: [
-          {
-            itemCode: 'MED-771',
-            description: 'Insulina Glargina 100 UI/ml',
-            quantity: 2,
-            reason: 'Agotamiento temporal cadena de frío',
-          },
-        ],
-        deliveryAddress: 'Calle 10 # 42-28, Apto 502, El Poblado, Medellín',
-        deliveryPhone: '+57 311 555 4321',
-        deliveryDeadline: new Date(now.getTime() - 105 * 60 * 1000 + 48 * 3600 * 1000),
+  const existingTicketsCount = await prisma.ticket.count();
+  if (existingTicketsCount > 0) {
+    console.log(
+      `ℹ️  Ya existen ${existingTicketsCount} turnos en la base de datos; se omite la creación de turnos de demostración para evitar colisión de sequence_number.`,
+    );
+  } else {
+    // 3. Muestra inicial de turnos cerrados con dispensación (Resolución 1604 MinSalud)
+    const closedTicketsData = [
+      {
+        sequenceNumber: 1n,
+        publicCode: 'TUR-000001-PR',
+        queueCategory: QueueCategory.PREFERENTIAL,
+        patientName: 'Héctor Fabio Ramírez',
+        patientDocument: '70123456',
+        prescriptionBarcode: 'RX-2026-00101',
+        preferentialReason: 'SIAU_ADULTO_MAYOR',
+        terminalReason: 'DISPENSED_PENDING_48H',
+        cubicleCode: 'CUB-01',
+        operatorUsername: 'cajero1',
+        createdOffsetMinutes: 120,
+        calledOffsetMinutes: 115,
+        serviceStartedOffsetMinutes: 114,
+        closedOffsetMinutes: 105,
+        dispensation: {
+          resolution: DispensationResolution.PENDING_48H,
+          prescriptionCode: 'RX-2026-00101',
+          mipresNumber: '202611070001',
+          itemsDeliveredCount: 2,
+          itemsPendingCount: 1,
+          pendingDetailsJson: [
+            {
+              itemCode: 'MED-771',
+              description: 'Insulina Glargina 100 UI/ml',
+              quantity: 2,
+              reason: 'Agotamiento temporal cadena de frío',
+            },
+          ],
+          deliveryAddress: 'Calle 10 # 42-28, Apto 502, El Poblado, Medellín',
+          deliveryPhone: '+57 311 555 4321',
+          deliveryDeadline: new Date(now.getTime() - 105 * 60 * 1000 + 48 * 3600 * 1000),
+        },
       },
-    },
-    {
-      sequenceNumber: 2n,
-      publicCode: 'TUR-000002-GE',
-      queueCategory: QueueCategory.GENERAL,
-      patientName: 'Carolina Gómez Zapata',
-      patientDocument: '1017234567',
-      prescriptionBarcode: 'RX-2026-00102',
-      preferentialReason: null,
-      terminalReason: 'TOTAL_DELIVERED',
-      cubicleCode: 'CUB-02',
-      operatorUsername: 'cajero2',
-      createdOffsetMinutes: 100,
-      calledOffsetMinutes: 92,
-      serviceStartedOffsetMinutes: 91,
-      closedOffsetMinutes: 85,
-      dispensation: {
-        resolution: DispensationResolution.TOTAL_DELIVERED,
-        prescriptionCode: 'RX-2026-00102',
-        mipresNumber: null,
-        itemsDeliveredCount: 3,
-        itemsPendingCount: 0,
-        pendingDetailsJson: null,
-        deliveryAddress: null,
-        deliveryPhone: null,
-        deliveryDeadline: null,
+      {
+        sequenceNumber: 2n,
+        publicCode: 'TUR-000002-GE',
+        queueCategory: QueueCategory.GENERAL,
+        patientName: 'Carolina Gómez Zapata',
+        patientDocument: '1017234567',
+        prescriptionBarcode: 'RX-2026-00102',
+        preferentialReason: null,
+        terminalReason: 'TOTAL_DELIVERED',
+        cubicleCode: 'CUB-02',
+        operatorUsername: 'cajero2',
+        createdOffsetMinutes: 100,
+        calledOffsetMinutes: 92,
+        serviceStartedOffsetMinutes: 91,
+        closedOffsetMinutes: 85,
+        dispensation: {
+          resolution: DispensationResolution.TOTAL_DELIVERED,
+          prescriptionCode: 'RX-2026-00102',
+          mipresNumber: null,
+          itemsDeliveredCount: 3,
+          itemsPendingCount: 0,
+          pendingDetailsJson: null,
+          deliveryAddress: null,
+          deliveryPhone: null,
+          deliveryDeadline: null,
+        },
       },
-    },
-    {
-      sequenceNumber: 3n,
-      publicCode: 'TUR-000003-GE',
-      queueCategory: QueueCategory.GENERAL,
-      patientName: 'Mateo Morales Hincapié',
-      patientDocument: '1036789012',
-      prescriptionBarcode: 'RX-2026-00103',
-      preferentialReason: null,
-      terminalReason: 'TOTAL_DELIVERED',
-      cubicleCode: 'CUB-03',
-      operatorUsername: 'cajero',
-      createdOffsetMinutes: 80,
-      calledOffsetMinutes: 71,
-      serviceStartedOffsetMinutes: 70,
-      closedOffsetMinutes: 62,
-      dispensation: {
-        resolution: DispensationResolution.TOTAL_DELIVERED,
-        prescriptionCode: 'RX-2026-00103',
-        mipresNumber: null,
-        itemsDeliveredCount: 4,
-        itemsPendingCount: 0,
-        pendingDetailsJson: null,
-        deliveryAddress: null,
-        deliveryPhone: null,
-        deliveryDeadline: null,
+      {
+        sequenceNumber: 3n,
+        publicCode: 'TUR-000003-GE',
+        queueCategory: QueueCategory.GENERAL,
+        patientName: 'Mateo Morales Hincapié',
+        patientDocument: '1036789012',
+        prescriptionBarcode: 'RX-2026-00103',
+        preferentialReason: null,
+        terminalReason: 'TOTAL_DELIVERED',
+        cubicleCode: 'CUB-03',
+        operatorUsername: 'cajero',
+        createdOffsetMinutes: 80,
+        calledOffsetMinutes: 71,
+        serviceStartedOffsetMinutes: 70,
+        closedOffsetMinutes: 62,
+        dispensation: {
+          resolution: DispensationResolution.TOTAL_DELIVERED,
+          prescriptionCode: 'RX-2026-00103',
+          mipresNumber: null,
+          itemsDeliveredCount: 4,
+          itemsPendingCount: 0,
+          pendingDetailsJson: null,
+          deliveryAddress: null,
+          deliveryPhone: null,
+          deliveryDeadline: null,
+        },
       },
-    },
-    {
-      sequenceNumber: 4n,
-      publicCode: 'TUR-000004-FA',
-      queueCategory: QueueCategory.BILLING,
-      patientName: 'Valentina Restrepo Castro',
-      patientDocument: '1020304050',
-      prescriptionBarcode: 'RX-2026-00104',
-      preferentialReason: null,
-      terminalReason: 'TOTAL_DELIVERED',
-      cubicleCode: 'CUB-03',
-      operatorUsername: 'cajero',
-      createdOffsetMinutes: 60,
-      calledOffsetMinutes: 54,
-      serviceStartedOffsetMinutes: 53,
-      closedOffsetMinutes: 48,
-      dispensation: {
-        resolution: DispensationResolution.TOTAL_DELIVERED,
-        prescriptionCode: 'RX-2026-00104',
-        mipresNumber: null,
-        itemsDeliveredCount: 1,
-        itemsPendingCount: 0,
-        pendingDetailsJson: null,
-        deliveryAddress: null,
-        deliveryPhone: null,
-        deliveryDeadline: null,
+      {
+        sequenceNumber: 4n,
+        publicCode: 'TUR-000004-FA',
+        queueCategory: QueueCategory.BILLING,
+        patientName: 'Valentina Restrepo Castro',
+        patientDocument: '1020304050',
+        prescriptionBarcode: 'RX-2026-00104',
+        preferentialReason: null,
+        terminalReason: 'TOTAL_DELIVERED',
+        cubicleCode: 'CUB-03',
+        operatorUsername: 'cajero',
+        createdOffsetMinutes: 60,
+        calledOffsetMinutes: 54,
+        serviceStartedOffsetMinutes: 53,
+        closedOffsetMinutes: 48,
+        dispensation: {
+          resolution: DispensationResolution.TOTAL_DELIVERED,
+          prescriptionCode: 'RX-2026-00104',
+          mipresNumber: null,
+          itemsDeliveredCount: 1,
+          itemsPendingCount: 0,
+          pendingDetailsJson: null,
+          deliveryAddress: null,
+          deliveryPhone: null,
+          deliveryDeadline: null,
+        },
       },
-    },
-  ];
+    ];
 
-  for (const item of closedTicketsData) {
-    const cubicleId = cubicleIds.get(item.cubicleCode) ?? null;
-    const operatorUserId = userIds.get(item.operatorUsername) ?? defaultCreatorId;
-    const createdAt = new Date(now.getTime() - item.createdOffsetMinutes * 60 * 1000);
-    const calledAt = new Date(now.getTime() - item.calledOffsetMinutes * 60 * 1000);
-    const serviceStartedAt = new Date(now.getTime() - item.serviceStartedOffsetMinutes * 60 * 1000);
-    const closedAt = new Date(now.getTime() - item.closedOffsetMinutes * 60 * 1000);
+    for (const item of closedTicketsData) {
+      const cubicleId = cubicleIds.get(item.cubicleCode) ?? null;
+      const operatorUserId = userIds.get(item.operatorUsername) ?? defaultCreatorId;
+      const createdAt = new Date(now.getTime() - item.createdOffsetMinutes * 60 * 1000);
+      const calledAt = new Date(now.getTime() - item.calledOffsetMinutes * 60 * 1000);
+      const serviceStartedAt = new Date(now.getTime() - item.serviceStartedOffsetMinutes * 60 * 1000);
+      const closedAt = new Date(now.getTime() - item.closedOffsetMinutes * 60 * 1000);
 
-    const ticket = await prisma.ticket.upsert({
-      where: { publicCode: item.publicCode },
-      update: {
-        status: TicketStatus.CLOSED,
-        queueCategory: item.queueCategory,
-        patientName: item.patientName,
-        patientDocument: item.patientDocument,
-        prescriptionBarcode: item.prescriptionBarcode,
-        preferentialReason: item.preferentialReason,
-        cubicleId,
-        assignedAt: calledAt,
-        calledAt,
-        serviceStartedAt,
-        closedAt,
-        terminalReason: item.terminalReason,
-      },
-      create: {
-        id: ulid(),
-        publicId: ulid(),
-        sequenceNumber: item.sequenceNumber,
-        publicCode: item.publicCode,
-        status: TicketStatus.CLOSED,
-        queueCategory: item.queueCategory,
-        patientName: item.patientName,
-        patientDocument: item.patientDocument,
-        prescriptionBarcode: item.prescriptionBarcode,
-        preferentialReason: item.preferentialReason,
-        cubicleId,
-        createdBy: defaultCreatorId,
-        assignedAt: calledAt,
-        calledAt,
-        serviceStartedAt,
-        closedAt,
-        terminalReason: item.terminalReason,
-        createdAt,
-      },
-    });
-
-    if (cubicleId) {
-      await prisma.dispensationRecord.upsert({
-        where: { ticketId: ticket.id },
+      const ticket = await prisma.ticket.upsert({
+        where: { publicCode: item.publicCode },
         update: {
-          resolution: item.dispensation.resolution,
-          prescriptionCode: item.dispensation.prescriptionCode,
-          mipresNumber: item.dispensation.mipresNumber,
-          itemsDeliveredCount: item.dispensation.itemsDeliveredCount,
-          itemsPendingCount: item.dispensation.itemsPendingCount,
-          pendingDetailsJson: item.dispensation.pendingDetailsJson,
-          deliveryAddress: item.dispensation.deliveryAddress,
-          deliveryPhone: item.dispensation.deliveryPhone,
-          deliveryDeadline: item.dispensation.deliveryDeadline,
+          status: TicketStatus.CLOSED,
+          queueCategory: item.queueCategory,
+          patientName: item.patientName,
+          patientDocument: item.patientDocument,
+          prescriptionBarcode: item.prescriptionBarcode,
+          preferentialReason: item.preferentialReason,
           cubicleId,
-          operatorUserId,
+          assignedAt: calledAt,
+          calledAt,
+          serviceStartedAt,
+          closedAt,
+          terminalReason: item.terminalReason,
         },
         create: {
           id: ulid(),
-          ticketId: ticket.id,
+          publicId: ulid(),
+          sequenceNumber: item.sequenceNumber,
+          publicCode: item.publicCode,
+          status: TicketStatus.CLOSED,
+          queueCategory: item.queueCategory,
+          patientName: item.patientName,
+          patientDocument: item.patientDocument,
+          prescriptionBarcode: item.prescriptionBarcode,
+          preferentialReason: item.preferentialReason,
           cubicleId,
-          operatorUserId,
-          resolution: item.dispensation.resolution,
-          prescriptionCode: item.dispensation.prescriptionCode,
-          mipresNumber: item.dispensation.mipresNumber,
-          itemsDeliveredCount: item.dispensation.itemsDeliveredCount,
-          itemsPendingCount: item.dispensation.itemsPendingCount,
-          pendingDetailsJson: item.dispensation.pendingDetailsJson,
-          deliveryAddress: item.dispensation.deliveryAddress,
-          deliveryPhone: item.dispensation.deliveryPhone,
-          deliveryDeadline: item.dispensation.deliveryDeadline,
-          createdAt: closedAt,
+          createdBy: defaultCreatorId,
+          assignedAt: calledAt,
+          calledAt,
+          serviceStartedAt,
+          closedAt,
+          terminalReason: item.terminalReason,
+          createdAt,
         },
       });
 
-      await prisma.ticketCall.upsert({
-        where: {
-          ticketId_callNumber: {
-            ticketId: ticket.id,
-            callNumber: 1,
+      if (cubicleId) {
+        await prisma.dispensationRecord.upsert({
+          where: { ticketId: ticket.id },
+          update: {
+            resolution: item.dispensation.resolution,
+            prescriptionCode: item.dispensation.prescriptionCode,
+            mipresNumber: item.dispensation.mipresNumber,
+            itemsDeliveredCount: item.dispensation.itemsDeliveredCount,
+            itemsPendingCount: item.dispensation.itemsPendingCount,
+            pendingDetailsJson: item.dispensation.pendingDetailsJson,
+            deliveryAddress: item.dispensation.deliveryAddress,
+            deliveryPhone: item.dispensation.deliveryPhone,
+            deliveryDeadline: item.dispensation.deliveryDeadline,
+            cubicleId,
+            operatorUserId,
           },
-        },
+          create: {
+            id: ulid(),
+            ticketId: ticket.id,
+            cubicleId,
+            operatorUserId,
+            resolution: item.dispensation.resolution,
+            prescriptionCode: item.dispensation.prescriptionCode,
+            mipresNumber: item.dispensation.mipresNumber,
+            itemsDeliveredCount: item.dispensation.itemsDeliveredCount,
+            itemsPendingCount: item.dispensation.itemsPendingCount,
+            pendingDetailsJson: item.dispensation.pendingDetailsJson,
+            deliveryAddress: item.dispensation.deliveryAddress,
+            deliveryPhone: item.dispensation.deliveryPhone,
+            deliveryDeadline: item.dispensation.deliveryDeadline,
+            createdAt: closedAt,
+          },
+        });
+
+        await prisma.ticketCall.upsert({
+          where: {
+            ticketId_callNumber: {
+              ticketId: ticket.id,
+              callNumber: 1,
+            },
+          },
+          update: {
+            cubicleId,
+            calledBy: operatorUserId,
+            createdAt: calledAt,
+          },
+          create: {
+            id: ulid(),
+            ticketId: ticket.id,
+            cubicleId,
+            calledBy: operatorUserId,
+            callNumber: 1,
+            createdAt: calledAt,
+          },
+        });
+      }
+    }
+    console.log('✅ 4 Turnos cerrados con registro de dispensación (1 PENDING_48H, 3 TOTAL_DELIVERED)');
+
+    // 4. Muestra inicial de turnos en espera (PENDING en distintas categorías)
+    const pendingTicketsData = [
+      {
+        sequenceNumber: 5n,
+        publicCode: 'TUR-000005-ES',
+        queueCategory: QueueCategory.HIGH_COST,
+        patientName: 'Gloria Patricia Arango',
+        patientDocument: '43567890',
+        prescriptionBarcode: 'RX-MIPRES-8821',
+        preferentialReason: null,
+        createdOffsetMinutes: 25,
+      },
+      {
+        sequenceNumber: 6n,
+        publicCode: 'TUR-000006-PR',
+        queueCategory: QueueCategory.PREFERENTIAL,
+        patientName: 'Luis Alfonso Betancur',
+        patientDocument: '15345678',
+        prescriptionBarcode: 'RX-2026-00201',
+        preferentialReason: 'SIAU_MOVILIDAD_REDUCIDA',
+        createdOffsetMinutes: 18,
+      },
+      {
+        sequenceNumber: 7n,
+        publicCode: 'TUR-000007-GE',
+        queueCategory: QueueCategory.GENERAL,
+        patientName: 'Jorge Eduardo Londoño',
+        patientDocument: '98765432',
+        prescriptionBarcode: 'RX-2026-00202',
+        preferentialReason: null,
+        createdOffsetMinutes: 12,
+      },
+      {
+        sequenceNumber: 8n,
+        publicCode: 'TUR-000008-FA',
+        queueCategory: QueueCategory.BILLING,
+        patientName: 'Marcela Ríos Osorio',
+        patientDocument: '1017123987',
+        prescriptionBarcode: 'RX-2026-00203',
+        preferentialReason: null,
+        createdOffsetMinutes: 8,
+      },
+    ];
+
+    for (const item of pendingTicketsData) {
+      const createdAt = new Date(now.getTime() - item.createdOffsetMinutes * 60 * 1000);
+      await prisma.ticket.upsert({
+        where: { publicCode: item.publicCode },
         update: {
-          cubicleId,
-          calledBy: operatorUserId,
-          createdAt: calledAt,
+          status: TicketStatus.PENDING,
+          queueCategory: item.queueCategory,
+          patientName: item.patientName,
+          patientDocument: item.patientDocument,
+          prescriptionBarcode: item.prescriptionBarcode,
+          preferentialReason: item.preferentialReason,
+          cubicleId: null,
+          calledAt: null,
+          serviceStartedAt: null,
+          closedAt: null,
         },
         create: {
           id: ulid(),
-          ticketId: ticket.id,
-          cubicleId,
-          calledBy: operatorUserId,
-          callNumber: 1,
-          createdAt: calledAt,
+          publicId: ulid(),
+          sequenceNumber: item.sequenceNumber,
+          publicCode: item.publicCode,
+          status: TicketStatus.PENDING,
+          queueCategory: item.queueCategory,
+          patientName: item.patientName,
+          patientDocument: item.patientDocument,
+          prescriptionBarcode: item.prescriptionBarcode,
+          preferentialReason: item.preferentialReason,
+          cubicleId: null,
+          createdBy: defaultCreatorId,
+          createdAt,
         },
       });
     }
+    console.log('✅ 4 Turnos en espera asegurados (HIGH_COST, PREFERENTIAL, GENERAL, BILLING)');
   }
-  console.log('✅ 4 Turnos cerrados con registro de dispensación (1 PENDING_48H, 3 TOTAL_DELIVERED)');
 
-  // 4. Muestra inicial de turnos en espera (PENDING en distintas categorías)
-  const pendingTicketsData = [
-    {
-      sequenceNumber: 5n,
-      publicCode: 'TUR-000005-ES',
-      queueCategory: QueueCategory.HIGH_COST,
-      patientName: 'Gloria Patricia Arango',
-      patientDocument: '43567890',
-      prescriptionBarcode: 'RX-MIPRES-8821',
-      preferentialReason: null,
-      createdOffsetMinutes: 25,
-    },
-    {
-      sequenceNumber: 6n,
-      publicCode: 'TUR-000006-PR',
-      queueCategory: QueueCategory.PREFERENTIAL,
-      patientName: 'Luis Alfonso Betancur',
-      patientDocument: '15345678',
-      prescriptionBarcode: 'RX-2026-00201',
-      preferentialReason: 'SIAU_MOVILIDAD_REDUCIDA',
-      createdOffsetMinutes: 18,
-    },
-    {
-      sequenceNumber: 7n,
-      publicCode: 'TUR-000007-GE',
-      queueCategory: QueueCategory.GENERAL,
-      patientName: 'Jorge Eduardo Londoño',
-      patientDocument: '98765432',
-      prescriptionBarcode: 'RX-2026-00202',
-      preferentialReason: null,
-      createdOffsetMinutes: 12,
-    },
-    {
-      sequenceNumber: 8n,
-      publicCode: 'TUR-000008-FA',
-      queueCategory: QueueCategory.BILLING,
-      patientName: 'Marcela Ríos Osorio',
-      patientDocument: '1017123987',
-      prescriptionBarcode: 'RX-2026-00203',
-      preferentialReason: null,
-      createdOffsetMinutes: 8,
-    },
-  ];
+  // 5. Secuencia del sistema sincronizada sin retroceder el valor máximo actual
+  const ticketSeqAgg = await prisma.ticket.aggregate({
+    _max: { sequenceNumber: true },
+  });
+  const maxSequence = ticketSeqAgg._max.sequenceNumber ?? 0n;
+  const minimumNextValue = maxSequence + 1n;
 
-  for (const item of pendingTicketsData) {
-    const createdAt = new Date(now.getTime() - item.createdOffsetMinutes * 60 * 1000);
-    await prisma.ticket.upsert({
-      where: { publicCode: item.publicCode },
-      update: {
-        status: TicketStatus.PENDING,
-        queueCategory: item.queueCategory,
-        patientName: item.patientName,
-        patientDocument: item.patientDocument,
-        prescriptionBarcode: item.prescriptionBarcode,
-        preferentialReason: item.preferentialReason,
-        cubicleId: null,
-        calledAt: null,
-        serviceStartedAt: null,
-        closedAt: null,
-      },
-      create: {
-        id: ulid(),
-        publicId: ulid(),
-        sequenceNumber: item.sequenceNumber,
-        publicCode: item.publicCode,
-        status: TicketStatus.PENDING,
-        queueCategory: item.queueCategory,
-        patientName: item.patientName,
-        patientDocument: item.patientDocument,
-        prescriptionBarcode: item.prescriptionBarcode,
-        preferentialReason: item.preferentialReason,
-        cubicleId: null,
-        createdBy: defaultCreatorId,
-        createdAt,
-      },
+  for (const sequenceName of ['TICKETS', 'ticket_public_sequence'] as const) {
+    const existingSeq = await prisma.systemSequence.findUnique({
+      where: { sequenceName },
+      select: { nextValue: true },
+    });
+    const nextValue =
+      existingSeq && existingSeq.nextValue > minimumNextValue
+        ? existingSeq.nextValue
+        : minimumNextValue;
+
+    await prisma.systemSequence.upsert({
+      where: { sequenceName },
+      update: { nextValue },
+      create: { sequenceName, nextValue },
     });
   }
-  console.log('✅ 4 Turnos en espera asegurados (HIGH_COST, PREFERENTIAL, GENERAL, BILLING)');
-
-  // 5. Secuencia del sistema sincronizada
-  await prisma.systemSequence.upsert({
-    where: { sequenceName: 'ticket_public_sequence' },
-    update: { nextValue: 9n },
-    create: { sequenceName: 'ticket_public_sequence', nextValue: 9n },
-  });
-  console.log('✅ Secuencia de turnos ajustada a nextValue = 9');
+  console.log(`✅ Secuencias sincronizadas (TICKETS / ticket_public_sequence >= ${minimumNextValue})`);
   console.log('🌱 Seed de desarrollo completado exitosamente.');
 }
 
