@@ -24,20 +24,20 @@ export const ActiveCallHero: React.FC<ActiveCallHeroProps> = ({
       aria-atomic="true"
       className={`col-span-12 lg:col-span-8 flex flex-col items-center justify-center text-center p-6 sm:p-10 lg:p-12 rounded-3xl relative overflow-hidden motion-safe:transition-all motion-safe:duration-500 motion-reduce:transition-none ${
         isFlashing
-          ? 'ring-4 ring-emerald-400/60 bg-[#06203A] shadow-[0_0_80px_-10px_rgba(16,185,129,0.35)]'
-          : 'bg-[#041527] border-2 border-emerald-500/40 shadow-[0_0_60px_-15px_rgba(16,185,129,0.2)]'
+          ? 'ring-4 ring-[#008f7a]/60 bg-[#020617] border-2 border-[#008f7a] shadow-[0_0_80px_-10px_rgba(0,143,122,0.45)]'
+          : 'bg-[#0f172a] border-2 border-[#008f7a]/75 shadow-[0_0_60px_-15px_rgba(0,143,122,0.28)]'
       }`}
     >
       {currentCall ? (
         <>
           {/* Badge Superior con soporte de prioridad PREFERENCIAL */}
           <div className="flex items-center justify-center flex-wrap gap-2 mb-4 sm:mb-6">
-            <span className="text-sm font-mono font-bold uppercase tracking-[0.25em] text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-5 py-1.5 rounded-full">
+            <span className="text-sm font-mono font-bold uppercase tracking-[0.25em] text-white bg-[#008f7a]/20 border border-[#008f7a] px-5 py-1.5 rounded-full">
               TURNO LLAMADO
             </span>
 
             {currentCall.priority === 'PREFERENCIAL' && (
-              <span className="text-xs font-mono font-bold uppercase tracking-wider text-purple-300 bg-purple-500/20 border border-purple-400/30 px-3.5 py-1 rounded-full">
+              <span className="text-xs font-mono font-bold uppercase tracking-wider text-white bg-[#0081cf]/20 border border-[#0081cf] px-3.5 py-1 rounded-full">
                 Preferencial
               </span>
             )}
@@ -54,7 +54,7 @@ export const ActiveCallHero: React.FC<ActiveCallHeroProps> = ({
           </p>
 
           {/* Destino Asignado (Cubículo) */}
-          <div className="text-4xl sm:text-6xl xl:text-7xl font-extrabold text-emerald-400 tracking-tight">
+          <div className="text-4xl sm:text-6xl xl:text-7xl font-extrabold text-[#008f7a] tracking-tight">
             {currentCall.cubicleName}
           </div>
 

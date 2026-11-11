@@ -37,7 +37,7 @@ export interface IssuedTicket {
   idDocument?: string;
 }
 
-type RadixBadgeColor = 'blue' | 'amber' | 'purple' | 'teal' | 'gray' | 'green' | 'red';
+type RadixBadgeColor = 'gray' | 'amber' | 'red';
 
 const QUEUE_CATEGORY_META: Record<
   QueueCategory,
@@ -46,40 +46,64 @@ const QUEUE_CATEGORY_META: Record<
     shortLabel: string;
     cardColor: RadixBadgeColor;
     tableColor: RadixBadgeColor;
+    badgeClassName: string;
   }
 > = {
   [QueueCategory.GENERAL]: {
     label: 'Turno general',
     shortLabel: 'General',
-    cardColor: 'blue',
+    cardColor: 'gray',
     tableColor: 'gray',
+    badgeClassName: '!bg-[#2c73d2]/12 !text-[#0f172a] !border !border-[#2c73d2] !shadow-none',
   },
   [QueueCategory.PREFERENTIAL]: {
     label: 'Atención preferencial',
     shortLabel: 'Preferencial',
-    cardColor: 'amber',
-    tableColor: 'amber',
+    cardColor: 'gray',
+    tableColor: 'gray',
+    badgeClassName: '!bg-[#0081cf]/12 !text-[#0f172a] !border !border-[#0081cf] !shadow-none',
   },
   [QueueCategory.HIGH_COST]: {
     label: 'Alto Costo / MIPRES',
     shortLabel: 'Alto Costo',
-    cardColor: 'purple',
-    tableColor: 'purple',
+    cardColor: 'gray',
+    tableColor: 'gray',
+    badgeClassName: '!bg-[#0089ba]/12 !text-[#0f172a] !border !border-[#0089ba] !shadow-none',
   },
   [QueueCategory.BILLING]: {
     label: 'Facturación y Copagos',
     shortLabel: 'Facturación',
-    cardColor: 'teal',
-    tableColor: 'blue',
+    cardColor: 'gray',
+    tableColor: 'gray',
+    badgeClassName: '!bg-[#008e9b]/12 !text-[#0f172a] !border !border-[#008e9b] !shadow-none',
   },
 };
 
-const TICKET_STATE_META: Record<TicketStatus, { label: string; color: RadixBadgeColor }> = {
+const TICKET_STATE_META: Record<
+  TicketStatus,
+  { label: string; color: RadixBadgeColor; className?: string }
+> = {
   [TicketStatus.PENDING]: { label: 'En espera', color: 'gray' },
-  [TicketStatus.ASSIGNED]: { label: 'Asignado', color: 'teal' },
-  [TicketStatus.CALLED]: { label: 'Llamado', color: 'green' },
-  [TicketStatus.IN_SERVICE]: { label: 'En atención', color: 'blue' },
-  [TicketStatus.CLOSED]: { label: 'Cerrado', color: 'green' },
+  [TicketStatus.ASSIGNED]: {
+    label: 'Asignado',
+    color: 'gray',
+    className: '!bg-[#0089ba]/12 !text-[#0f172a] !border !border-[#0089ba] !shadow-none',
+  },
+  [TicketStatus.CALLED]: {
+    label: 'Llamado',
+    color: 'gray',
+    className: '!bg-[#008f7a]/12 !text-[#0f172a] !border !border-[#008f7a] !shadow-none',
+  },
+  [TicketStatus.IN_SERVICE]: {
+    label: 'En atención',
+    color: 'gray',
+    className: '!bg-[#0081cf]/12 !text-[#0f172a] !border !border-[#0081cf] !shadow-none',
+  },
+  [TicketStatus.CLOSED]: {
+    label: 'Cerrado',
+    color: 'gray',
+    className: '!bg-[#008f7a]/12 !text-[#0f172a] !border !border-[#008f7a] !shadow-none',
+  },
   [TicketStatus.NO_SHOW]: { label: 'No presentado', color: 'amber' },
   [TicketStatus.CANCELLED]: { label: 'Cancelado', color: 'red' },
 };
@@ -96,6 +120,7 @@ function getTicketStateMeta(state: IssuedTicket['state']) {
     TICKET_STATE_META[state as TicketStatus] ?? {
       label: String(state),
       color: 'gray' as RadixBadgeColor,
+      className: undefined,
     }
   );
 }
@@ -342,7 +367,6 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
                         type="button"
                         size="1"
                         variant="soft"
-                        color="teal"
                         onClick={handleScanBarcodeDemo}
                         className="min-h-[44px] px-3 cursor-pointer text-xs"
                         title="Simular escaneo de código de barras PDF417 de cédula"
@@ -403,7 +427,7 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
                             key={digit}
                             type="button"
                             onClick={() => handleKeypadPress(digit)}
-                            className="py-3 bg-white border border-slate-500 hover:bg-slate-100 active:scale-95 text-slate-900 font-bold text-lg rounded-lg shadow-2xs transition-all cursor-pointer flex items-center justify-center min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
+                            className="py-3 bg-white border border-slate-500 hover:bg-slate-100 active:scale-95 text-slate-900 font-bold text-lg rounded-lg shadow-2xs transition-all cursor-pointer flex items-center justify-center min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2]"
                           >
                             {digit}
                           </button>
@@ -411,14 +435,14 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
                         <button
                           type="button"
                           onClick={handleKeypadClear}
-                          className="py-3 bg-slate-100 border border-slate-500 hover:bg-slate-200 active:scale-95 text-slate-700 font-semibold text-xs rounded-lg transition-all cursor-pointer flex items-center justify-center min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
+                          className="py-3 bg-slate-100 border border-slate-500 hover:bg-slate-200 active:scale-95 text-slate-700 font-semibold text-xs rounded-lg transition-all cursor-pointer flex items-center justify-center min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2]"
                         >
                           Limpiar
                         </button>
                         <button
                           type="button"
                           onClick={() => handleKeypadPress('0')}
-                          className="py-3 bg-white border border-slate-500 hover:bg-slate-100 active:scale-95 text-slate-900 font-bold text-lg rounded-lg shadow-2xs transition-all cursor-pointer flex items-center justify-center min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
+                          className="py-3 bg-white border border-slate-500 hover:bg-slate-100 active:scale-95 text-slate-900 font-bold text-lg rounded-lg shadow-2xs transition-all cursor-pointer flex items-center justify-center min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2]"
                         >
                           0
                         </button>
@@ -457,7 +481,7 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
                     >
                       <Flex direction="column" gap="1.5" width="100%">
                         <Flex align="center" gap="2">
-                          <User size={18} className="text-[var(--teal-10)]" aria-hidden="true" />
+                          <User size={18} className="text-[#2c73d2]" aria-hidden="true" />
                           <Text weight="bold" size="2">
                             Turno general
                           </Text>
@@ -476,7 +500,7 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
                       <Flex direction="column" gap="1.5" width="100%">
                         <Flex align="center" justify="between" gap="2" wrap="wrap">
                           <Flex align="center" gap="2">
-                            <Heart size={18} className="text-[var(--amber-10)]" aria-hidden="true" />
+                            <Heart size={18} className="text-[#0081cf]" aria-hidden="true" />
                             <Text weight="bold" size="2">
                               Atención preferencial
                             </Text>
@@ -499,7 +523,7 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
                     >
                       <Flex direction="column" gap="1.5" width="100%">
                         <Flex align="center" gap="2">
-                          <FileText size={18} className="text-purple-600" aria-hidden="true" />
+                          <FileText size={18} className="text-[#0089ba]" aria-hidden="true" />
                           <Text weight="bold" size="2">
                             Alto Costo / MIPRES
                           </Text>
@@ -516,7 +540,7 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
                     >
                       <Flex direction="column" gap="1.5" width="100%">
                         <Flex align="center" gap="2">
-                          <ReceiptText size={18} className="text-blue-600" />
+                          <ReceiptText size={18} className="text-[#008e9b]" />
                           <Text weight="bold" size="2">
                             Facturación y Copagos
                           </Text>
@@ -564,7 +588,6 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
                   id="btn-generar-turno"
                   type="submit"
                   size="3"
-                  color="teal"
                   variant="solid"
                   disabled={!isFormValid}
                   className="mt-2 w-full cursor-pointer"
@@ -600,7 +623,7 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
           {/* Panel Último Turno Generado */}
           <Card size="3" className="p-6">
             <Flex justify="between" align="center" className="pb-3 mb-4 border-b border-[var(--gray-a4)]">
-              <Text size="1" weight="bold" color="teal" className="uppercase tracking-wider">
+              <Text size="1" weight="bold" className="text-[#2c73d2] uppercase tracking-wider">
                 Último turno generado
               </Text>
               {lastTicket && (() => {
@@ -610,15 +633,17 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
                   <Flex gap="2" align="center">
                     <Badge
                       size="1"
-                      variant="surface"
+                      variant="soft"
                       color={categoryMeta.cardColor}
+                      className={categoryMeta.badgeClassName}
                     >
                       {categoryMeta.label}
                     </Badge>
                     <Badge
                       size="1"
-                      variant="surface"
+                      variant="soft"
                       color={stateMeta.color}
+                      className={stateMeta.className}
                     >
                       {stateMeta.label}
                     </Badge>
@@ -654,7 +679,6 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
                     <Button
                       size="2"
                       variant="soft"
-                      color="teal"
                       onClick={handleCopyCode}
                       className="min-h-[44px] cursor-pointer"
                       aria-label="Copiar número de turno"
@@ -682,8 +706,8 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
                 )}
 
                 {lastTicket.state === 'ASSIGNED' && (
-                  <Box className="p-3 rounded-md bg-[var(--teal-a3)]">
-                    <Text size="2" weight="bold" color="teal" className="block">
+                  <Box className="p-3 rounded-md bg-[#0089ba]/12 border border-[#0089ba]">
+                    <Text size="2" weight="bold" className="text-[#0f172a] block">
                       Cubículo asignado
                     </Text>
                     <Text size="1" color="gray">
@@ -693,8 +717,8 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
                 )}
 
                 {lastTicket.state === 'CALLED' && (
-                  <Box className="p-3 rounded-md bg-emerald-50 border border-emerald-200">
-                    <Text size="2" weight="bold" className="text-emerald-800 block">
+                  <Box className="p-3 rounded-md bg-[#008f7a]/12 border border-[#008f7a]">
+                    <Text size="2" weight="bold" className="text-[#0f172a] block">
                       Diríjase al {lastTicket.assignedCubicle || 'Cubículo 03'}
                     </Text>
                   </Box>
@@ -732,6 +756,7 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
                               size="1"
                               variant="soft"
                               color={categoryMeta.tableColor}
+                              className={categoryMeta.badgeClassName}
                             >
                               {categoryMeta.shortLabel}
                             </Badge>
@@ -742,8 +767,9 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
                         <Table.Cell>
                           <Badge
                             size="1"
-                            variant="surface"
+                            variant="soft"
                             color={stateMeta.color}
+                            className={stateMeta.className}
                           >
                             {stateMeta.label}
                           </Badge>

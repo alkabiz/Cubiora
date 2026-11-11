@@ -169,7 +169,12 @@ export const CubicleDailyPerformanceCard: React.FC<CubicleDailyPerformanceCardPr
                 Datos desactualizados
               </Badge>
             )}
-            <Badge color="blue" variant="soft" size="1">
+            <Badge
+              color="gray"
+              variant="soft"
+              size="1"
+              className="!bg-[#0081cf]/12 !text-[#0f172a] !border !border-[#0081cf] !shadow-none"
+            >
               Objetivo ≤ {targetValue}
             </Badge>
           </Flex>

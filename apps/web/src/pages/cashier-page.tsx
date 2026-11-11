@@ -123,7 +123,7 @@ export const CashierPage: React.FC = () => {
               type="button"
               onClick={() => void workspace.refresh()}
               disabled={workspace.isRefreshing}
-              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 min-h-[32px] rounded border border-amber-500 bg-white font-semibold text-[#92400E] hover:bg-[#FEF3C7] transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 min-h-[32px] rounded border border-amber-500 bg-white font-semibold text-[#92400E] hover:bg-[#FEF3C7] transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2]"
             >
               <RefreshCw
                 className={`w-3.5 h-3.5${workspace.isRefreshing ? ' motion-safe:animate-spin' : ''}`}

@@ -12,7 +12,7 @@ export const RecentCallsPanel: React.FC<RecentCallsPanelProps> = ({ recentCalls 
   return (
     <aside
       aria-label="Llamados recientes"
-      className="col-span-12 lg:col-span-4 rounded-3xl bg-[#041222] border border-slate-800/90 p-5 sm:p-6 flex flex-col justify-between"
+      className="col-span-12 lg:col-span-4 rounded-3xl bg-[#0f172a] border border-slate-800/90 p-5 sm:p-6 flex flex-col justify-between"
     >
       <div>
         {/* Cabecera del Panel */}
@@ -34,8 +34,8 @@ export const RecentCallsPanel: React.FC<RecentCallsPanelProps> = ({ recentCalls 
                   key={`${item.ticketCode}-${index}`}
                   className={`flex flex-wrap items-center justify-between gap-2 sm:gap-4 px-4 sm:px-5 py-4 rounded-2xl border transition-colors ${
                     isFirst
-                      ? 'bg-[#07203B] border-sky-500/30'
-                      : 'bg-[#061A30]/90 border border-slate-800/90'
+                      ? 'bg-[#1e293b] border-[#0081cf]'
+                      : 'bg-[#020617]/70 border border-slate-800/90'
                   }`}
                 >
                   {/* Código de Turno a la izquierda */}
@@ -44,7 +44,7 @@ export const RecentCallsPanel: React.FC<RecentCallsPanelProps> = ({ recentCalls 
                   </span>
 
                   {/* Badge de Cubículo a la derecha */}
-                  <span className="inline-flex items-center px-3.5 py-1 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-emerald-400 font-bold text-base whitespace-nowrap">
+                  <span className="inline-flex items-center px-3.5 py-1 rounded-xl bg-[#008f7a]/20 border border-[#008f7a] text-white font-bold text-base whitespace-nowrap">
                     {item.cubicleName}
                   </span>
                 </li>

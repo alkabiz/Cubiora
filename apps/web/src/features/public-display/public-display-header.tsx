@@ -29,11 +29,11 @@ export const PublicDisplayHeader: React.FC<PublicDisplayHeaderProps> = ({
   }, []);
 
   return (
-    <header className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-8 py-4 bg-[#04101E] border-b border-slate-800/80">
+    <header className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-8 py-4 bg-[#020617] border-b border-slate-800/80">
       {/* ─── Izquierda: Identidad de Marca ─── */}
       <div className="flex items-center gap-3">
         <div
-          className="w-10 h-10 rounded-xl bg-emerald-500 flex items-center justify-center text-[#03101D] font-mono font-extrabold text-xl leading-none shadow-sm"
+          className="w-10 h-10 rounded-xl bg-[#008f7a] flex items-center justify-center text-[#020617] font-mono font-extrabold text-xl leading-none shadow-sm"
           aria-hidden="true"
         >
           C
@@ -53,13 +53,13 @@ export const PublicDisplayHeader: React.FC<PublicDisplayHeaderProps> = ({
           title={soundEnabled ? 'Silenciar llamados' : 'Activar timbre sonoro'}
           className={
             soundEnabled
-              ? 'bg-slate-800/80 border border-slate-600 text-slate-200 hover:bg-slate-700 px-3.5 py-1.5 min-h-[40px] rounded-lg text-xs font-semibold flex items-center gap-2 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#04101E]'
-              : 'bg-amber-500/10 border border-amber-500/50 text-amber-200 hover:bg-amber-500/20 px-3.5 py-1.5 min-h-[40px] rounded-lg text-xs font-semibold flex items-center gap-2 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#04101E]'
+              ? 'bg-slate-800/80 border border-slate-600 text-slate-200 hover:bg-slate-700 px-3.5 py-1.5 min-h-[40px] rounded-lg text-xs font-semibold flex items-center gap-2 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2] focus-visible:ring-offset-2 focus-visible:ring-offset-[#020617]'
+              : 'bg-amber-500/10 border border-amber-500/50 text-amber-200 hover:bg-amber-500/20 px-3.5 py-1.5 min-h-[40px] rounded-lg text-xs font-semibold flex items-center gap-2 cursor-pointer transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2] focus-visible:ring-offset-2 focus-visible:ring-offset-[#020617]'
           }
         >
           {soundEnabled ? (
             <>
-              <Volume2 className="w-4 h-4 text-emerald-400" />
+              <Volume2 className="w-4 h-4 text-[#008f7a]" />
               <span>Sonido activo</span>
             </>
           ) : (
@@ -79,8 +79,8 @@ export const PublicDisplayHeader: React.FC<PublicDisplayHeaderProps> = ({
         <div className="flex items-center gap-2">
           {connectionStatus === 'ONLINE' && (
             <>
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 motion-safe:animate-pulse" />
-              <span className="text-xs font-mono font-bold tracking-wider text-emerald-400 uppercase">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#008f7a] motion-safe:animate-pulse" />
+              <span className="text-xs font-mono font-bold tracking-wider text-[#008f7a] uppercase">
                 EN LÍNEA
               </span>
             </>

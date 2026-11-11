@@ -28,9 +28,9 @@ export const BroadcastNoticeBar: React.FC<BroadcastNoticeBarProps> = ({ notice }
         <div
           role="status"
           aria-live="polite"
-          className="mx-4 sm:mx-8 mb-4 sm:mb-6 px-4 sm:px-6 py-3.5 rounded-2xl bg-sky-500/15 border border-sky-400/40 text-sky-100 flex items-center gap-3 text-sm font-medium"
+          className="mx-4 sm:mx-8 mb-4 sm:mb-6 px-4 sm:px-6 py-3.5 rounded-2xl bg-[#0089ba]/20 border border-[#0089ba] text-white flex items-center gap-3 text-sm font-medium"
         >
-          <Info className="w-5 h-5 text-sky-300 flex-shrink-0" aria-hidden="true" />
+          <Info className="w-5 h-5 text-white flex-shrink-0" aria-hidden="true" />
           <span>{notice.message}</span>
         </div>
       );
@@ -49,7 +49,7 @@ export const BroadcastNoticeBar: React.FC<BroadcastNoticeBarProps> = ({ notice }
   }
 
   return (
-    <footer className="px-4 sm:px-8 py-3 bg-[#04101E] border-t border-slate-800/80 text-xs text-slate-300 flex flex-wrap items-center justify-between gap-2">
+    <footer className="px-4 sm:px-8 py-3 bg-[#020617] border-t border-slate-800/80 text-xs text-slate-300 flex flex-wrap items-center justify-between gap-2">
       <span>
         Por favor tenga a la mano su orden y fórmula médica al acercarse al cubículo asignado.
       </span>

@@ -278,7 +278,7 @@ export const PublicDisplayScreen: React.FC = () => {
   }, [applyNotice, loadSnapshot, triggerCallFlash]);
 
   return (
-    <div className="min-h-screen w-full overflow-x-clip flex flex-col justify-between select-none bg-[#020B14]">
+    <div className="min-h-screen w-full overflow-x-clip flex flex-col justify-between select-none bg-[#020617]">
       {/* ─── Header Superior de Sala ─── */}
       <PublicDisplayHeader
         soundEnabled={soundEnabled}

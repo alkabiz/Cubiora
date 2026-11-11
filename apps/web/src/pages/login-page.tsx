@@ -58,7 +58,7 @@ export const LoginPage: React.FC = () => {
       <Box className="w-full max-w-md">
         <Card size="3" className="p-8">
           <Flex direction="column" align="center" className="mb-6 text-center">
-            <Badge size="3" variant="solid" color="teal" className="w-12 h-12 flex items-center justify-center font-bold text-lg mb-3">
+            <Badge size="3" variant="solid" className="w-12 h-12 flex items-center justify-center font-bold text-lg mb-3">
               C
             </Badge>
             <Heading as="h1" size="5" weight="bold">
@@ -70,7 +70,7 @@ export const LoginPage: React.FC = () => {
           </Flex>
 
           {serverError && (
-            <Callout.Root color="ruby" size="1" className="mb-4">
+            <Callout.Root color="red" size="1" className="mb-4">
               <Callout.Icon>
                 <AlertTriangle size={16} aria-hidden="true" />
               </Callout.Icon>
@@ -92,7 +92,7 @@ export const LoginPage: React.FC = () => {
                   aria-invalid={!!errors.username}
                 />
                 {errors.username && (
-                  <Text size="1" color="ruby" className="mt-1 block">
+                  <Text size="1" color="red" className="mt-1 block">
                     {errors.username.message}
                   </Text>
                 )}
@@ -111,7 +111,7 @@ export const LoginPage: React.FC = () => {
                   aria-invalid={!!errors.password}
                 />
                 {errors.password && (
-                  <Text size="1" color="ruby" className="mt-1 block">
+                  <Text size="1" color="red" className="mt-1 block">
                     {errors.password.message}
                   </Text>
                 )}
@@ -121,7 +121,6 @@ export const LoginPage: React.FC = () => {
                 type="submit"
                 id="btn-login-submit"
                 size="3"
-                color="teal"
                 variant="solid"
                 disabled={isSubmitting}
                 className="mt-2 w-full cursor-pointer"

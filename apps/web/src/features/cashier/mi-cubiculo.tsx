@@ -21,7 +21,7 @@ export interface MiCubiculoProps {
   className?: string;
 }
 
-type BadgeTone = 'green' | 'amber' | 'violet' | 'blue' | 'red' | 'slate';
+type BadgeTone = 'available' | 'assigned' | 'called' | 'service' | 'red' | 'slate';
 
 interface BadgeConfig {
   label: string;
@@ -32,54 +32,54 @@ interface BadgeConfig {
 
 const BADGE_CONFIG: Record<CubicleVisualStep, BadgeConfig> = {
   INITIAL_LOADING: { label: 'Sincronizando', tone: 'slate', spinner: true },
-  AVAILABLE: { label: 'Disponible', tone: 'green' },
-  ASSIGNED: { label: 'Turno asignado', tone: 'amber' },
-  PROCESSING_CALL: { label: 'Procesando', tone: 'blue', spinner: true },
-  CALLED: { label: 'Llamado', tone: 'violet', pulse: true },
-  PROCESSING_START: { label: 'Procesando', tone: 'blue', spinner: true },
-  IN_SERVICE: { label: 'En atención', tone: 'blue' },
-  CONFIRM_CLOSE: { label: 'En atención', tone: 'blue' },
-  PROCESSING_CLOSE: { label: 'Procesando', tone: 'blue', spinner: true },
-  CLOSED_NEXT: { label: 'Turno asignado', tone: 'amber' },
-  CLOSED_NO_NEXT: { label: 'Disponible', tone: 'green' },
-  CONFIRM_NO_SHOW: { label: 'Llamado', tone: 'violet', pulse: true },
-  PROCESSING_NO_SHOW: { label: 'Procesando', tone: 'blue', spinner: true },
-  NO_SHOW_NEXT: { label: 'Turno asignado', tone: 'amber' },
+  AVAILABLE: { label: 'Disponible', tone: 'available' },
+  ASSIGNED: { label: 'Turno asignado', tone: 'assigned' },
+  PROCESSING_CALL: { label: 'Procesando', tone: 'service', spinner: true },
+  CALLED: { label: 'Llamado', tone: 'called', pulse: true },
+  PROCESSING_START: { label: 'Procesando', tone: 'service', spinner: true },
+  IN_SERVICE: { label: 'En atención', tone: 'service' },
+  CONFIRM_CLOSE: { label: 'En atención', tone: 'service' },
+  PROCESSING_CLOSE: { label: 'Procesando', tone: 'service', spinner: true },
+  CLOSED_NEXT: { label: 'Turno asignado', tone: 'assigned' },
+  CLOSED_NO_NEXT: { label: 'Disponible', tone: 'available' },
+  CONFIRM_NO_SHOW: { label: 'Llamado', tone: 'called', pulse: true },
+  PROCESSING_NO_SHOW: { label: 'Procesando', tone: 'service', spinner: true },
+  NO_SHOW_NEXT: { label: 'Turno asignado', tone: 'assigned' },
   UNCERTAIN_RESULT: { label: 'Resultado incierto', tone: 'red' },
   OFFLINE: { label: 'Sin conexión', tone: 'red' },
-  RECONCILING: { label: 'Verificando', tone: 'blue', spinner: true },
+  RECONCILING: { label: 'Verificando', tone: 'service', spinner: true },
 };
 
 const BADGE_TONES: Record<BadgeTone, string> = {
-  green: 'bg-[#ECFDF5] border-[#A7F3D0] text-[#065F46]',
-  amber: 'bg-[#FEF3C7] border-[#FDE68A] text-[#92400E]',
-  violet: 'bg-[#F5F3FF] border-[#DDD6FE] text-[#5B21B6]',
-  blue: 'bg-[#EFF4FF] border-[#C9E6FF] text-[#006591]',
+  available: 'bg-[#008f7a]/12 border-[#008f7a] text-[#0f172a]',
+  assigned: 'bg-[#0089ba]/12 border-[#0089ba] text-[#0f172a]',
+  called: 'bg-[#008e9b]/12 border-[#008e9b] text-[#0f172a]',
+  service: 'bg-[#0081cf]/12 border-[#0081cf] text-[#0f172a]',
   red: 'bg-[#FEF2F2] border-[#FECACA] text-[#991B1B]',
   slate: 'bg-[#F8FAFC] border-[#E2E8F0] text-[#475569]',
 };
 
 const DOT_TONES: Record<BadgeTone, string> = {
-  green: 'bg-[#10B981]',
-  amber: 'bg-[#F59E0B]',
-  violet: 'bg-[#8B5CF6]',
-  blue: 'bg-[#0EA5E9]',
+  available: 'bg-[#008f7a]',
+  assigned: 'bg-[#0089ba]',
+  called: 'bg-[#008e9b]',
+  service: 'bg-[#0081cf]',
   red: 'bg-[#EF4444]',
   slate: 'bg-[#64748B]',
 };
 
 // Cumple WCAG 2.5.8 Target Size (Minimum, Nivel AA: 24×24 px); elevado a min-h-[40px]/[44px] como mejora ergonómica hospitalaria en ventanilla
 const PRIMARY_BUTTON =
-  'inline-flex w-full sm:w-auto items-center justify-center min-h-[44px] gap-2 px-6 py-3 rounded-lg bg-[#0F2942] hover:bg-[#0A1B2C] text-white font-bold text-sm transition-colors cursor-pointer shadow-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0F766E] disabled:cursor-not-allowed disabled:opacity-60';
+  'inline-flex w-full sm:w-auto items-center justify-center min-h-[44px] gap-2 px-6 py-3 rounded-lg bg-[#2c73d2] hover:shadow-[inset_0_0_0_100vmax_rgba(2,6,23,0.14)] text-white font-bold text-sm transition-all cursor-pointer shadow-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2c73d2] disabled:cursor-not-allowed disabled:opacity-60';
 
-const PRIMARY_BLUE_BUTTON =
-  'inline-flex w-full sm:w-auto items-center justify-center min-h-[44px] gap-2 px-6 py-3 rounded-lg bg-[#0F766E] hover:bg-[#115E59] text-white font-bold text-sm transition-colors cursor-pointer shadow-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0F766E] disabled:cursor-not-allowed disabled:opacity-60';
+const PRIMARY_ACTION_BUTTON =
+  'inline-flex w-full sm:w-auto items-center justify-center min-h-[44px] gap-2 px-6 py-3 rounded-lg bg-[#2c73d2] hover:shadow-[inset_0_0_0_100vmax_rgba(2,6,23,0.14)] text-white font-bold text-sm transition-all cursor-pointer shadow-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2c73d2] disabled:cursor-not-allowed disabled:opacity-60';
 
 const SECONDARY_BUTTON =
-  'inline-flex w-full sm:w-auto items-center justify-center min-h-[40px] gap-2 px-4 py-2.5 rounded text-xs font-semibold text-[#0F2942] bg-white hover:bg-[#F8FAFC] border border-[#64748B] transition-colors cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0F766E] disabled:cursor-not-allowed disabled:opacity-60';
+  'inline-flex w-full sm:w-auto items-center justify-center min-h-[40px] gap-2 px-4 py-2.5 rounded text-xs font-semibold text-[#0f172a] bg-white hover:bg-[#F8FAFC] border border-[#64748B] transition-colors cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2c73d2] disabled:cursor-not-allowed disabled:opacity-60';
 
 const DANGER_BUTTON =
-  'inline-flex w-full sm:w-auto items-center justify-center min-h-[40px] gap-2 px-4 py-2.5 rounded text-xs font-semibold text-[#BA1A1A] border border-transparent hover:border-[#FECACA] hover:bg-[#FFDAD6]/30 transition-colors cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#BA1A1A] disabled:cursor-not-allowed disabled:opacity-60';
+  'inline-flex w-full sm:w-auto items-center justify-center min-h-[40px] gap-2 px-4 py-2.5 rounded text-xs font-semibold text-[#991B1B] border border-transparent hover:border-[#FECACA] hover:bg-[#FEE2E2] transition-colors cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#991B1B] disabled:cursor-not-allowed disabled:opacity-60';
 
 function StatusBadge({ step }: { step: CubicleVisualStep }) {
   const config = BADGE_CONFIG[step];
@@ -119,14 +119,14 @@ const TICKET_TONES = {
     chip: 'text-[#475569] border-[#E2E8F0]',
   },
   called: {
-    panel: 'bg-[#F5F3FF]/40 border-[#DDD6FE]',
-    label: 'text-[#5B21B6]',
-    chip: 'text-[#5B21B6] border-[#DDD6FE]',
+    panel: 'bg-[#008e9b]/8 border-[#008e9b]',
+    label: 'text-[#0f172a]',
+    chip: 'text-[#0f172a] border-[#008e9b]',
   },
   service: {
-    panel: 'bg-[#EFF4FF]/50 border-[#C9E6FF]',
-    label: 'text-[#006591]',
-    chip: 'text-[#006591] border-[#C9E6FF]',
+    panel: 'bg-[#0081cf]/8 border-[#0081cf]',
+    label: 'text-[#0f172a]',
+    chip: 'text-[#0f172a] border-[#0081cf]',
   },
 } as const;
 
@@ -171,12 +171,12 @@ function TicketSummary({
         )}
       </div>
 
-      <div className="font-mono text-3xl sm:text-4xl font-extrabold text-[#0F2942] tracking-wider break-all">
+      <div className="font-mono text-3xl sm:text-4xl font-extrabold text-[#0f172a] tracking-wider break-all">
         {ticket.publicCode}
       </div>
 
       <div className="space-y-1">
-        <div className="text-sm font-bold text-[#0F2942] flex items-center gap-1.5">
+        <div className="text-sm font-bold text-[#0f172a] flex items-center gap-1.5">
           <User className="w-3.5 h-3.5 text-[#475569] shrink-0" aria-hidden="true" />
           <span>{ticket.patientName}</span>
         </div>
@@ -208,8 +208,8 @@ function WaitingCounter({ count, className = '' }: { count: number; className?: 
 
 function SuccessNotice({ children }: { children: React.ReactNode }) {
   return (
-    <div className="p-3 rounded-lg bg-[#ECFDF5] border border-[#A7F3D0] text-[#065F46] text-xs flex items-start gap-2">
-      <CheckCircle2 className="w-4 h-4 text-[#10B981] shrink-0 mt-0.5" aria-hidden="true" />
+    <div className="p-3 rounded-lg bg-[#008f7a]/12 border border-[#008f7a] text-[#0f172a] text-xs flex items-start gap-2">
+      <CheckCircle2 className="w-4 h-4 text-[#008f7a] shrink-0 mt-0.5" aria-hidden="true" />
       <span className="font-medium leading-relaxed">{children}</span>
     </div>
   );
@@ -244,7 +244,7 @@ function OfflineBanner({ workspace }: { workspace: CubicleWorkspace }) {
         type="button"
         onClick={() => void workspace.refresh()}
         disabled={workspace.isRefreshing}
-        className="inline-flex items-center justify-center min-h-[32px] gap-1.5 px-3 py-1.5 rounded border border-[#B45309] bg-white text-xs font-semibold text-[#92400E] hover:bg-[#FEF3C7] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex items-center justify-center min-h-[32px] gap-1.5 px-3 py-1.5 rounded border border-[#B45309] bg-white text-xs font-semibold text-[#92400E] hover:bg-[#FEF3C7] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2] focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
       >
         <RefreshCw
           className={`w-3.5 h-3.5${workspace.isRefreshing ? ' motion-safe:animate-spin' : ''}`}
@@ -391,7 +391,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
           closeTriggerRef.current?.focus();
         }}
       >
-        <Dialog.Title id="close-ticket-title" className="text-base font-bold text-[#0F2942]">
+        <Dialog.Title id="close-ticket-title" className="text-base font-bold text-[#0f172a]">
           ¿Cerrar el turno {activeTicket?.publicCode ?? '—'}?
         </Dialog.Title>
         <Dialog.Description size="2" className="mt-2 text-[#475569]">
@@ -411,13 +411,13 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
             onChange={(e) => setPrescriptionCode(e.target.value)}
             placeholder="ej. RX-E2E-9001"
             disabled={isClosing}
-            className="w-full rounded border border-slate-500 bg-white px-2.5 py-1.5 font-mono text-xs text-slate-900 placeholder:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-1"
+            className="w-full rounded border border-slate-500 bg-white px-2.5 py-1.5 font-mono text-xs text-slate-900 placeholder:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2] focus-visible:ring-offset-1"
           />
         </div>
 
         {/* Selector de Tipo de Resolución Farmacéutica */}
         <fieldset className="mt-4 space-y-2 border-0 p-0 m-0">
-          <legend className="block text-xs font-bold text-[#0F2942] mb-2">
+          <legend className="block text-xs font-bold text-[#0f172a] mb-2">
             Resolución de Dispensación Farmacéutica
           </legend>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -429,14 +429,14 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
                 setFormError(null);
               }}
               disabled={isClosing}
-              className={`p-3 rounded-lg border text-left transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-1 ${
+              className={`p-3 rounded-lg border text-left transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2] focus-visible:ring-offset-1 ${
                 resolution === DispensationResolution.TOTAL_DELIVERED
-                  ? 'border-emerald-600 bg-emerald-50/60 ring-2 ring-emerald-500/20'
+                  ? 'border-[#008f7a] bg-[#008f7a]/10 ring-2 ring-[#008f7a]/25'
                   : 'border-slate-500 bg-white hover:bg-slate-50'
               }`}
             >
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" aria-hidden="true" />
+                <CheckCircle2 className="w-4 h-4 text-[#008f7a] shrink-0" aria-hidden="true" />
                 <span className="text-xs font-bold text-slate-900">Entrega Total (PBS)</span>
               </div>
               <p className="mt-1 text-[11px] text-slate-600 leading-snug">
@@ -452,7 +452,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
                 setFormError(null);
               }}
               disabled={isClosing}
-              className={`p-3 rounded-lg border text-left transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-1 ${
+              className={`p-3 rounded-lg border text-left transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2] focus-visible:ring-offset-1 ${
                 resolution === DispensationResolution.PENDING_48H
                   ? 'border-amber-600 bg-amber-50/60 ring-2 ring-amber-500/20'
                   : 'border-slate-500 bg-white hover:bg-slate-50'
@@ -496,7 +496,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
                   disabled={isClosing}
                   aria-invalid={Boolean(formError && !deliveryAddress.trim())}
                   aria-describedby={formError ? 'close-ticket-form-error' : undefined}
-                  className="mt-1 w-full rounded border border-slate-500 bg-white px-2.5 py-1.5 font-sans text-xs text-slate-900 placeholder:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-1"
+                  className="mt-1 w-full rounded border border-slate-500 bg-white px-2.5 py-1.5 font-sans text-xs text-slate-900 placeholder:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2] focus-visible:ring-offset-1"
                 />
               </div>
 
@@ -513,7 +513,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
                   disabled={isClosing}
                   aria-invalid={Boolean(formError && !deliveryPhone.trim())}
                   aria-describedby={formError ? 'close-ticket-form-error' : undefined}
-                  className="mt-1 w-full rounded border border-slate-500 bg-white px-2.5 py-1.5 font-mono text-xs text-slate-900 placeholder:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-1"
+                  className="mt-1 w-full rounded border border-slate-500 bg-white px-2.5 py-1.5 font-mono text-xs text-slate-900 placeholder:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2] focus-visible:ring-offset-1"
                 />
               </div>
 
@@ -528,7 +528,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
                   onChange={(e) => setPendingDetails(e.target.value)}
                   placeholder="ej. Losartán 50mg x 30 tab (desabastecimiento)"
                   disabled={isClosing}
-                  className="mt-1 w-full rounded border border-slate-500 bg-white px-2.5 py-1.5 font-sans text-xs text-slate-900 placeholder:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-1"
+                  className="mt-1 w-full rounded border border-slate-500 bg-white px-2.5 py-1.5 font-sans text-xs text-slate-900 placeholder:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2] focus-visible:ring-offset-1"
                 />
               </div>
             </div>
@@ -547,7 +547,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
 
         {isClosing && (
           <div
-            className="mt-4 flex items-center gap-2 rounded-lg border border-[#C9E6FF] bg-[#EFF4FF] p-3 text-xs font-semibold text-[#006591]"
+            className="mt-4 flex items-center gap-2 rounded-lg border border-[#008e9b] bg-[#008e9b]/12 p-3 text-xs font-semibold text-[#0f172a]"
             aria-live="polite"
           >
             <RefreshCw className="w-4 h-4 motion-safe:animate-spin" aria-hidden="true" />
@@ -615,7 +615,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
           noShowTriggerRef.current?.focus();
         }}
       >
-        <Dialog.Title id="no-show-ticket-title" className="text-base font-bold text-[#0F2942]">
+        <Dialog.Title id="no-show-ticket-title" className="text-base font-bold text-[#0f172a]">
           ¿Registrar el turno {activeTicket?.publicCode ?? '—'} como no presentado?
         </Dialog.Title>
         <Dialog.Description size="2" className="mt-2 text-[#475569]">
@@ -646,7 +646,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
             type="button"
             onClick={() => void workspace.confirmNoShow()}
             disabled={isMarkingNoShow || !workspace.isOnline}
-            className={`${PRIMARY_BUTTON} !bg-[#BA1A1A] hover:!bg-[#93000A]`}
+            className={`${PRIMARY_BUTTON} !bg-[#991B1B] focus-visible:!outline-[#991B1B]`}
           >
             {isMarkingNoShow ? (
               <RefreshCw className="w-4 h-4 motion-safe:animate-spin" aria-hidden="true" />
@@ -666,10 +666,10 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
         return (
           <div className="py-10 text-center space-y-3" aria-live="polite">
             <RefreshCw
-              className="w-7 h-7 motion-safe:animate-spin text-[#0F766E] mx-auto"
+              className="w-7 h-7 motion-safe:animate-spin text-[#008e9b] mx-auto"
               aria-hidden="true"
             />
-            <div className="text-base font-bold text-[#0F2942]">
+            <div className="text-base font-bold text-[#0f172a]">
               Sincronizando estado del cubículo…
             </div>
             <p className="text-xs text-[#475569]">
@@ -686,7 +686,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
               aria-hidden="true"
             />
             <div className="space-y-1">
-              <div className="text-base font-bold text-[#0F2942]">Sin conexión</div>
+              <div className="text-base font-bold text-[#0f172a]">Sin conexión</div>
               <p className="text-xs text-[#475569] max-w-md mx-auto leading-relaxed">
                 Cubiora no puede confirmar cambios en este momento.
               </p>
@@ -719,7 +719,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
               aria-hidden="true"
             />
             <div className="space-y-1">
-              <div className="text-base font-bold text-[#0F2942]">
+              <div className="text-base font-bold text-[#0f172a]">
                 No pudimos confirmar la operación.
               </div>
               <p className="text-xs text-[#475569] max-w-md mx-auto leading-relaxed">
@@ -745,10 +745,10 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
         return (
           <div className="py-10 text-center space-y-4" aria-live="polite">
             <RefreshCw
-              className="w-8 h-8 motion-safe:animate-spin text-[#0F766E] mx-auto"
+              className="w-8 h-8 motion-safe:animate-spin text-[#008e9b] mx-auto"
               aria-hidden="true"
             />
-            <div className="text-base font-bold text-[#0F2942]">Verificando estado actual…</div>
+            <div className="text-base font-bold text-[#0f172a]">Verificando estado actual…</div>
             <p className="text-xs text-[#475569] leading-relaxed">
               Consultando el snapshot vigente del cubículo. No se repetirá el comando anterior.
             </p>
@@ -765,7 +765,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
             )}
 
             <div className="py-8 text-center space-y-2">
-              <div className="text-base sm:text-lg font-semibold text-[#0F2942]">
+              <div className="text-base sm:text-lg font-semibold text-[#0f172a]">
                 Esperando el siguiente turno
               </div>
               <p className="text-xs text-[#475569] max-w-md mx-auto leading-relaxed">
@@ -780,7 +780,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
               <div className="inline-flex items-center gap-2 text-xs font-medium text-[#475569]">
                 <span
-                  className={`w-2 h-2 rounded-full ${workspace.isOnline ? 'bg-[#10B981]' : 'bg-[#EF4444]'}`}
+                  className={`w-2 h-2 rounded-full ${workspace.isOnline ? 'bg-[#008f7a]' : 'bg-[#EF4444]'}`}
                   aria-hidden="true"
                 />
                 {workspace.isOnline
@@ -833,7 +833,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
                 {isCalling ? (
                   <>
                     <RefreshCw
-                      className="w-4 h-4 motion-safe:animate-spin text-[#99F6E4]"
+                      className="w-4 h-4 motion-safe:animate-spin text-white"
                       aria-hidden="true"
                     />
                     Llamando turno…
@@ -887,7 +887,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
                 disabled={isStarting || isConfirming || workspace.actionsDisabled}
                 aria-busy={isStarting}
                 aria-keyshortcuts={CASHIER_HOTKEY_MAP.start.label}
-                className={PRIMARY_BLUE_BUTTON}
+                className={PRIMARY_ACTION_BUTTON}
               >
                 {isStarting ? (
                   <>
@@ -970,7 +970,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
             <div className="rounded-xl border border-slate-200/90 bg-[#F8FAFC] p-4 space-y-2">
               <label
                 htmlFor="prescription-barcode-input"
-                className="text-xs font-bold text-[#0F2942] flex items-center justify-between"
+                className="text-xs font-bold text-[#0f172a] flex items-center justify-between"
               >
                 <span>Fórmula Médica / MIPRES</span>
                 <span className="text-[11px] font-mono text-[#475569]">Soporte Lector USB / Pistola</span>
@@ -982,7 +982,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
                   value={prescriptionCode}
                   onChange={(e) => setPrescriptionCode(e.target.value)}
                   placeholder="Escanee código de barras de fórmula o digite MIPRES..."
-                  className="w-full font-mono text-xs px-3.5 py-2.5 rounded-lg border border-slate-500 bg-white text-slate-900 placeholder:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-1 transition-all"
+                  className="w-full font-mono text-xs px-3.5 py-2.5 rounded-lg border border-slate-500 bg-white text-slate-900 placeholder:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2] focus-visible:ring-offset-1 transition-all"
                 />
               </div>
               <p className="text-[11px] text-[#475569] leading-relaxed">
@@ -1030,10 +1030,10 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
         return (
           <div className="py-10 text-center space-y-4" aria-live="polite">
             <RefreshCw
-              className="w-8 h-8 motion-safe:animate-spin text-[#BA1A1A] mx-auto"
+              className="w-8 h-8 motion-safe:animate-spin text-[#DC2626] mx-auto"
               aria-hidden="true"
             />
-            <div className="text-base font-bold text-[#0F2942]">Marcando como no presentado…</div>
+            <div className="text-base font-bold text-[#0f172a]">Marcando como no presentado…</div>
             <p className="text-xs text-[#475569] leading-relaxed">
               Actualizando el turno y consultando el siguiente paciente en la cola.
             </p>
@@ -1049,7 +1049,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
               Turno <strong>{outcome?.finishedCode ?? '—'}</strong> finalizado.
             </SuccessNotice>
 
-            <div className="text-sm font-bold text-[#0F2942]">Siguiente turno asignado</div>
+            <div className="text-sm font-bold text-[#0f172a]">Siguiente turno asignado</div>
 
             <TicketSummary
               ticket={activeTicket}
@@ -1087,7 +1087,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
             </SuccessNotice>
 
             <div className="py-6 text-center space-y-2">
-              <div className="text-base font-bold text-[#0F2942]">
+              <div className="text-base font-bold text-[#0f172a]">
                 {waitingPatientsLabel(workspace.waitingCount)}
               </div>
               <p className="text-xs text-[#475569] leading-relaxed">
@@ -1125,7 +1125,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
               Turno <strong>{outcome?.finishedCode ?? '—'}</strong> marcado como no presentado.
             </WarningNotice>
 
-            <div className="text-sm font-bold text-[#0F2942]">Siguiente turno asignado</div>
+            <div className="text-sm font-bold text-[#0f172a]">Siguiente turno asignado</div>
 
             <TicketSummary
               ticket={activeTicket}
@@ -1162,19 +1162,19 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
 
   return (
     <div
-      className={`relative w-full overflow-hidden rounded-xl border border-slate-200/90 bg-white p-5 sm:p-8 shadow-sm space-y-6 font-sans text-[#0F2942] ${className}`}
+      className={`relative w-full overflow-hidden rounded-xl border border-slate-200/90 bg-white p-5 sm:p-8 shadow-sm space-y-6 font-sans text-[#0f172a] ${className}`}
       aria-busy={isProcessing || step === 'RECONCILING'}
     >
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#F1F5F9]">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-[#0F766E] text-white flex items-center justify-center font-mono font-bold text-base shrink-0 shadow-2xs">
+          <div className="w-10 h-10 rounded-lg bg-[#2c73d2] text-white flex items-center justify-center font-mono font-bold text-base shrink-0 shadow-2xs">
             {workspace.cubicleNumber}
           </div>
           <div>
             <span className="text-[11px] font-semibold text-[#475569] uppercase tracking-wider block">
               Mi cubículo
             </span>
-            <h2 className="text-xl sm:text-2xl font-extrabold text-[#0F2942] tracking-tight">
+            <h2 className="text-xl sm:text-2xl font-extrabold text-[#0f172a] tracking-tight">
               {workspace.displayName}
             </h2>
           </div>
@@ -1200,7 +1200,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
         <button
           type="button"
           onClick={toggleHotkeys}
-          className="inline-flex items-center min-h-[32px] px-2 rounded text-xs text-[#0F766E] hover:text-[#115E59] font-medium underline cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] self-start sm:self-auto"
+          className="inline-flex items-center min-h-[32px] px-2 rounded text-xs text-[#2c73d2] hover:text-[#0f172a] font-medium underline cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#2c73d2] self-start sm:self-auto"
           aria-label={hotkeysEnabled ? 'Desactivar atajos de teclado' : 'Activar atajos de teclado'}
         >
           {hotkeysEnabled ? 'Desactivar atajos' : 'Activar atajos'}
