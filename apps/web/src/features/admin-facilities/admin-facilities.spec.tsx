@@ -9,7 +9,9 @@ import {
   FacilityStatus,
   PharmacistOperationalRole,
   PharmacistStatus,
+  UserRole,
   WorkShift,
+  type AdminUserDto,
 } from '@cubiora/shared';
 import { AdminFacilitiesScreen } from './admin-facilities-screen';
 import { apiClient } from '../../lib/api';
@@ -145,8 +147,75 @@ const MOCK_PHARMACISTS_LIST = [
   },
 ];
 
+const MOCK_USERS: AdminUserDto[] = [
+  {
+    id: 'usr-admin-01',
+    publicId: '01JUSR01ADMIN',
+    username: 'admin_cubiora',
+    displayName: 'Administrador General',
+    role: UserRole.ADMIN,
+    cubicleId: null,
+    cubicleCode: null,
+    cubicleDisplayName: null,
+    active: true,
+    createdAt: '2026-10-01T08:00:00.000Z',
+    updatedAt: '2026-10-01T08:00:00.000Z',
+  },
+  {
+    id: 'usr-cashier-01',
+    publicId: '01JUSR02CASHIER',
+    username: 'cajero1',
+    displayName: 'Carlos Ramírez',
+    role: UserRole.CASHIER,
+    cubicleId: 'cub-01',
+    cubicleCode: 'CUB-01',
+    cubicleDisplayName: 'Cubículo 01',
+    active: true,
+    createdAt: '2026-10-01T08:00:00.000Z',
+    updatedAt: '2026-10-01T08:00:00.000Z',
+  },
+];
+
 function setupApiMock() {
+  const usersStore = MOCK_USERS.map((u) => ({ ...u }));
+
   vi.mocked(apiClient).mockImplementation(async (endpoint: string, options?: RequestInit) => {
+    if (endpoint.startsWith('/admin/users')) {
+      const method = options?.method ?? 'GET';
+      if (endpoint === '/admin/users' && method === 'GET') {
+        return { success: true, data: usersStore.map((u) => ({ ...u })) };
+      }
+      if (endpoint === '/admin/users' && method === 'POST') {
+        const body = JSON.parse(String(options?.body ?? '{}'));
+        const created: AdminUserDto = {
+          id: `usr-${usersStore.length + 1}`,
+          publicId: `01JUSRNEW${usersStore.length + 1}`,
+          username: body.username,
+          displayName: body.displayName,
+          role: body.role,
+          cubicleId: body.cubicleId ?? null,
+          cubicleCode: body.cubicleId === 'cub-01' ? 'CUB-01' : null,
+          cubicleDisplayName: body.cubicleId === 'cub-01' ? 'Cubículo 01' : null,
+          active: body.active ?? true,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        usersStore.push(created);
+        return { success: true, data: created };
+      }
+      if (endpoint.endsWith('/reset-password') && method === 'POST') {
+        return { success: true, data: { reset: true, id: 'usr-cashier-01' } };
+      }
+      if (method === 'PATCH') {
+        const id = endpoint.split('/')[3];
+        const body = JSON.parse(String(options?.body ?? '{}'));
+        const target = usersStore.find((u) => u.id === id);
+        if (target) {
+          Object.assign(target, body);
+        }
+        return { success: true, data: target ?? usersStore[0] };
+      }
+    }
     if (endpoint.startsWith('/admin/pharmacists')) {
       return {
         success: true,
@@ -319,6 +388,83 @@ describe('[SCR-ADM-005] Gestión de Sedes y Usuarios Asociados', () => {
         expect.objectContaining({
           method: 'POST',
           body: expect.stringContaining('"pharmacistId":"pharm-01"'),
+        }),
+      );
+    });
+  });
+
+  it('5. Lista las cuentas operativas del sistema con roles y cubículos asignados', async () => {
+    renderScreen();
+
+    await waitFor(() => {
+      expect(screen.getByText(/Cuentas Operativas del Sistema \(2\)/i)).toBeDefined();
+      expect(screen.getByText('admin_cubiora')).toBeDefined();
+      expect(screen.getByText('cajero1')).toBeDefined();
+      expect(screen.getByText('Cubículo 01 (CUB-01)')).toBeDefined();
+    });
+  });
+
+  it('6. Permite crear una nueva cuenta operativa mediante Radix Dialog y POST /admin/users', async () => {
+    renderScreen();
+
+    await waitFor(() => {
+      expect(screen.getByText('cajero1')).toBeDefined();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Crear Cuenta Operativa/i }));
+    const dialog = await screen.findByRole('dialog');
+
+    fireEvent.change(within(dialog).getByLabelText(/Nombre de usuario/i), {
+      target: { value: 'cajero3' },
+    });
+    fireEvent.change(within(dialog).getByLabelText(/Nombre visible/i), {
+      target: { value: 'Laura Gómez' },
+    });
+    fireEvent.change(within(dialog).getByLabelText(/Contraseña inicial/i), {
+      target: { value: 'ClaveSegura2026!' },
+    });
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Crear Cuenta' }));
+
+    await waitFor(() => {
+      expect(apiClient).toHaveBeenCalledWith(
+        '/admin/users',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.stringContaining('"username":"cajero3"'),
+        }),
+      );
+      expect(screen.getByText('cajero3')).toBeDefined();
+    });
+  });
+
+  it('7. Permite restablecer la contraseña de un usuario operativo mediante POST /admin/users/:id/reset-password', async () => {
+    renderScreen();
+
+    await waitFor(() => {
+      expect(screen.getByText('cajero1')).toBeDefined();
+    });
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /Restablecer contraseña de cajero1/i }),
+    );
+    const dialog = await screen.findByRole('dialog');
+
+    fireEvent.change(within(dialog).getByLabelText(/Nueva contraseña/i), {
+      target: { value: 'NuevaClave2026!' },
+    });
+    fireEvent.change(within(dialog).getByLabelText(/Confirmar contraseña/i), {
+      target: { value: 'NuevaClave2026!' },
+    });
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Restablecer Contraseña' }));
+
+    await waitFor(() => {
+      expect(apiClient).toHaveBeenCalledWith(
+        '/admin/users/usr-cashier-01/reset-password',
+        expect.objectContaining({
+          method: 'POST',
+          body: JSON.stringify({ newPassword: 'NuevaClave2026!' }),
         }),
       );
     });

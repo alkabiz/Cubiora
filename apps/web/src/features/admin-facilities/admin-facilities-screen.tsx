@@ -39,6 +39,7 @@ import {
 import { FacilityFormDialog } from './facility-form-dialog';
 import { AssignPharmacistDialog } from './assign-pharmacist-dialog';
 import { DeleteFacilityDialog } from './delete-facility-dialog';
+import { UsersManagementPanel } from '../admin-users';
 
 const FACILITY_STATUS_COLOR: Record<FacilityStatus, 'green' | 'amber' | 'gray'> = {
   [FacilityStatus.ACTIVE]: 'green',
@@ -604,6 +605,9 @@ export const AdminFacilitiesScreen: React.FC = () => {
           </div>
         </section>
       )}
+
+      {/* ═══════════════ CUENTAS OPERATIVAS DEL SISTEMA ═══════════════ */}
+      <UsersManagementPanel facilities={facilities} />
 
       {/* Modales Radix Dialog */}
       <FacilityFormDialog

@@ -30,4 +30,5 @@ export const adminQueryKeys = {
   }) => ['admin', 'pharmacists', filters ?? {}] as const,
   facilities: () => ['admin', 'facilities'] as const,
   cubicles: (facilityId?: string) => ['admin', 'cubicles', facilityId ?? 'primary'] as const,
+  users: () => ['admin', 'users'] as const,
 };
