@@ -1,17 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Dialog } from '@radix-ui/themes';
 import {
-  ArrowRightIcon,
-  CheckCircledIcon,
-  CheckIcon,
-  ClockIcon,
-  Cross2Icon,
-  ExclamationTriangleIcon,
-  PersonIcon,
-  PlayIcon,
-  ReloadIcon,
-  UpdateIcon,
-} from '@radix-ui/react-icons';
+  AlertTriangle,
+  ArrowRight,
+  Check,
+  CheckCircle2,
+  Clock,
+  Play,
+  RefreshCw,
+  User,
+  X,
+} from 'lucide-react';
 import { DispensationResolution, type CubicleActiveTicket } from '@cubiora/shared';
 import type { CubicleVisualStep, CubicleWorkspace } from './types';
 import { formatClockTime, formatDuration, waitingPatientsLabel } from './cubicle-view-model';
@@ -66,21 +65,21 @@ const DOT_TONES: Record<BadgeTone, string> = {
   violet: 'bg-[#8B5CF6]',
   blue: 'bg-[#0EA5E9]',
   red: 'bg-[#EF4444]',
-  slate: 'bg-[#94A3B8]',
+  slate: 'bg-[#64748B]',
 };
 
 // Cumple WCAG 2.5.8 Target Size (Minimum, Nivel AA: 24×24 px); elevado a min-h-[40px]/[44px] como mejora ergonómica hospitalaria en ventanilla
 const PRIMARY_BUTTON =
-  'inline-flex w-full sm:w-auto items-center justify-center min-h-[44px] gap-2 px-6 py-3 rounded-lg bg-[#0F2942] hover:bg-[#0A1B2C] text-white font-bold text-sm transition-colors cursor-pointer shadow-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0EA5E9] disabled:cursor-not-allowed disabled:opacity-60';
+  'inline-flex w-full sm:w-auto items-center justify-center min-h-[44px] gap-2 px-6 py-3 rounded-lg bg-[#0F2942] hover:bg-[#0A1B2C] text-white font-bold text-sm transition-colors cursor-pointer shadow-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0F766E] disabled:cursor-not-allowed disabled:opacity-60';
 
 const PRIMARY_BLUE_BUTTON =
-  'inline-flex w-full sm:w-auto items-center justify-center min-h-[44px] gap-2 px-6 py-3 rounded-lg bg-[#0369A1] hover:bg-[#075985] text-white font-bold text-sm transition-colors cursor-pointer shadow-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0F2942] disabled:cursor-not-allowed disabled:opacity-60';
+  'inline-flex w-full sm:w-auto items-center justify-center min-h-[44px] gap-2 px-6 py-3 rounded-lg bg-[#0F766E] hover:bg-[#115E59] text-white font-bold text-sm transition-colors cursor-pointer shadow-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0F766E] disabled:cursor-not-allowed disabled:opacity-60';
 
 const SECONDARY_BUTTON =
-  'inline-flex w-full sm:w-auto items-center justify-center min-h-[40px] gap-2 px-4 py-2.5 rounded text-xs font-semibold text-[#0F2942] bg-white hover:bg-[#F8FAFC] border border-[#CBD5E1] transition-colors cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0EA5E9] disabled:cursor-not-allowed disabled:opacity-60';
+  'inline-flex w-full sm:w-auto items-center justify-center min-h-[40px] gap-2 px-4 py-2.5 rounded text-xs font-semibold text-[#0F2942] bg-white hover:bg-[#F8FAFC] border border-[#64748B] transition-colors cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0F766E] disabled:cursor-not-allowed disabled:opacity-60';
 
 const DANGER_BUTTON =
-  'inline-flex w-full sm:w-auto items-center justify-center min-h-[40px] gap-2 px-4 py-2.5 rounded text-xs font-semibold text-[#BA1A1A] hover:bg-[#FFDAD6]/30 transition-colors cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#BA1A1A] disabled:cursor-not-allowed disabled:opacity-60';
+  'inline-flex w-full sm:w-auto items-center justify-center min-h-[40px] gap-2 px-4 py-2.5 rounded text-xs font-semibold text-[#BA1A1A] border border-transparent hover:border-[#FECACA] hover:bg-[#FFDAD6]/30 transition-colors cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#BA1A1A] disabled:cursor-not-allowed disabled:opacity-60';
 
 function StatusBadge({ step }: { step: CubicleVisualStep }) {
   const config = BADGE_CONFIG[step];
@@ -91,10 +90,10 @@ function StatusBadge({ step }: { step: CubicleVisualStep }) {
       className={`inline-flex items-center gap-1.5 px-3 py-1 rounded border text-xs font-bold uppercase tracking-wider ${BADGE_TONES[config.tone]}`}
     >
       {config.spinner ? (
-        <UpdateIcon className="w-3 h-3 animate-spin" aria-hidden="true" />
+        <RefreshCw className="w-3 h-3 motion-safe:animate-spin" aria-hidden="true" />
       ) : (
         <span
-          className={`w-2 h-2 rounded-full ${DOT_TONES[config.tone]} ${config.pulse ? 'animate-pulse' : ''}`}
+          className={`w-2 h-2 rounded-full ${DOT_TONES[config.tone]} ${config.pulse ? 'motion-safe:animate-pulse' : ''}`}
           aria-hidden="true"
         />
       )}
@@ -116,7 +115,7 @@ interface TicketSummaryProps {
 const TICKET_TONES = {
   neutral: {
     panel: 'bg-[#F8FAFC] border-[#E2E8F0]',
-    label: 'text-[#64748B]',
+    label: 'text-[#475569]',
     chip: 'text-[#475569] border-[#E2E8F0]',
   },
   called: {
@@ -163,7 +162,7 @@ function TicketSummary({
           <div
             className={`font-mono text-xs font-bold bg-white px-2.5 py-1 rounded border flex items-center gap-1.5 ${styles.chip}`}
           >
-            <ClockIcon className="w-3.5 h-3.5" aria-hidden="true" />
+            <Clock className="w-3.5 h-3.5" aria-hidden="true" />
             <span>
               {timerPrefix ? `${timerPrefix} ` : ''}
               {timer}
@@ -178,18 +177,18 @@ function TicketSummary({
 
       <div className="space-y-1">
         <div className="text-sm font-bold text-[#0F2942] flex items-center gap-1.5">
-          <PersonIcon className="w-3.5 h-3.5 text-[#64748B] shrink-0" aria-hidden="true" />
+          <User className="w-3.5 h-3.5 text-[#475569] shrink-0" aria-hidden="true" />
           <span>{ticket.patientName}</span>
         </div>
 
         {ticket.maskedDocument && (
-          <div className="text-xs text-[#64748B]">
+          <div className="text-xs text-[#475569]">
             Documento <span className="font-mono">{ticket.maskedDocument}</span>
           </div>
         )}
       </div>
 
-      <div className="text-xs text-[#64748B] pt-1">
+      <div className="text-xs text-[#475569] pt-1">
         <div>{timestampText}</div>
       </div>
     </div>
@@ -199,9 +198,9 @@ function TicketSummary({
 function WaitingCounter({ count, className = '' }: { count: number; className?: string }) {
   return (
     <div
-      className={`inline-flex items-center gap-2 text-xs font-medium text-[#64748B] ${className}`}
+      className={`inline-flex items-center gap-2 text-xs font-medium text-[#475569] ${className}`}
     >
-      <PersonIcon className="w-3.5 h-3.5" aria-hidden="true" />
+      <User className="w-3.5 h-3.5" aria-hidden="true" />
       <span>{waitingPatientsLabel(count)}</span>
     </div>
   );
@@ -210,7 +209,7 @@ function WaitingCounter({ count, className = '' }: { count: number; className?: 
 function SuccessNotice({ children }: { children: React.ReactNode }) {
   return (
     <div className="p-3 rounded-lg bg-[#ECFDF5] border border-[#A7F3D0] text-[#065F46] text-xs flex items-start gap-2">
-      <CheckCircledIcon className="w-4 h-4 text-[#10B981] shrink-0 mt-0.5" aria-hidden="true" />
+      <CheckCircle2 className="w-4 h-4 text-[#10B981] shrink-0 mt-0.5" aria-hidden="true" />
       <span className="font-medium leading-relaxed">{children}</span>
     </div>
   );
@@ -219,7 +218,7 @@ function SuccessNotice({ children }: { children: React.ReactNode }) {
 function WarningNotice({ children }: { children: React.ReactNode }) {
   return (
     <div className="p-3 rounded-lg bg-[#FEF2F2] border border-[#FECACA] text-[#991B1B] text-xs flex items-start gap-2">
-      <Cross2Icon className="w-4 h-4 text-[#EF4444] shrink-0 mt-0.5" aria-hidden="true" />
+      <X className="w-4 h-4 text-[#EF4444] shrink-0 mt-0.5" aria-hidden="true" />
       <span className="font-medium leading-relaxed">{children}</span>
     </div>
   );
@@ -232,7 +231,7 @@ function OfflineBanner({ workspace }: { workspace: CubicleWorkspace }) {
       className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-lg border border-[#FDE68A] bg-[#FFFBEB] text-[#92400E]"
     >
       <div className="flex items-start gap-2">
-        <ExclamationTriangleIcon className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
+        <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" aria-hidden="true" />
         <div className="space-y-0.5">
           <div className="text-xs font-bold">Sin conexión</div>
           <p className="text-xs leading-relaxed">
@@ -245,13 +244,12 @@ function OfflineBanner({ workspace }: { workspace: CubicleWorkspace }) {
         type="button"
         onClick={() => void workspace.refresh()}
         disabled={workspace.isRefreshing}
-        className="inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded border border-[#FDE68A] bg-white font-semibold text-[#92400E] hover:bg-[#FEF3C7] transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex items-center justify-center min-h-[32px] gap-1.5 px-3 py-1.5 rounded border border-[#B45309] bg-white text-xs font-semibold text-[#92400E] hover:bg-[#FEF3C7] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {workspace.isRefreshing ? (
-          <UpdateIcon className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
-        ) : (
-          <ReloadIcon className="w-3.5 h-3.5" aria-hidden="true" />
-        )}
+        <RefreshCw
+          className={`w-3.5 h-3.5${workspace.isRefreshing ? ' motion-safe:animate-spin' : ''}`}
+          aria-hidden="true"
+        />
         Verificar conexión
       </button>
     </div>
@@ -413,71 +411,73 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
             onChange={(e) => setPrescriptionCode(e.target.value)}
             placeholder="ej. RX-E2E-9001"
             disabled={isClosing}
-            className="w-full rounded border border-slate-300 bg-white px-2.5 py-1.5 font-mono text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-amber-500"
+            className="w-full rounded border border-slate-500 bg-white px-2.5 py-1.5 font-mono text-xs text-slate-900 placeholder:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-1"
           />
         </div>
 
         {/* Selector de Tipo de Resolución Farmacéutica */}
-        <div className="mt-4 space-y-2">
-          <label className="block text-xs font-bold text-[#0F2942]">
+        <fieldset className="mt-4 space-y-2 border-0 p-0 m-0">
+          <legend className="block text-xs font-bold text-[#0F2942] mb-2">
             Resolución de Dispensación Farmacéutica
-          </label>
+          </legend>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <button
               type="button"
+              aria-pressed={resolution === DispensationResolution.TOTAL_DELIVERED}
               onClick={() => {
                 setResolution(DispensationResolution.TOTAL_DELIVERED);
                 setFormError(null);
               }}
               disabled={isClosing}
-              className={`p-3 rounded-lg border text-left transition-all cursor-pointer ${
+              className={`p-3 rounded-lg border text-left transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-1 ${
                 resolution === DispensationResolution.TOTAL_DELIVERED
-                  ? 'border-emerald-500 bg-emerald-50/60 ring-2 ring-emerald-500/20'
-                  : 'border-slate-200 bg-white hover:bg-slate-50'
+                  ? 'border-emerald-600 bg-emerald-50/60 ring-2 ring-emerald-500/20'
+                  : 'border-slate-500 bg-white hover:bg-slate-50'
               }`}
             >
               <div className="flex items-center gap-2">
-                <CheckCircledIcon className="w-4 h-4 text-emerald-600 shrink-0" aria-hidden="true" />
+                <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" aria-hidden="true" />
                 <span className="text-xs font-bold text-slate-900">Entrega Total (PBS)</span>
               </div>
-              <p className="mt-1 text-[11px] text-slate-500 leading-snug">
+              <p className="mt-1 text-[11px] text-slate-600 leading-snug">
                 Todos los medicamentos formulados fueron entregados al paciente.
               </p>
             </button>
 
             <button
               type="button"
+              aria-pressed={resolution === DispensationResolution.PENDING_48H}
               onClick={() => {
                 setResolution(DispensationResolution.PENDING_48H);
                 setFormError(null);
               }}
               disabled={isClosing}
-              className={`p-3 rounded-lg border text-left transition-all cursor-pointer ${
+              className={`p-3 rounded-lg border text-left transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-1 ${
                 resolution === DispensationResolution.PENDING_48H
-                  ? 'border-amber-500 bg-amber-50/60 ring-2 ring-amber-500/20'
-                  : 'border-slate-200 bg-white hover:bg-slate-50'
+                  ? 'border-amber-600 bg-amber-50/60 ring-2 ring-amber-500/20'
+                  : 'border-slate-500 bg-white hover:bg-slate-50'
               }`}
             >
               <div className="flex items-center gap-2">
-                <ExclamationTriangleIcon className="w-4 h-4 text-amber-600 shrink-0" aria-hidden="true" />
+                <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" aria-hidden="true" />
                 <span className="text-xs font-bold text-slate-900">Generar Pendiente 48h</span>
               </div>
-              <p className="mt-1 text-[11px] text-slate-500 leading-snug">
+              <p className="mt-1 text-[11px] text-slate-600 leading-snug">
                 Res. 1604 MinSalud · Entrega domiciliaria obligatoria &le; 48h.
               </p>
             </button>
           </div>
-        </div>
+        </fieldset>
 
         {/* Formulario condicional para Pendiente 48h */}
         {resolution === DispensationResolution.PENDING_48H && (
           <div className="mt-3.5 space-y-3 rounded-lg border border-amber-200/90 bg-amber-50/40 p-3.5 text-xs text-amber-950">
             <div className="flex items-start gap-2">
-              <ExclamationTriangleIcon className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" aria-hidden="true" />
+              <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" aria-hidden="true" />
               <div className="space-y-0.5">
                 <span className="font-bold text-amber-900">Garantía Legal de Entrega &le; 48 Horas:</span>
                 <p className="text-[11px] text-amber-800 leading-relaxed">
-                  Conforme a la Resolución 1604/2013 de MinSalud, Audifarma garantiza el despacho de los medicamentos pendientes al domicilio del usuario en un plazo máximo de 48 horas.
+                  Conforme a la Resolución 1604/2013 de MinSalud, Cubiora garantiza el despacho de los medicamentos pendientes al domicilio del usuario en un plazo máximo de 48 horas.
                 </p>
               </div>
             </div>
@@ -485,7 +485,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
             <div className="space-y-2 pt-1">
               <div>
                 <label htmlFor="delivery-address-input" className="block text-[11px] font-bold text-slate-800">
-                  Dirección de Entrega Domiciliaria <span className="text-red-600">*</span>
+                  Dirección de Entrega Domiciliaria <span className="text-red-700">*</span>
                 </label>
                 <input
                   id="delivery-address-input"
@@ -494,13 +494,15 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
                   onChange={(e) => setDeliveryAddress(e.target.value)}
                   placeholder="ej. Cra 43A # 12-45 Apto 302, Barrio..."
                   disabled={isClosing}
-                  className="mt-1 w-full rounded border border-slate-300 bg-white px-2.5 py-1.5 font-sans text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  aria-invalid={Boolean(formError && !deliveryAddress.trim())}
+                  aria-describedby={formError ? 'close-ticket-form-error' : undefined}
+                  className="mt-1 w-full rounded border border-slate-500 bg-white px-2.5 py-1.5 font-sans text-xs text-slate-900 placeholder:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-1"
                 />
               </div>
 
               <div>
                 <label htmlFor="delivery-phone-input" className="block text-[11px] font-bold text-slate-800">
-                  Teléfono de Contacto <span className="text-red-600">*</span>
+                  Teléfono de Contacto <span className="text-red-700">*</span>
                 </label>
                 <input
                   id="delivery-phone-input"
@@ -509,7 +511,9 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
                   onChange={(e) => setDeliveryPhone(e.target.value)}
                   placeholder="ej. 300 123 4567"
                   disabled={isClosing}
-                  className="mt-1 w-full rounded border border-slate-300 bg-white px-2.5 py-1.5 font-mono text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  aria-invalid={Boolean(formError && !deliveryPhone.trim())}
+                  aria-describedby={formError ? 'close-ticket-form-error' : undefined}
+                  className="mt-1 w-full rounded border border-slate-500 bg-white px-2.5 py-1.5 font-mono text-xs text-slate-900 placeholder:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-1"
                 />
               </div>
 
@@ -524,7 +528,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
                   onChange={(e) => setPendingDetails(e.target.value)}
                   placeholder="ej. Losartán 50mg x 30 tab (desabastecimiento)"
                   disabled={isClosing}
-                  className="mt-1 w-full rounded border border-slate-300 bg-white px-2.5 py-1.5 font-sans text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  className="mt-1 w-full rounded border border-slate-500 bg-white px-2.5 py-1.5 font-sans text-xs text-slate-900 placeholder:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-1"
                 />
               </div>
             </div>
@@ -532,7 +536,11 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
         )}
 
         {formError && (
-          <div className="mt-3 p-2.5 rounded bg-red-50 border border-red-200 text-red-800 text-xs font-semibold" role="alert">
+          <div
+            id="close-ticket-form-error"
+            className="mt-3 p-2.5 rounded bg-red-50 border border-red-200 text-red-800 text-xs font-semibold"
+            role="alert"
+          >
             {formError}
           </div>
         )}
@@ -542,7 +550,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
             className="mt-4 flex items-center gap-2 rounded-lg border border-[#C9E6FF] bg-[#EFF4FF] p-3 text-xs font-semibold text-[#006591]"
             aria-live="polite"
           >
-            <UpdateIcon className="w-4 h-4 animate-spin" aria-hidden="true" />
+            <RefreshCw className="w-4 h-4 motion-safe:animate-spin" aria-hidden="true" />
             Cerrando turno y liberando cubículo…
           </div>
         )}
@@ -567,9 +575,9 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
             className={PRIMARY_BUTTON}
           >
             {isClosing ? (
-              <UpdateIcon className="w-4 h-4 animate-spin" aria-hidden="true" />
+              <RefreshCw className="w-4 h-4 motion-safe:animate-spin" aria-hidden="true" />
             ) : (
-              <CheckIcon className="w-4 h-4" aria-hidden="true" />
+              <Check className="w-4 h-4" aria-hidden="true" />
             )}
             Cerrar turno y liberar cubículo
           </button>
@@ -619,7 +627,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
             className="mt-4 flex items-center gap-2 rounded-lg border border-[#FECACA] bg-[#FEF2F2] p-3 text-xs font-semibold text-[#991B1B]"
             aria-live="polite"
           >
-            <UpdateIcon className="w-4 h-4 animate-spin" aria-hidden="true" />
+            <RefreshCw className="w-4 h-4 motion-safe:animate-spin" aria-hidden="true" />
             Marcando como no presentado…
           </div>
         )}
@@ -641,9 +649,9 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
             className={`${PRIMARY_BUTTON} !bg-[#BA1A1A] hover:!bg-[#93000A]`}
           >
             {isMarkingNoShow ? (
-              <UpdateIcon className="w-4 h-4 animate-spin" aria-hidden="true" />
+              <RefreshCw className="w-4 h-4 motion-safe:animate-spin" aria-hidden="true" />
             ) : (
-              <Cross2Icon className="w-4 h-4" aria-hidden="true" />
+              <X className="w-4 h-4" aria-hidden="true" />
             )}
             Marcar como no presentado
           </button>
@@ -657,14 +665,14 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
       case 'INITIAL_LOADING':
         return (
           <div className="py-10 text-center space-y-3" aria-live="polite">
-            <UpdateIcon
-              className="w-7 h-7 animate-spin text-[#0EA5E9] mx-auto"
+            <RefreshCw
+              className="w-7 h-7 motion-safe:animate-spin text-[#0F766E] mx-auto"
               aria-hidden="true"
             />
             <div className="text-base font-bold text-[#0F2942]">
               Sincronizando estado del cubículo…
             </div>
-            <p className="text-xs text-[#64748B]">
+            <p className="text-xs text-[#475569]">
               Consultando el turno activo y la versión vigente del servidor.
             </p>
           </div>
@@ -673,17 +681,17 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
       case 'OFFLINE':
         return (
           <div className="py-8 text-center space-y-4" role="alert">
-            <ExclamationTriangleIcon
+            <AlertTriangle
               className="w-8 h-8 text-[#D97706] mx-auto"
               aria-hidden="true"
             />
             <div className="space-y-1">
               <div className="text-base font-bold text-[#0F2942]">Sin conexión</div>
-              <p className="text-xs text-[#64748B] max-w-md mx-auto leading-relaxed">
+              <p className="text-xs text-[#475569] max-w-md mx-auto leading-relaxed">
                 Cubiora no puede confirmar cambios en este momento.
               </p>
               {workspace.syncError && (
-                <p className="text-[11px] text-[#94A3B8] max-w-md mx-auto leading-relaxed">
+                <p className="text-[11px] text-[#475569] max-w-md mx-auto leading-relaxed">
                   {workspace.syncError}
                 </p>
               )}
@@ -694,11 +702,10 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
               disabled={workspace.isRefreshing}
               className={PRIMARY_BUTTON}
             >
-              {workspace.isRefreshing ? (
-                <UpdateIcon className="w-4 h-4 animate-spin" aria-hidden="true" />
-              ) : (
-                <ReloadIcon className="w-4 h-4" aria-hidden="true" />
-              )}
+              <RefreshCw
+                className={`w-4 h-4${workspace.isRefreshing ? ' motion-safe:animate-spin' : ''}`}
+                aria-hidden="true"
+              />
               Verificar conexión
             </button>
           </div>
@@ -707,7 +714,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
       case 'UNCERTAIN_RESULT':
         return (
           <div className="py-8 text-center space-y-4" role="alert">
-            <ExclamationTriangleIcon
+            <AlertTriangle
               className="w-8 h-8 text-[#D97706] mx-auto"
               aria-hidden="true"
             />
@@ -715,7 +722,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
               <div className="text-base font-bold text-[#0F2942]">
                 No pudimos confirmar la operación.
               </div>
-              <p className="text-xs text-[#64748B] max-w-md mx-auto leading-relaxed">
+              <p className="text-xs text-[#475569] max-w-md mx-auto leading-relaxed">
                 Cubiora verificará el estado actual antes de permitir otro intento.
               </p>
             </div>
@@ -725,11 +732,10 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
               disabled={workspace.isReconciling}
               className={PRIMARY_BUTTON}
             >
-              {workspace.isReconciling ? (
-                <UpdateIcon className="w-4 h-4 animate-spin" aria-hidden="true" />
-              ) : (
-                <ReloadIcon className="w-4 h-4" aria-hidden="true" />
-              )}
+              <RefreshCw
+                className={`w-4 h-4${workspace.isReconciling ? ' motion-safe:animate-spin' : ''}`}
+                aria-hidden="true"
+              />
               Verificar estado actual
             </button>
           </div>
@@ -738,12 +744,12 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
       case 'RECONCILING':
         return (
           <div className="py-10 text-center space-y-4" aria-live="polite">
-            <UpdateIcon
-              className="w-8 h-8 animate-spin text-[#0EA5E9] mx-auto"
+            <RefreshCw
+              className="w-8 h-8 motion-safe:animate-spin text-[#0F766E] mx-auto"
               aria-hidden="true"
             />
             <div className="text-base font-bold text-[#0F2942]">Verificando estado actual…</div>
-            <p className="text-xs text-[#64748B] leading-relaxed">
+            <p className="text-xs text-[#475569] leading-relaxed">
               Consultando el snapshot vigente del cubículo. No se repetirá el comando anterior.
             </p>
           </div>
@@ -762,7 +768,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
               <div className="text-base sm:text-lg font-semibold text-[#0F2942]">
                 Esperando el siguiente turno
               </div>
-              <p className="text-xs text-[#64748B] max-w-md mx-auto leading-relaxed">
+              <p className="text-xs text-[#475569] max-w-md mx-auto leading-relaxed">
                 El próximo turno se asignará automáticamente
               </p>
             </div>
@@ -772,7 +778,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
             </div>
 
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
-              <div className="inline-flex items-center gap-2 text-xs font-medium text-[#64748B]">
+              <div className="inline-flex items-center gap-2 text-xs font-medium text-[#475569]">
                 <span
                   className={`w-2 h-2 rounded-full ${workspace.isOnline ? 'bg-[#10B981]' : 'bg-[#EF4444]'}`}
                   aria-hidden="true"
@@ -788,11 +794,10 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
                 disabled={workspace.isRefreshing || isProcessing}
                 className={SECONDARY_BUTTON}
               >
-                {workspace.isRefreshing ? (
-                  <UpdateIcon className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
-                ) : (
-                  <ReloadIcon className="w-3.5 h-3.5" aria-hidden="true" />
-                )}
+                <RefreshCw
+                  className={`w-3.5 h-3.5${workspace.isRefreshing ? ' motion-safe:animate-spin' : ''}`}
+                  aria-hidden="true"
+                />
                 Actualizar estado
               </button>
             </div>
@@ -827,18 +832,18 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
               >
                 {isCalling ? (
                   <>
-                    <UpdateIcon
-                      className="w-4 h-4 animate-spin text-[#38BDF8]"
+                    <RefreshCw
+                      className="w-4 h-4 motion-safe:animate-spin text-[#99F6E4]"
                       aria-hidden="true"
                     />
                     Llamando turno…
                   </>
                 ) : (
                   <>
-                    <PlayIcon className="w-4 h-4" aria-hidden="true" />
+                    <Play className="w-4 h-4" aria-hidden="true" />
                     Llamar turno
                     {hotkeysEnabled && (
-                      <kbd className="text-[10px] font-mono font-bold bg-white text-slate-900 px-1.5 py-0.5 rounded ml-1.5 shadow-xs border border-slate-200">
+                      <kbd className="text-[11px] font-mono font-bold bg-white text-slate-900 px-1.5 py-0.5 rounded ml-1.5 shadow-xs border border-slate-200">
                         {CASHIER_HOTKEY_MAP.call.label}
                       </kbd>
                     )}
@@ -846,7 +851,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
                 )}
               </button>
 
-              <div className="text-xs text-[#64748B]">
+              <div className="text-xs text-[#475569]">
                 El llamado se registra en el servidor y se anuncia en sala.
               </div>
             </div>
@@ -886,15 +891,15 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
               >
                 {isStarting ? (
                   <>
-                    <UpdateIcon className="w-4 h-4 animate-spin" aria-hidden="true" />
+                    <RefreshCw className="w-4 h-4 motion-safe:animate-spin" aria-hidden="true" />
                     Iniciando atención…
                   </>
                 ) : (
                   <>
-                    <ArrowRightIcon className="w-4 h-4" aria-hidden="true" />
+                    <ArrowRight className="w-4 h-4" aria-hidden="true" />
                     Iniciar atención
                     {hotkeysEnabled && (
-                      <kbd className="text-[10px] font-mono font-bold bg-white text-slate-900 px-1.5 py-0.5 rounded ml-1.5 shadow-xs border border-slate-200">
+                      <kbd className="text-[11px] font-mono font-bold bg-white text-slate-900 px-1.5 py-0.5 rounded ml-1.5 shadow-xs border border-slate-200">
                         {CASHIER_HOTKEY_MAP.start.label}
                       </kbd>
                     )}
@@ -910,7 +915,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
                     disabled={isStarting || isConfirming || workspace.actionsDisabled}
                     className={SECONDARY_BUTTON}
                   >
-                    <ReloadIcon className="w-3.5 h-3.5" aria-hidden="true" />
+                    <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
                     Repetir llamado
                   </button>
 
@@ -921,12 +926,12 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
                     disabled={isStarting || isConfirming || workspace.actionsDisabled}
                     className={DANGER_BUTTON}
                   >
-                    <Cross2Icon className="w-3.5 h-3.5" aria-hidden="true" />
+                    <X className="w-3.5 h-3.5" aria-hidden="true" />
                     Paciente no presentado
                   </button>
                 </div>
 
-                <div className="text-xs text-[#64748B]">
+                <div className="text-xs text-[#475569]">
                   El turno permanece en estado llamado hasta iniciar la atención.
                 </div>
               </div>
@@ -968,7 +973,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
                 className="text-xs font-bold text-[#0F2942] flex items-center justify-between"
               >
                 <span>Fórmula Médica / MIPRES</span>
-                <span className="text-[11px] font-mono text-[#64748B]">Soporte Lector USB / Pistola</span>
+                <span className="text-[11px] font-mono text-[#475569]">Soporte Lector USB / Pistola</span>
               </label>
               <div className="relative">
                 <input
@@ -977,10 +982,10 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
                   value={prescriptionCode}
                   onChange={(e) => setPrescriptionCode(e.target.value)}
                   placeholder="Escanee código de barras de fórmula o digite MIPRES..."
-                  className="w-full font-mono text-xs px-3.5 py-2.5 rounded-lg border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0EA5E9] focus:border-transparent transition-all"
+                  className="w-full font-mono text-xs px-3.5 py-2.5 rounded-lg border border-slate-500 bg-white text-slate-900 placeholder:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] focus-visible:ring-offset-1 transition-all"
                 />
               </div>
-              <p className="text-[11px] text-[#64748B] leading-relaxed">
+              <p className="text-[11px] text-[#475569] leading-relaxed">
                 El código de fórmula se vinculará de forma atómica a la auditoría de dispensación y radicación de pendientes.
               </p>
             </div>
@@ -996,16 +1001,16 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
                 aria-keyshortcuts={CASHIER_HOTKEY_MAP.close.label}
                 className={PRIMARY_BUTTON}
               >
-                <CheckIcon className="w-4 h-4" aria-hidden="true" />
+                <Check className="w-4 h-4" aria-hidden="true" />
                 Cerrar turno
                 {hotkeysEnabled && (
-                  <kbd className="text-[10px] font-mono font-bold bg-white text-slate-900 px-1.5 py-0.5 rounded ml-1.5 shadow-xs border border-slate-200">
+                  <kbd className="text-[11px] font-mono font-bold bg-white text-slate-900 px-1.5 py-0.5 rounded ml-1.5 shadow-xs border border-slate-200">
                     {CASHIER_HOTKEY_MAP.close.label}
                   </kbd>
                 )}
               </button>
 
-              <div className="text-xs text-[#64748B]">
+              <div className="text-xs text-[#475569]">
                 El cierre registra la finalización y libera el cubículo en una sola operación.
               </div>
             </div>
@@ -1024,12 +1029,12 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
       case 'PROCESSING_NO_SHOW':
         return (
           <div className="py-10 text-center space-y-4" aria-live="polite">
-            <UpdateIcon
-              className="w-8 h-8 animate-spin text-[#BA1A1A] mx-auto"
+            <RefreshCw
+              className="w-8 h-8 motion-safe:animate-spin text-[#BA1A1A] mx-auto"
               aria-hidden="true"
             />
             <div className="text-base font-bold text-[#0F2942]">Marcando como no presentado…</div>
-            <p className="text-xs text-[#64748B] leading-relaxed">
+            <p className="text-xs text-[#475569] leading-relaxed">
               Actualizando el turno y consultando el siguiente paciente en la cola.
             </p>
           </div>
@@ -1062,11 +1067,11 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
                 disabled={workspace.actionsDisabled}
                 className={PRIMARY_BUTTON}
               >
-                <PlayIcon className="w-4 h-4" aria-hidden="true" />
+                <Play className="w-4 h-4" aria-hidden="true" />
                 Llamar siguiente turno
               </button>
 
-              <div className="text-xs text-[#64748B]">
+              <div className="text-xs text-[#475569]">
                 El cierre del turno anterior ya fue confirmado por el servidor.
               </div>
             </div>
@@ -1085,7 +1090,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
               <div className="text-base font-bold text-[#0F2942]">
                 {waitingPatientsLabel(workspace.waitingCount)}
               </div>
-              <p className="text-xs text-[#64748B] leading-relaxed">
+              <p className="text-xs text-[#475569] leading-relaxed">
                 El cubículo permanece disponible
               </p>
             </div>
@@ -1097,15 +1102,14 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
                 disabled={workspace.isRefreshing}
                 className={SECONDARY_BUTTON}
               >
-                {workspace.isRefreshing ? (
-                  <UpdateIcon className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
-                ) : (
-                  <ReloadIcon className="w-3.5 h-3.5" aria-hidden="true" />
-                )}
+                <RefreshCw
+                  className={`w-3.5 h-3.5${workspace.isRefreshing ? ' motion-safe:animate-spin' : ''}`}
+                  aria-hidden="true"
+                />
                 Actualizar estado
               </button>
 
-              <div className="text-xs text-[#64748B]">
+              <div className="text-xs text-[#475569]">
                 {workspace.isOnline ? 'Cubículo sincronizado' : 'Sin conexión con el servidor'}
               </div>
             </div>
@@ -1139,11 +1143,11 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
                 disabled={workspace.actionsDisabled}
                 className={PRIMARY_BUTTON}
               >
-                <PlayIcon className="w-4 h-4" aria-hidden="true" />
+                <Play className="w-4 h-4" aria-hidden="true" />
                 Llamar siguiente turno
               </button>
 
-              <div className="text-xs text-[#64748B]">
+              <div className="text-xs text-[#475569]">
                 La inasistencia ya fue registrada por el servidor.
               </div>
             </div>
@@ -1158,16 +1162,16 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
 
   return (
     <div
-      className={`relative w-full overflow-hidden rounded-xl border border-[#CBD5E1] bg-white p-5 sm:p-8 shadow-sm space-y-6 font-sans text-[#0F2942] ${className}`}
+      className={`relative w-full overflow-hidden rounded-xl border border-slate-200/90 bg-white p-5 sm:p-8 shadow-sm space-y-6 font-sans text-[#0F2942] ${className}`}
       aria-busy={isProcessing || step === 'RECONCILING'}
     >
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[#F1F5F9]">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-[#0F2942] text-white flex items-center justify-center font-mono font-bold text-base shrink-0 shadow-2xs">
+          <div className="w-10 h-10 rounded-lg bg-[#0F766E] text-white flex items-center justify-center font-mono font-bold text-base shrink-0 shadow-2xs">
             {workspace.cubicleNumber}
           </div>
           <div>
-            <span className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wider block">
+            <span className="text-[11px] font-semibold text-[#475569] uppercase tracking-wider block">
               Mi cubículo
             </span>
             <h2 className="text-xl sm:text-2xl font-extrabold text-[#0F2942] tracking-tight">
@@ -1196,7 +1200,7 @@ export const MiCubiculo: React.FC<MiCubiculoProps> = ({ workspace, className = '
         <button
           type="button"
           onClick={toggleHotkeys}
-          className="text-xs text-[#0B5793] hover:text-[#084876] font-medium underline cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0B5793] rounded px-1 self-start sm:self-auto"
+          className="inline-flex items-center min-h-[32px] px-2 rounded text-xs text-[#0F766E] hover:text-[#115E59] font-medium underline cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E] self-start sm:self-auto"
           aria-label={hotkeysEnabled ? 'Desactivar atajos de teclado' : 'Activar atajos de teclado'}
         >
           {hotkeysEnabled ? 'Desactivar atajos' : 'Activar atajos'}

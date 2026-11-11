@@ -12,7 +12,7 @@ export const RecentCallsPanel: React.FC<RecentCallsPanelProps> = ({ recentCalls 
   return (
     <aside
       aria-label="Llamados recientes"
-      className="col-span-12 lg:col-span-4 rounded-3xl bg-[#041222] border border-slate-800/90 p-6 flex flex-col justify-between"
+      className="col-span-12 lg:col-span-4 rounded-3xl bg-[#041222] border border-slate-800/90 p-5 sm:p-6 flex flex-col justify-between"
     >
       <div>
         {/* Cabecera del Panel */}
@@ -23,7 +23,7 @@ export const RecentCallsPanel: React.FC<RecentCallsPanelProps> = ({ recentCalls 
         {/* Lista de Tarjetas Recientes con Prevención Estricta de Colisiones */}
         <ul role="list" className="space-y-3.5">
           {visibleCalls.length === 0 ? (
-            <li className="py-8 text-center text-slate-500 text-sm">
+            <li className="py-8 text-center text-slate-300 text-sm">
               Sin llamados previos
             </li>
           ) : (
@@ -32,7 +32,7 @@ export const RecentCallsPanel: React.FC<RecentCallsPanelProps> = ({ recentCalls 
               return (
                 <li
                   key={`${item.ticketCode}-${index}`}
-                  className={`flex items-center justify-between gap-4 px-5 py-4 rounded-2xl border transition-colors ${
+                  className={`flex flex-wrap items-center justify-between gap-2 sm:gap-4 px-4 sm:px-5 py-4 rounded-2xl border transition-colors ${
                     isFirst
                       ? 'bg-[#07203B] border-sky-500/30'
                       : 'bg-[#061A30]/90 border border-slate-800/90'
@@ -55,7 +55,7 @@ export const RecentCallsPanel: React.FC<RecentCallsPanelProps> = ({ recentCalls 
       </div>
 
       {/* Pie del Panel Lateral */}
-      <div className="flex items-center justify-between pt-4 mt-4 border-t border-slate-800/80 text-xs font-mono text-slate-400">
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-4 mt-4 border-t border-slate-800/80 text-xs font-mono text-slate-300">
         <span className="uppercase tracking-wider">ATENCIÓN CONTINUA</span>
         <span className="tabular-nums font-semibold text-slate-300">
           {visibleCalls.length} en historial

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Badge, Card, Flex, Heading, Separator, Skeleton, Text } from '@radix-ui/themes';
-import { CheckCircledIcon, ClockIcon, PersonIcon } from '@radix-ui/react-icons';
+import { CheckCircle2, Clock, User } from 'lucide-react';
 import { useResolvedQueryClient } from '../../lib/query-client';
 import type { CubicleOutcome } from './types';
 import {
@@ -39,7 +39,7 @@ function MetricRow({
   return (
     <Flex justify="between" align="center" gap="4">
       <Flex align="center" gap="2" className="min-w-0">
-        <span className="text-[#64748B] shrink-0" aria-hidden="true">
+        <span className="text-[#475569] shrink-0" aria-hidden="true">
           {icon}
         </span>
         <Text as="span" size="2" color="gray">
@@ -179,19 +179,19 @@ export const CubicleDailyPerformanceCard: React.FC<CubicleDailyPerformanceCardPr
 
         <Flex direction="column" gap="3">
           <MetricRow
-            icon={<PersonIcon width={14} height={14} />}
+            icon={<User size={14} />}
             label="Turnos completados"
             value={completedValue}
           />
           <Separator size="4" />
           <MetricRow
-            icon={<ClockIcon width={14} height={14} />}
+            icon={<Clock size={14} />}
             label="Tiempo promedio por turno"
             value={averageValue}
           />
           <Separator size="4" />
           <MetricRow
-            icon={<CheckCircledIcon width={14} height={14} />}
+            icon={<CheckCircle2 size={14} />}
             label="Cumplimiento del objetivo operativo"
             value={complianceValue}
           />

@@ -278,7 +278,7 @@ export const PublicDisplayScreen: React.FC = () => {
   }, [applyNotice, loadSnapshot, triggerCallFlash]);
 
   return (
-    <div className="min-h-screen w-full overflow-hidden flex flex-col justify-between select-none bg-[#020B14]">
+    <div className="min-h-screen w-full overflow-x-clip flex flex-col justify-between select-none bg-[#020B14]">
       {/* ─── Header Superior de Sala ─── */}
       <PublicDisplayHeader
         soundEnabled={soundEnabled}
@@ -287,7 +287,7 @@ export const PublicDisplayScreen: React.FC = () => {
       />
 
       {/* ─── Zona Split-Screen ─── */}
-      <main className="grid grid-cols-12 gap-8 p-8 flex-1 items-stretch">
+      <main className="grid grid-cols-12 gap-4 sm:gap-6 lg:gap-8 p-4 sm:p-6 lg:p-8 flex-1 items-stretch">
         <ActiveCallHero currentCall={currentCall} isFlashing={isFlashing} />
         <RecentCallsPanel recentCalls={recentCalls} />
       </main>

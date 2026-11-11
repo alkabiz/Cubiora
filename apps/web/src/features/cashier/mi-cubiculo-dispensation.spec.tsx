@@ -89,32 +89,46 @@ describe('MiCubiculo · Dispensación y Resolución 1604 MinSalud (SCR-CAJ-001)'
       </Theme>,
     );
 
-    // Opciones de resolución
-    expect(screen.getByText('Entrega Total (PBS)')).toBeDefined();
-    expect(screen.getByText('Generar Pendiente 48h')).toBeDefined();
+    // Opciones de resolución y atributos aria-pressed accesibles
+    const totalBtn = screen.getByRole('button', { name: /Entrega Total \(PBS\)/i });
+    const pendingBtn = screen.getByRole('button', { name: /Generar Pendiente 48h/i });
+    expect(totalBtn.getAttribute('aria-pressed')).toBe('true');
+    expect(pendingBtn.getAttribute('aria-pressed')).toBe('false');
 
     // Seleccionar Pendiente 48h
-    fireEvent.click(screen.getByText('Generar Pendiente 48h'));
+    fireEvent.click(pendingBtn);
+    expect(totalBtn.getAttribute('aria-pressed')).toBe('false');
+    expect(pendingBtn.getAttribute('aria-pressed')).toBe('true');
 
     // Debe mostrar la promesa de garantía legal según Res. 1604
     expect(screen.getByText(/Garantía Legal de Entrega ≤ 48 Horas/i)).toBeDefined();
-    expect(screen.getByPlaceholderText(/Cra 43A # 12-45/i)).toBeDefined();
-    expect(screen.getByPlaceholderText(/300 123 4567/i)).toBeDefined();
+    const addressInput = screen.getByPlaceholderText(/Cra 43A # 12-45/i);
+    const phoneInput = screen.getByPlaceholderText(/300 123 4567/i);
+    expect(addressInput).toBeDefined();
+    expect(phoneInput).toBeDefined();
 
-    // Si se pulsa cerrar sin llenar dirección ni teléfono, muestra error y no llama a confirmClose
+    // Si se pulsa cerrar sin llenar dirección ni teléfono, muestra error y vincula aria-invalid + aria-describedby
     fireEvent.click(screen.getByRole('button', { name: /Cerrar turno y liberar cubículo/i }));
-    expect(
-      screen.getByText(/Para radicar un pendiente 48h \(Res\. 1604\) debe ingresar dirección/i),
-    ).toBeDefined();
+    const errorBanner = screen.getByText(
+      /Para radicar un pendiente 48h \(Res\. 1604\) debe ingresar dirección/i,
+    );
+    expect(errorBanner).toBeDefined();
+    expect(errorBanner.id).toBe('close-ticket-form-error');
+    expect(addressInput.getAttribute('aria-invalid')).toBe('true');
+    expect(addressInput.getAttribute('aria-describedby')).toBe('close-ticket-form-error');
+    expect(phoneInput.getAttribute('aria-invalid')).toBe('true');
+    expect(phoneInput.getAttribute('aria-describedby')).toBe('close-ticket-form-error');
     expect(confirmCloseMock).not.toHaveBeenCalled();
 
     // Llenar dirección y teléfono
-    fireEvent.change(screen.getByPlaceholderText(/Cra 43A # 12-45/i), {
+    fireEvent.change(addressInput, {
       target: { value: 'Av. El Dorado # 68-50, Apto 501' },
     });
-    fireEvent.change(screen.getByPlaceholderText(/300 123 4567/i), {
+    fireEvent.change(phoneInput, {
       target: { value: '3157778899' },
     });
+    expect(addressInput.getAttribute('aria-invalid')).toBe('false');
+    expect(phoneInput.getAttribute('aria-invalid')).toBe('false');
 
     // Ahora sí envía confirmClose con payload de pendiente 48h
     fireEvent.click(screen.getByRole('button', { name: /Cerrar turno y liberar cubículo/i }));

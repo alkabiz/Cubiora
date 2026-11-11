@@ -13,13 +13,15 @@ import {
   Select,
 } from '@radix-ui/themes';
 import {
-  CheckCircledIcon,
-  CopyIcon,
-  PersonIcon,
-  HeartIcon,
-  FileTextIcon,
-} from '@radix-ui/react-icons';
-import { ScanBarcode, Calculator, ReceiptText } from 'lucide-react';
+  Calculator,
+  CheckCircle2,
+  Copy,
+  FileText,
+  Heart,
+  ReceiptText,
+  ScanBarcode,
+  User,
+} from 'lucide-react';
 import { AppMain } from '../app/app-main';
 import { PageHeader } from '../app/page-header';
 import { apiClient } from '../lib/api';
@@ -30,9 +32,72 @@ export interface IssuedTicket {
   timeStr: string;
   assignedCubicle?: string;
   state: TicketStatus | 'PENDING' | 'ASSIGNED' | 'CALLED';
-  queueCategory?: QueueCategory | 'GENERAL' | 'PREFERENTIAL';
+  queueCategory?: QueueCategory | 'GENERAL' | 'PREFERENTIAL' | 'HIGH_COST' | 'BILLING';
   patientName?: string;
   idDocument?: string;
+}
+
+type RadixBadgeColor = 'blue' | 'amber' | 'purple' | 'teal' | 'gray' | 'green' | 'red';
+
+const QUEUE_CATEGORY_META: Record<
+  QueueCategory,
+  {
+    label: string;
+    shortLabel: string;
+    cardColor: RadixBadgeColor;
+    tableColor: RadixBadgeColor;
+  }
+> = {
+  [QueueCategory.GENERAL]: {
+    label: 'Turno general',
+    shortLabel: 'General',
+    cardColor: 'blue',
+    tableColor: 'gray',
+  },
+  [QueueCategory.PREFERENTIAL]: {
+    label: 'Atención preferencial',
+    shortLabel: 'Preferencial',
+    cardColor: 'amber',
+    tableColor: 'amber',
+  },
+  [QueueCategory.HIGH_COST]: {
+    label: 'Alto Costo / MIPRES',
+    shortLabel: 'Alto Costo',
+    cardColor: 'purple',
+    tableColor: 'purple',
+  },
+  [QueueCategory.BILLING]: {
+    label: 'Facturación y Copagos',
+    shortLabel: 'Facturación',
+    cardColor: 'teal',
+    tableColor: 'blue',
+  },
+};
+
+const TICKET_STATE_META: Record<TicketStatus, { label: string; color: RadixBadgeColor }> = {
+  [TicketStatus.PENDING]: { label: 'En espera', color: 'gray' },
+  [TicketStatus.ASSIGNED]: { label: 'Asignado', color: 'teal' },
+  [TicketStatus.CALLED]: { label: 'Llamado', color: 'green' },
+  [TicketStatus.IN_SERVICE]: { label: 'En atención', color: 'blue' },
+  [TicketStatus.CLOSED]: { label: 'Cerrado', color: 'green' },
+  [TicketStatus.NO_SHOW]: { label: 'No presentado', color: 'amber' },
+  [TicketStatus.CANCELLED]: { label: 'Cancelado', color: 'red' },
+};
+
+function getQueueCategoryMeta(category?: IssuedTicket['queueCategory']) {
+  return (
+    QUEUE_CATEGORY_META[(category ?? QueueCategory.GENERAL) as QueueCategory] ??
+    QUEUE_CATEGORY_META[QueueCategory.GENERAL]
+  );
+}
+
+function getTicketStateMeta(state: IssuedTicket['state']) {
+  return (
+    TICKET_STATE_META[state as TicketStatus] ?? {
+      label: String(state),
+      color: 'gray' as RadixBadgeColor,
+    }
+  );
 }
 
 export interface ReceptionPageProps {
@@ -225,7 +290,6 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
     <AppMain
       header={
         <PageHeader
-          code="SCR-REC-001"
           section="Recepción"
           title="Generar turno"
           description="Registra los datos mínimos del paciente para generar un turno."
@@ -237,12 +301,12 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
         {/* Columna Izquierda: Formulario (5 columnas) */}
         <div className="lg:col-span-5">
           <Card size="3" className="p-6">
-            <Heading size="4" weight="bold" className="mb-4">
+            <Heading as="h2" size="4" weight="bold" className="mb-4">
               Datos del paciente
             </Heading>
 
             {errorMessage && (
-              <Box className="p-3 mb-4 rounded-md bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800">
+              <Box className="p-3 mb-4 rounded-md bg-red-50 border border-red-200">
                 <Text size="2" color="red" weight="medium">
                   {errorMessage}
                 </Text>
@@ -278,24 +342,26 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
                         type="button"
                         size="1"
                         variant="soft"
-                        color="indigo"
+                        color="teal"
                         onClick={handleScanBarcodeDemo}
-                        className="cursor-pointer text-xs"
+                        className="min-h-[44px] px-3 cursor-pointer text-xs"
                         title="Simular escaneo de código de barras PDF417 de cédula"
                       >
-                        <ScanBarcode size={13} className="mr-1 inline" />
+                        <ScanBarcode size={13} className="mr-1 inline" aria-hidden="true" />
                         Escanear Cédula / Código de Barras
                       </Button>
                       <Button
                         type="button"
                         size="1"
-                        variant={showKeypad ? 'solid' : 'ghost'}
+                        variant={showKeypad ? 'solid' : 'soft'}
                         color="gray"
+                        aria-expanded={showKeypad}
+                        aria-controls="touch-numeric-keypad"
                         onClick={() => setShowKeypad((prev) => !prev)}
-                        className="cursor-pointer text-xs"
+                        className="min-h-[44px] px-3 cursor-pointer text-xs"
                         title="Mostrar teclado numérico táctil"
                       >
-                        <Calculator size={13} className="mr-1 inline" />
+                        <Calculator size={13} className="mr-1 inline" aria-hidden="true" />
                         Teclado táctil
                       </Button>
                     </Flex>
@@ -312,7 +378,8 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
                   {/* Teclado numérico táctil desplegable para quiosco */}
                   {showKeypad && (
                     <Box
-                      className="mt-3 p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xs"
+                      id="touch-numeric-keypad"
+                      className="mt-3 p-3 bg-slate-50 border border-slate-500 rounded-xl shadow-xs"
                       data-testid="touch-numeric-keypad"
                     >
                       <Flex justify="between" align="center" className="mb-2">
@@ -325,7 +392,7 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
                           variant="ghost"
                           color="gray"
                           onClick={() => setShowKeypad(false)}
-                          className="cursor-pointer text-xs"
+                          className="min-h-[44px] px-3 cursor-pointer text-xs"
                         >
                           Ocultar
                         </Button>
@@ -336,7 +403,7 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
                             key={digit}
                             type="button"
                             onClick={() => handleKeypadPress(digit)}
-                            className="py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-95 text-slate-800 dark:text-slate-100 font-bold text-lg rounded-lg shadow-2xs transition-all cursor-pointer flex items-center justify-center min-h-[44px]"
+                            className="py-3 bg-white border border-slate-500 hover:bg-slate-100 active:scale-95 text-slate-900 font-bold text-lg rounded-lg shadow-2xs transition-all cursor-pointer flex items-center justify-center min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
                           >
                             {digit}
                           </button>
@@ -344,21 +411,21 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
                         <button
                           type="button"
                           onClick={handleKeypadClear}
-                          className="py-3 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 text-slate-600 dark:text-slate-300 font-semibold text-xs rounded-lg transition-all cursor-pointer flex items-center justify-center min-h-[44px]"
+                          className="py-3 bg-slate-100 border border-slate-500 hover:bg-slate-200 active:scale-95 text-slate-700 font-semibold text-xs rounded-lg transition-all cursor-pointer flex items-center justify-center min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
                         >
                           Limpiar
                         </button>
                         <button
                           type="button"
                           onClick={() => handleKeypadPress('0')}
-                          className="py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-95 text-slate-800 dark:text-slate-100 font-bold text-lg rounded-lg shadow-2xs transition-all cursor-pointer flex items-center justify-center min-h-[44px]"
+                          className="py-3 bg-white border border-slate-500 hover:bg-slate-100 active:scale-95 text-slate-900 font-bold text-lg rounded-lg shadow-2xs transition-all cursor-pointer flex items-center justify-center min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#0F766E]"
                         >
                           0
                         </button>
                         <button
                           type="button"
                           onClick={handleKeypadBackspace}
-                          className="py-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 hover:bg-red-100 dark:hover:bg-red-900/80 active:scale-95 text-red-700 dark:text-red-300 font-semibold text-xs rounded-lg transition-all cursor-pointer flex items-center justify-center min-h-[44px]"
+                          className="py-3 bg-red-50 border border-red-400 hover:bg-red-100 active:scale-95 text-red-800 font-semibold text-xs rounded-lg transition-all cursor-pointer flex items-center justify-center min-h-[44px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-700"
                         >
                           Borrar
                         </button>
@@ -369,11 +436,10 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
 
                 {/* ─── Sección Tipo de Turno ───────────────────────────────── */}
                 <Box className="pt-2 border-t border-[var(--gray-a4)]">
-                  <label htmlFor="queue-category-group" className="block text-sm font-semibold mb-2 text-[var(--gray-12)]">
+                  <span id="queue-category-label" className="block text-sm font-semibold mb-2 text-[var(--gray-12)]">
                     Tipo de turno
-                  </label>
+                  </span>
                   <RadioCards.Root
-                    id="queue-category-group"
                     value={queueCategory}
                     onValueChange={(val) => {
                       setQueueCategory(val as QueueCategory);
@@ -383,7 +449,7 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
                     }}
                     columns={{ initial: '1', sm: '2' }}
                     gap="3"
-                    aria-label="Tipo de turno"
+                    aria-labelledby="queue-category-label"
                   >
                     <RadioCards.Item
                       value={QueueCategory.GENERAL}
@@ -391,7 +457,7 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
                     >
                       <Flex direction="column" gap="1.5" width="100%">
                         <Flex align="center" gap="2">
-                          <PersonIcon width={18} height={18} className="text-[var(--teal-10)]" />
+                          <User size={18} className="text-[var(--teal-10)]" aria-hidden="true" />
                           <Text weight="bold" size="2">
                             Turno general
                           </Text>
@@ -410,7 +476,7 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
                       <Flex direction="column" gap="1.5" width="100%">
                         <Flex align="center" justify="between" gap="2" wrap="wrap">
                           <Flex align="center" gap="2">
-                            <HeartIcon width={18} height={18} className="text-[var(--amber-10)]" />
+                            <Heart size={18} className="text-[var(--amber-10)]" aria-hidden="true" />
                             <Text weight="bold" size="2">
                               Atención preferencial
                             </Text>
@@ -433,7 +499,7 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
                     >
                       <Flex direction="column" gap="1.5" width="100%">
                         <Flex align="center" gap="2">
-                          <FileTextIcon width={18} height={18} className="text-purple-600" />
+                          <FileText size={18} className="text-purple-600" aria-hidden="true" />
                           <Text weight="bold" size="2">
                             Alto Costo / MIPRES
                           </Text>
@@ -514,7 +580,7 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
                     variant="ghost"
                     color="gray"
                     onClick={handleClear}
-                    className="self-center cursor-pointer text-xs"
+                    className="self-center min-h-[44px] px-4 cursor-pointer text-xs"
                   >
                     Limpiar
                   </Button>
@@ -537,36 +603,28 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
               <Text size="1" weight="bold" color="teal" className="uppercase tracking-wider">
                 Último turno generado
               </Text>
-              {lastTicket && (
-                <Flex gap="2" align="center">
-                  <Badge
-                    size="1"
-                    variant="surface"
-                    color={lastTicket.queueCategory === QueueCategory.PREFERENTIAL ? 'amber' : 'blue'}
-                  >
-                    {lastTicket.queueCategory === QueueCategory.PREFERENTIAL
-                      ? 'Atención preferencial'
-                      : 'Turno general'}
-                  </Badge>
-                  <Badge
-                    size="1"
-                    variant="surface"
-                    color={
-                      lastTicket.state === 'PENDING'
-                        ? 'gray'
-                        : lastTicket.state === 'ASSIGNED'
-                        ? 'teal'
-                        : 'green'
-                    }
-                  >
-                    {lastTicket.state === 'PENDING'
-                      ? 'En espera'
-                      : lastTicket.state === 'ASSIGNED'
-                      ? 'Asignado'
-                      : 'Llamado'}
-                  </Badge>
-                </Flex>
-              )}
+              {lastTicket && (() => {
+                const categoryMeta = getQueueCategoryMeta(lastTicket.queueCategory);
+                const stateMeta = getTicketStateMeta(lastTicket.state);
+                return (
+                  <Flex gap="2" align="center">
+                    <Badge
+                      size="1"
+                      variant="surface"
+                      color={categoryMeta.cardColor}
+                    >
+                      {categoryMeta.label}
+                    </Badge>
+                    <Badge
+                      size="1"
+                      variant="surface"
+                      color={stateMeta.color}
+                    >
+                      {stateMeta.label}
+                    </Badge>
+                  </Flex>
+                );
+              })()}
             </Flex>
 
             {!lastTicket ? (
@@ -595,13 +653,17 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
 
                     <Button
                       size="2"
-                      variant="ghost"
+                      variant="soft"
                       color="teal"
                       onClick={handleCopyCode}
-                      style={{ cursor: 'pointer' }}
+                      className="min-h-[44px] cursor-pointer"
                       aria-label="Copiar número de turno"
                     >
-                      {copiedCode ? <CheckCircledIcon width={16} height={16} /> : <CopyIcon width={16} height={16} />}
+                      {copiedCode ? (
+                        <CheckCircle2 size={16} aria-hidden="true" />
+                      ) : (
+                        <Copy size={16} aria-hidden="true" />
+                      )}
                       {copiedCode ? 'Número de turno copiado' : 'Copiar número de turno'}
                     </Button>
                   </Flex>
@@ -631,8 +693,8 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
                 )}
 
                 {lastTicket.state === 'CALLED' && (
-                  <Box className="p-3 rounded-md bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800">
-                    <Text size="2" weight="bold" className="text-emerald-800 dark:text-emerald-200 block">
+                  <Box className="p-3 rounded-md bg-emerald-50 border border-emerald-200">
+                    <Text size="2" weight="bold" className="text-emerald-800 block">
                       Diríjase al {lastTicket.assignedCubicle || 'Cubículo 03'}
                     </Text>
                   </Box>
@@ -644,9 +706,10 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
           {/* Tabla de Últimos Turnos Generados (Máximo 3, SIN Columna Paciente) */}
           {recentTickets.length > 0 && (
             <Card size="2" className="p-4">
-              <Heading size="2" weight="bold" className="mb-3 uppercase tracking-wider text-[var(--gray-11)]">
+              <Heading as="h2" size="2" weight="bold" className="mb-3 uppercase tracking-wider text-[var(--gray-11)]">
                 Últimos turnos generados (máximo 3)
               </Heading>
+              <div className="overflow-x-auto">
               <Table.Root size="1">
                 <Table.Header>
                   <Table.Row>
@@ -657,59 +720,40 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
                   </Table.Row>
                 </Table.Header>
                 <Table.Body>
-                  {recentTickets.slice(0, 3).map((t, idx) => (
-                    <Table.Row key={t.code + idx}>
-                      <Table.RowHeaderCell className="font-mono font-bold">
-                        <Flex align="center" gap="2">
-                          <span>{t.code}</span>
+                  {recentTickets.slice(0, 3).map((t, idx) => {
+                    const categoryMeta = getQueueCategoryMeta(t.queueCategory);
+                    const stateMeta = getTicketStateMeta(t.state);
+                    return (
+                      <Table.Row key={t.code + idx}>
+                        <Table.RowHeaderCell className="font-mono font-bold">
+                          <Flex align="center" gap="2">
+                            <span>{t.code}</span>
+                            <Badge
+                              size="1"
+                              variant="soft"
+                              color={categoryMeta.tableColor}
+                            >
+                              {categoryMeta.shortLabel}
+                            </Badge>
+                          </Flex>
+                        </Table.RowHeaderCell>
+                        <Table.Cell>{t.timeStr}</Table.Cell>
+                        <Table.Cell>{t.assignedCubicle || 'Sin asignar'}</Table.Cell>
+                        <Table.Cell>
                           <Badge
                             size="1"
-                            variant="soft"
-                            color={
-                              t.queueCategory === QueueCategory.PREFERENTIAL
-                                ? 'amber'
-                                : t.queueCategory === QueueCategory.HIGH_COST
-                                ? 'purple'
-                                : t.queueCategory === QueueCategory.BILLING
-                                ? 'blue'
-                                : 'gray'
-                            }
+                            variant="surface"
+                            color={stateMeta.color}
                           >
-                            {t.queueCategory === QueueCategory.PREFERENTIAL
-                              ? 'Preferencial'
-                              : t.queueCategory === QueueCategory.HIGH_COST
-                              ? 'Alto Costo'
-                              : t.queueCategory === QueueCategory.BILLING
-                              ? 'Facturación'
-                              : 'General'}
+                            {stateMeta.label}
                           </Badge>
-                        </Flex>
-                      </Table.RowHeaderCell>
-                      <Table.Cell>{t.timeStr}</Table.Cell>
-                      <Table.Cell>{t.assignedCubicle || 'Sin asignar'}</Table.Cell>
-                      <Table.Cell>
-                        <Badge
-                          size="1"
-                          variant="surface"
-                          color={
-                            t.state === 'PENDING'
-                              ? 'gray'
-                              : t.state === 'ASSIGNED'
-                              ? 'teal'
-                              : 'green'
-                          }
-                        >
-                          {t.state === 'PENDING'
-                            ? 'En espera'
-                            : t.state === 'ASSIGNED'
-                            ? 'Asignado'
-                            : 'Llamado'}
-                        </Badge>
-                      </Table.Cell>
-                    </Table.Row>
-                  ))}
+                        </Table.Cell>
+                      </Table.Row>
+                    );
+                  })}
                 </Table.Body>
               </Table.Root>
+              </div>
             </Card>
           )}
         </div>

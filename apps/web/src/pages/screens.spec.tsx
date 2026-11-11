@@ -114,7 +114,9 @@ describe('Contrato Aprobado de Cubiora — Suite de Pantallas e Integración', (
       renderWithTheme(<ReceptionPage />);
 
       // Encabezado de página provisto por el shell
-      expect(screen.getByText('SCR-REC-001 · Recepción')).toBeDefined();
+      const header = document.querySelector('header.app-page-header');
+      expect(header).not.toBeNull();
+      expect(within(header as HTMLElement).getByText('Recepción')).toBeDefined();
       expect(
         screen.getByText(/Registra los datos mínimos del paciente para generar un turno/i),
       ).toBeDefined();
@@ -1272,7 +1274,7 @@ describe('Contrato Aprobado de Cubiora — Suite de Pantallas e Integración', (
       expect(mockFetch).not.toHaveBeenCalled();
     });
 
-    it('para ADMIN debe cargar GET /cubicles y permitir cambiar el cubículo inspeccionado', async () => {
+    it('para ADMIN no expone selector operativo ni realiza sondeos de cubículo fuera de rol CASHIER', () => {
       screenAuthMock.user = {
         publicId: 'usr_admin',
         username: 'admin',
@@ -1283,91 +1285,19 @@ describe('Contrato Aprobado de Cubiora — Suite de Pantallas e Integración', (
         cubicleDisplayName: null,
       };
 
-      const mockFetch = vi.fn(async (input: RequestInfo | URL) => {
-        const url = String(input);
-        if (url.endsWith('/api/v1/cubicles')) {
-          return {
-            ok: true,
-            status: 200,
-            json: async () => ({
-              success: true,
-              data: [
-                {
-                  id: 'cub_01',
-                  code: 'CUB-01',
-                  displayName: 'Cubículo 01',
-                  status: CubicleStatus.AVAILABLE,
-                  active: true,
-                  facilityId: 'fac_01',
-                  facilityCode: 'SEDE-CEN-01',
-                  facilityName: 'Central',
-                },
-                {
-                  id: 'cub_04',
-                  code: 'CUB-04',
-                  displayName: 'Cubículo 04',
-                  status: CubicleStatus.AVAILABLE,
-                  active: true,
-                  facilityId: 'fac_01',
-                  facilityCode: 'SEDE-CEN-01',
-                  facilityName: 'Central',
-                },
-              ],
-            }),
-          };
-        }
-        if (url.includes('/cubicles/CUB-01/current')) {
-          return responseWith({
-            cubicle: {
-              id: 'cub_01',
-              code: 'CUB-01',
-              displayName: 'Cubículo 01',
-              status: CubicleStatus.AVAILABLE,
-              version: 1,
-            },
-            activeTicket: null,
-            waitingCount: 0,
-            serverTime: new Date().toISOString(),
-          });
-        }
-        if (url.includes('/cubicles/CUB-04/current')) {
-          return responseWith({
-            cubicle: {
-              id: 'cub_04',
-              code: 'CUB-04',
-              displayName: 'Cubículo 04',
-              status: CubicleStatus.AVAILABLE,
-              version: 2,
-            },
-            activeTicket: null,
-            waitingCount: 1,
-            serverTime: new Date().toISOString(),
-          });
-        }
-        return responseWith(makeSnapshot(null, 0));
-      });
+      const mockFetch = vi.fn();
       window.fetch = mockFetch as unknown as typeof window.fetch;
 
       renderWithTheme(<CashierPage />);
 
-      await waitFor(() => {
-        expect(screen.getByText('Cubículo 01')).toBeDefined();
-      });
-
-      const selector = screen.getByRole('combobox', {
-        name: /Seleccionar cubículo operativo/i,
-      });
-      fireEvent.keyDown(selector, { key: 'Enter', code: 'Enter' });
-      const listbox = await screen.findByRole('listbox');
-      fireEvent.click(within(listbox).getByRole('option', { name: /Cubículo 04 \(CUB-04\)/i }));
-
-      await waitFor(() => {
-        expect(mockFetch).toHaveBeenCalledWith(
-          expect.stringContaining('/api/v1/cubicles/CUB-04/current'),
-          expect.anything(),
-        );
-        expect(screen.getByText('Cubículo 04')).toBeDefined();
-      });
+      expect(screen.getByRole('status')).toBeDefined();
+      expect(
+        screen.getByText(/Esta vista operativa es exclusiva para cuentas con rol Operador de cubículo/i),
+      ).toBeDefined();
+      expect(
+        screen.queryByRole('combobox', { name: /Seleccionar cubículo operativo/i }),
+      ).toBeNull();
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 

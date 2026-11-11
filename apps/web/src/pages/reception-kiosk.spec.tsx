@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { Theme } from '@radix-ui/themes';
 import React from 'react';
 import { ReceptionPage } from './reception-page';
+import { QueueCategory, TicketStatus } from '@cubiora/shared';
 
 const renderWithTheme = (ui: React.ReactElement) => {
   return render(
@@ -70,11 +71,15 @@ describe('ReceptionPage · Quiosco Táctil de Autoservicio y Categorías Farmac�
 
     const docInput = screen.getByLabelText(/documento/i) as HTMLInputElement;
 
-    // Desplegar teclado táctil
+    // Desplegar teclado táctil y verificar aria-expanded / aria-controls
     const keypadToggle = screen.getByRole('button', { name: /teclado táctil/i });
+    expect(keypadToggle.getAttribute('aria-expanded')).toBe('false');
+    expect(keypadToggle.getAttribute('aria-controls')).toBe('touch-numeric-keypad');
     fireEvent.click(keypadToggle);
+    expect(keypadToggle.getAttribute('aria-expanded')).toBe('true');
 
     const keypad = screen.getByTestId('touch-numeric-keypad');
+    expect(keypad.id).toBe('touch-numeric-keypad');
     expect(keypad).toBeDefined();
 
     // Digitar dígitos: 1, 2, 3
@@ -94,5 +99,55 @@ describe('ReceptionPage · Quiosco Táctil de Autoservicio y Categorías Farmac�
     // Ocultar teclado
     fireEvent.click(within(keypad).getByRole('button', { name: 'Ocultar' }));
     expect(screen.queryByTestId('touch-numeric-keypad')).toBeNull();
+    expect(keypadToggle.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('mapea correctamente categorías HIGH_COST/BILLING y estados CLOSED/NO_SHOW en último turno y tabla reciente', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            success: true,
+            data: [
+              {
+                publicCode: 'TUR-000501-AC',
+                status: TicketStatus.CLOSED,
+                queueCategory: QueueCategory.HIGH_COST,
+                cubicleDisplayName: 'Cubículo 02',
+                createdAt: '2026-11-11T10:15:00.000Z',
+              },
+              {
+                publicCode: 'TUR-000500-FA',
+                status: TicketStatus.NO_SHOW,
+                queueCategory: QueueCategory.BILLING,
+                cubicleDisplayName: 'Cubículo 01',
+                createdAt: '2026-11-11T10:05:00.000Z',
+              },
+            ],
+          }),
+      }),
+    );
+
+    renderWithTheme(<ReceptionPage />);
+
+    const table = await screen.findByRole('table');
+    await waitFor(() => {
+      expect(screen.getAllByText('TUR-000501-AC').length).toBeGreaterThanOrEqual(2);
+    });
+
+    // Verificar tabla reciente
+    expect(within(table).getByText('Alto Costo')).toBeDefined();
+    expect(within(table).getByText('Cerrado')).toBeDefined();
+    expect(within(table).getByText('Facturación')).toBeDefined();
+    expect(within(table).getByText('No presentado')).toBeDefined();
+
+    // Verificar tarjeta de último turno generado
+    const lastTicketHeading = screen.getByText('Último turno generado');
+    const lastTicketCard = lastTicketHeading.closest('.rt-Card') as HTMLElement;
+    expect(lastTicketCard).not.toBeNull();
+    expect(within(lastTicketCard).getByText('Alto Costo / MIPRES')).toBeDefined();
+    expect(within(lastTicketCard).getByText('Cerrado')).toBeDefined();
   });
 });
