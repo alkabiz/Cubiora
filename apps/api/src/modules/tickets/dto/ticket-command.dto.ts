@@ -43,4 +43,9 @@ export class TicketCommandDto {
   @IsString()
   @MaxLength(30)
   deliveryPhone?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  reason?: string;
 }

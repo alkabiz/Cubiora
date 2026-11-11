@@ -1,10 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { TicketsService } from '../src/modules/tickets/tickets.service';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { PublicDisplayService } from '../src/modules/public-display/public-display.service';
 import { CubiclesService } from '../src/modules/cubicles/cubicles.service';
-import { DispensationResolution, QueueCategory, TicketStatus } from '@cubiora/shared';
+import {
+  CubicleStatus,
+  DispensationResolution,
+  QueueCategory,
+  TicketStatus,
+  UserRole,
+} from '@cubiora/shared';
 
 describe('Auditoría Farmacéutica · Dispensación y Resolución 1604 (Fases 1, 2 y 3)', () => {
   let ticketsService: TicketsService;
@@ -28,6 +34,9 @@ describe('Auditoría Farmacéutica · Dispensación y Resolución 1604 (Fases 1,
       dispensationRecord: {
         create: vi.fn(),
         findUnique: vi.fn(),
+      },
+      pharmacist: {
+        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
       },
       ticketStatusHistory: {
         create: vi.fn(),
@@ -279,6 +288,272 @@ describe('Auditoría Farmacéutica · Dispensación y Resolución 1604 (Fases 1,
       expect(history.items).toHaveLength(1);
       expect(history.items[0].slaCompliant).toBe(false);
       expect(history.items[0].serviceDurationSeconds).toBe(900); // 15 min
+    });
+
+    it('Usa CUBICLE_DAILY_TARGET_SECONDS como umbral unificado de cumplimiento SLA en el historial', async () => {
+      vi.stubEnv('CUBICLE_DAILY_TARGET_SECONDS', '600'); // 10 min
+      try {
+        const now = new Date();
+        const serviceStarted = new Date(now.getTime() - 650 * 1000); // 10m 50s -> cumple 720s, excede 600s
+
+        mockPrisma.ticket.count.mockResolvedValue(1);
+        mockPrisma.ticket.findMany.mockResolvedValue([
+          {
+            id: 'tick-aud-3',
+            publicId: '01JAUD003',
+            publicCode: 'TUR-000102-GE',
+            patientName: 'Laura Vélez',
+            status: TicketStatus.CLOSED,
+            queueCategory: QueueCategory.GENERAL,
+            createdAt: serviceStarted,
+            calledAt: serviceStarted,
+            serviceStartedAt: serviceStarted,
+            closedAt: now,
+            cubicle: { code: 'CUB-01', displayName: 'Cubículo 01', operatorName: 'Farm. M. Arismendi' },
+            dispensation: null,
+          },
+        ]);
+
+        const history = await ticketsService.getTicketHistory({ page: 1, limit: 10 });
+        expect(history.slaThresholdSeconds).toBe(600);
+        expect(history.items[0].slaCompliant).toBe(false);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+
+    it('closeTicket propaga error de dispensationRecord.create sin silenciarlo e incrementa dispatchesCount al cerrar', async () => {
+      const ticketInService = {
+        id: 'ticket-atom-1',
+        publicId: '01JATOM001',
+        publicCode: 'TUR-000500-GE',
+        patientName: 'Paciente Atómico',
+        status: TicketStatus.IN_SERVICE,
+        cubicleId: 'cub-1',
+        version: 2,
+        createdAt: new Date(),
+      };
+      mockPrisma.ticket.findFirst.mockResolvedValue(ticketInService);
+      mockPrisma.ticket.findUnique.mockResolvedValue(ticketInService);
+      mockPrisma.ticket.update.mockResolvedValue({ ...ticketInService, status: TicketStatus.CLOSED });
+      mockPrisma.dispensationRecord.create.mockRejectedValueOnce(new Error('DB write failure'));
+
+      await expect(
+        ticketsService.closeTicket(
+          '01JATOM001',
+          'user-1',
+          'corr-atom',
+          undefined,
+          2,
+        ),
+      ).rejects.toThrow('DB write failure');
+
+      mockPrisma.dispensationRecord.create.mockResolvedValueOnce({ id: 'disp-ok' });
+      mockCubiclesService.buildCubicleSnapshot.mockResolvedValue({
+        cubicle: { id: 'cub-1', code: 'CUB-01', displayName: 'Cubículo 01', status: CubicleStatus.AVAILABLE },
+        activeTicket: null,
+      });
+
+      await ticketsService.closeTicket('01JATOM001', 'user-1', 'corr-atom-2', undefined, 2);
+      expect(mockPrisma.pharmacist.updateMany).toHaveBeenCalledWith({
+        where: { cubicleId: 'cub-1', status: { not: 'INACTIVE' } },
+        data: { dispatchesCount: { increment: 1 } },
+      });
+    });
+
+    it('cancelTicket cancela turnos PENDING o ASSIGNED, libera cubículo, y rechaza IN_SERVICE o BOLA CASHIER', async () => {
+      const pendingTicket = {
+        id: 'tick-p1',
+        publicId: '01JCANC001',
+        publicCode: 'TUR-000601-GE',
+        status: TicketStatus.PENDING,
+        cubicleId: null,
+        version: 1,
+        createdAt: new Date(),
+      };
+      mockPrisma.ticket.findFirst.mockResolvedValueOnce(pendingTicket);
+      mockPrisma.ticket.findUnique.mockResolvedValueOnce(pendingTicket);
+
+      const resPending = await ticketsService.cancelTicket(
+        '01JCANC001',
+        'rec-1',
+        'corr-c1',
+        undefined,
+        1,
+        UserRole.RECEPTION,
+        null,
+        'Paciente se retiró',
+      );
+      expect(resPending.data).toEqual({
+        cancelled: true,
+        publicId: '01JCANC001',
+        publicCode: 'TUR-000601-GE',
+        status: TicketStatus.CANCELLED,
+        cubicleSnapshot: null,
+      });
+
+      // CASHIER no puede cancelar PENDING sin cubículo ni de otro cubículo
+      mockPrisma.ticket.findFirst.mockResolvedValueOnce({
+        ...pendingTicket,
+        status: TicketStatus.ASSIGNED,
+        cubicleId: 'cub-2',
+      });
+      await expect(
+        ticketsService.cancelTicket(
+          '01JCANC001',
+          'cashier-1',
+          'corr-c2',
+          undefined,
+          1,
+          UserRole.CASHIER,
+          'cub-1',
+        ),
+      ).rejects.toThrow(ForbiddenException);
+
+      // IN_SERVICE debe cerrarse mediante closeTicket (409)
+      mockPrisma.ticket.findFirst.mockResolvedValueOnce({
+        ...pendingTicket,
+        status: TicketStatus.IN_SERVICE,
+        cubicleId: 'cub-1',
+      });
+      await expect(
+        ticketsService.cancelTicket(
+          '01JCANC001',
+          'admin-1',
+          'corr-c3',
+          undefined,
+          1,
+          UserRole.ADMIN,
+          null,
+        ),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('getTicketHistory pagina correctamente sobre la colección filtrada cuando slaFilter está activo', async () => {
+      const now = new Date();
+      const shortStart = new Date(now.getTime() - 2 * 60 * 1000); // 120s (en norma)
+      const longStart = new Date(now.getTime() - 20 * 60 * 1000); // 1200s (excede)
+
+      mockPrisma.ticket.findMany.mockResolvedValueOnce([
+        {
+          id: 't1',
+          publicId: '01JPAG001',
+          publicCode: 'TUR-000701-GE',
+          patientName: 'Uno',
+          status: TicketStatus.CLOSED,
+          queueCategory: QueueCategory.GENERAL,
+          createdAt: shortStart,
+          calledAt: shortStart,
+          serviceStartedAt: shortStart,
+          closedAt: now,
+          cubicle: { code: 'CUB-01', displayName: 'Cubículo 01' },
+          dispensation: null,
+        },
+        {
+          id: 't2',
+          publicId: '01JPAG002',
+          publicCode: 'TUR-000702-GE',
+          patientName: 'Dos Excedido',
+          status: TicketStatus.CLOSED,
+          queueCategory: QueueCategory.GENERAL,
+          createdAt: longStart,
+          calledAt: longStart,
+          serviceStartedAt: longStart,
+          closedAt: now,
+          cubicle: { code: 'CUB-01', displayName: 'Cubículo 01' },
+          dispensation: null,
+        },
+        {
+          id: 't3',
+          publicId: '01JPAG003',
+          publicCode: 'TUR-000703-GE',
+          patientName: 'Tres Excedido',
+          status: TicketStatus.CLOSED,
+          queueCategory: QueueCategory.GENERAL,
+          createdAt: longStart,
+          calledAt: longStart,
+          serviceStartedAt: longStart,
+          closedAt: now,
+          cubicle: { code: 'CUB-02', displayName: 'Cubículo 02' },
+          dispensation: null,
+        },
+        {
+          id: 't4',
+          publicId: '01JPAG004',
+          publicCode: 'TUR-000704-GE',
+          patientName: 'Cuatro Excedido',
+          status: TicketStatus.CLOSED,
+          queueCategory: QueueCategory.GENERAL,
+          createdAt: longStart,
+          calledAt: longStart,
+          serviceStartedAt: longStart,
+          closedAt: now,
+          cubicle: { code: 'CUB-02', displayName: 'Cubículo 02' },
+          dispensation: null,
+        },
+      ]);
+
+      const page2 = await ticketsService.getTicketHistory({
+        slaFilter: 'EXCEEDED',
+        page: 2,
+        limit: 2,
+      });
+
+      expect(page2.total).toBe(3);
+      expect(page2.totalPages).toBe(2);
+      expect(page2.items).toHaveLength(1);
+      expect(page2.items[0]?.publicCode).toBe('TUR-000704-GE');
+    });
+
+    it('getTicketTimeline retorna línea de tiempo cronológica completa con documento enmascarado', async () => {
+      const t0 = new Date('2026-11-11T09:00:00.000Z');
+      const t1 = new Date('2026-11-11T09:02:00.000Z');
+      mockPrisma.ticket.findFirst.mockResolvedValueOnce({
+        id: 't-tl-1',
+        publicId: '01JTL0001',
+        publicCode: 'TUR-000888-GE',
+        patientName: 'Elena Naranjo',
+        patientDocument: '1020304050',
+        status: TicketStatus.CLOSED,
+        queueCategory: QueueCategory.GENERAL,
+        terminalReason: null,
+        createdAt: t0,
+        calledAt: t1,
+        serviceStartedAt: t1,
+        closedAt: new Date('2026-11-11T09:05:00.000Z'),
+        cubicle: { code: 'CUB-02', displayName: 'Cubículo 02', operatorName: 'Farm. Prueba' },
+        dispensation: null,
+        statusHistory: [
+          {
+            id: 'h-1',
+            fromStatus: null,
+            toStatus: TicketStatus.PENDING,
+            cubicle: null,
+            actor: { displayName: 'Recepción Central', role: UserRole.RECEPTION },
+            reasonCode: 'TICKET_CREATED',
+            correlationId: 'corr-1',
+            createdAt: t0,
+          },
+        ],
+        calls: [
+          {
+            id: 'c-1',
+            callNumber: 1,
+            cubicle: { code: 'CUB-02', displayName: 'Cubículo 02' },
+            caller: { displayName: 'Cajero 2' },
+            createdAt: t1,
+          },
+        ],
+      });
+
+      const timeline = await ticketsService.getTicketTimeline('01JTL0001');
+      expect(timeline.ticket.publicCode).toBe('TUR-000888-GE');
+      expect(timeline.ticket.maskedDocument).toBe('C.C. ••••••4050');
+      expect(timeline.ticket.maskedDocument).not.toContain('102030');
+      expect(timeline.statusHistory).toHaveLength(1);
+      expect(timeline.statusHistory[0]?.actorName).toBe('Recepción Central');
+      expect(timeline.calls).toHaveLength(1);
+      expect(timeline.calls[0]?.callerName).toBe('Cajero 2');
     });
   });
 });

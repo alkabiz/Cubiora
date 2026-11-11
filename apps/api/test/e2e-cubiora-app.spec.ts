@@ -264,6 +264,12 @@ describe('E2E Operacional Completo con Rol cubiora_app', () => {
       systemSequence: {
         upsert: async () => ({ currentVal: 1n }),
       },
+      dispensationRecord: {
+        create: async ({ data }: any) => data,
+      },
+      pharmacist: {
+        updateMany: async () => ({ count: 1 }),
+      },
     };
 
     publicDisplayService = new PublicDisplayService(mockPrisma);

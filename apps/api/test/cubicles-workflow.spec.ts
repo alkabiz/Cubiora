@@ -140,6 +140,12 @@ describe('Punto 7 — Integración y Concurrencia de Cubículos y Pantalla', () 
         return data;
       }),
     },
+    dispensationRecord: {
+      create: vi.fn(async ({ data }) => data),
+    },
+    pharmacist: {
+      updateMany: vi.fn(async () => ({ count: 1 })),
+    },
     idempotencyKey: {
       findUnique: vi.fn(async ({ where }) => {
         const key = `${where.uq_idempotency_key.actorUserId}:${where.uq_idempotency_key.operation}:${where.uq_idempotency_key.idempotencyKey}`;
@@ -166,6 +172,8 @@ describe('Punto 7 — Integración y Concurrencia de Cubículos y Pantalla', () 
           cubicle: mockPrisma.cubicle,
           ticketCall: mockPrisma.ticketCall,
           ticketStatusHistory: mockPrisma.ticketStatusHistory,
+          dispensationRecord: mockPrisma.dispensationRecord,
+          pharmacist: mockPrisma.pharmacist,
           idempotencyKey: mockPrisma.idempotencyKey,
           $queryRaw: vi.fn(async () => {
             // Emular selección de siguiente PENDING

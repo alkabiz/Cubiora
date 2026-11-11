@@ -15,6 +15,7 @@ import {
   AdminCubicleConfigDto,
   ApiErrorCode,
   CubicleDailyPerformance,
+  CubicleOptionDto,
   CubicleSnapshot,
   CubicleStatus,
   PharmacistStatus,
@@ -26,23 +27,12 @@ import {
 } from '@cubiora/shared';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { OperationalTelemetryService } from '../operational-telemetry/operational-telemetry.service';
+import {
+  DEFAULT_DAILY_TARGET_SECONDS,
+  resolveDailyTargetSeconds,
+} from '../../config/sla-target.util';
 
-/** Objetivo operativo inicial: atenciones finalizadas en ≤ 12 minutos. */
-export const DEFAULT_DAILY_TARGET_SECONDS = 12 * 60;
-
-/**
- * Objetivo operativo configurable del rendimiento diario por cubículo.
- * La configuración vive en el backend; React nunca fija el valor.
- */
-export function resolveDailyTargetSeconds(
-  rawValue: string | undefined = process.env['CUBICLE_DAILY_TARGET_SECONDS'],
-): number {
-  const parsed = Number(rawValue);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return DEFAULT_DAILY_TARGET_SECONDS;
-  }
-  return Math.round(parsed);
-}
+export { DEFAULT_DAILY_TARGET_SECONDS, resolveDailyTargetSeconds };
 
 function resolveCurrentDayRange(now: Date): { start: Date; end: Date } {
   const start = new Date(now);
@@ -87,17 +77,86 @@ export class CubiclesService {
   }
 
   /**
-   * Obtiene el snapshot actual de un cubículo existente por su código.
+   * Lista cubículos seleccionables para operación en caja.
+   * CASHIER recibe únicamente su cubículo asignado; ADMIN recibe los cubículos activos
+   * (con filtro opcional por sede) ordenados con la sede primaria primero.
+   */
+  async listSelectableCubicles(
+    user?: AuthenticatedUser,
+    facilityId?: string,
+  ): Promise<CubicleOptionDto[]> {
+    const whereClause: Record<string, unknown> = {};
+
+    if (user?.role === UserRole.CASHIER) {
+      if (!user.cubicleId) {
+        return [];
+      }
+      whereClause['id'] = user.cubicleId;
+    } else {
+      whereClause['active'] = true;
+      if (facilityId && facilityId.trim().length > 0 && facilityId !== 'ALL') {
+        whereClause['facilityId'] = facilityId.trim();
+      }
+    }
+
+    const cubicles = await this.prisma.cubicle.findMany({
+      where: whereClause,
+      orderBy: [{ code: 'asc' }],
+      select: {
+        id: true,
+        code: true,
+        displayName: true,
+        status: true,
+        active: true,
+        facilityId: true,
+        facility: {
+          select: {
+            code: true,
+            name: true,
+            isPrimary: true,
+          },
+        },
+      },
+    });
+
+    cubicles.sort((a, b) => {
+      const aPrimary = a.facility?.isPrimary ? 0 : 1;
+      const bPrimary = b.facility?.isPrimary ? 0 : 1;
+      if (aPrimary !== bPrimary) return aPrimary - bPrimary;
+      return a.code.localeCompare(b.code);
+    });
+
+    return cubicles.map((c) => ({
+      id: c.id,
+      code: c.code,
+      displayName: c.displayName,
+      status: c.status as CubicleStatus,
+      active: c.active,
+      facilityId: c.facilityId ?? null,
+      facilityCode: c.facility?.code ?? null,
+      facilityName: c.facility?.name ?? null,
+    }));
+  }
+
+  /**
+   * Obtiene el snapshot actual de un cubículo existente por su código o id.
    * Lanza NotFoundException si el cubículo no existe para garantizar la seguridad
    * e idempotencia de las peticiones GET conforme a RFC 9110.
+   * Si el actor es CASHIER, verifica que corresponda a su cubículo asignado.
    */
-  async getCubicleSnapshotByCode(codeParam: string): Promise<CubicleSnapshot> {
-    const rawCode = codeParam.trim().toUpperCase();
-    const normalizedCode = rawCode.startsWith('CUB-') ? rawCode : `CUB-${rawCode.padStart(2, '0')}`;
+  async getCubicleSnapshotByCode(
+    codeParam: string,
+    user?: AuthenticatedUser,
+  ): Promise<CubicleSnapshot> {
+    const trimmedParam = codeParam.trim();
+    const rawCode = trimmedParam.toUpperCase();
+    const normalizedCode = rawCode.startsWith('CUB-')
+      ? rawCode
+      : `CUB-${rawCode.padStart(2, '0')}`;
 
     const cubicle = await this.prisma.cubicle.findFirst({
       where: {
-        OR: [{ code: normalizedCode }, { code: rawCode }],
+        OR: [{ code: normalizedCode }, { code: rawCode }, { id: trimmedParam }],
       },
     });
 
@@ -105,6 +164,13 @@ export class CubiclesService {
       throw new NotFoundException({
         code: ApiErrorCode.RESOURCE_NOT_FOUND,
         message: `El cubículo con código '${codeParam}' no existe.`,
+      });
+    }
+
+    if (user?.role === UserRole.CASHIER && (!user.cubicleId || user.cubicleId !== cubicle.id)) {
+      throw new ForbiddenException({
+        code: ApiErrorCode.FORBIDDEN,
+        message: `Acceso denegado: el operador de caja solo puede consultar su cubículo asignado.`,
       });
     }
 
@@ -233,13 +299,16 @@ export class CubiclesService {
     user: AuthenticatedUser,
     now: Date = new Date(),
   ): Promise<CubicleDailyPerformance> {
-    const rawCode = cubicleCode.trim().toUpperCase();
-    const normalizedCode = rawCode.startsWith('CUB-') ? rawCode : `CUB-${rawCode.padStart(2, '0')}`;
+    const trimmedParam = cubicleCode.trim();
+    const rawCode = trimmedParam.toUpperCase();
+    const normalizedCode = rawCode.startsWith('CUB-')
+      ? rawCode
+      : `CUB-${rawCode.padStart(2, '0')}`;
 
     const [cubicle, databaseUser] = await Promise.all([
       this.prisma.cubicle.findFirst({
         where: {
-          OR: [{ code: normalizedCode }, { code: rawCode }],
+          OR: [{ code: normalizedCode }, { code: rawCode }, { id: trimmedParam }],
         },
         select: { id: true, code: true },
       }),

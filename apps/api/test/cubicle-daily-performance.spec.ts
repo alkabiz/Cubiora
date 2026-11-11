@@ -321,4 +321,55 @@ describe('Rendimiento diario por cubículo', () => {
     expect(serialized).not.toContain('patientDocument');
     expect(serialized).not.toContain('document');
   });
+
+  it('listSelectableCubicles restringe a CASHIER a su cubículo asignado y retorna [] si carece de asignación', async () => {
+    const prismaWithFindMany: any = {
+      ...mockPrisma,
+      cubicle: {
+        ...mockPrisma.cubicle,
+        findMany: vi.fn(async ({ where }: { where: any }) => {
+          const all = [
+            {
+              id: 'cub-03',
+              code: 'CUB-03',
+              displayName: 'Cubículo 03',
+              status: 'AVAILABLE',
+              active: true,
+              facilityId: 'fac-1',
+              facility: { code: 'SEDE-CEN-01', name: 'Central', isPrimary: true },
+            },
+            {
+              id: 'cub-01',
+              code: 'CUB-01',
+              displayName: 'Cubículo 01',
+              status: 'AVAILABLE',
+              active: true,
+              facilityId: 'fac-2',
+              facility: { code: 'SEDE-NOR-01', name: 'Norte', isPrimary: false },
+            },
+          ];
+          if (where.id) return all.filter((c) => c.id === where.id);
+          return all;
+        }),
+      },
+    };
+    const svc = new CubiclesService(prismaWithFindMany as unknown as PrismaService);
+
+    const unassigned = await svc.listSelectableCubicles(
+      makeUser({ id: 'user_cashier_unassigned', cubicleId: null }),
+    );
+    expect(unassigned).toEqual([]);
+
+    const cashierList = await svc.listSelectableCubicles(makeUser({ cubicleId: 'cub-03' }));
+    expect(cashierList.map((c) => c.code)).toEqual(['CUB-03']);
+
+    const adminList = await svc.listSelectableCubicles(
+      makeUser({ id: 'user_admin', role: UserRole.ADMIN, cubicleId: null }),
+    );
+    expect(adminList.map((c) => c.code)).toEqual(['CUB-03', 'CUB-01']);
+
+    await expect(
+      svc.getCubicleSnapshotByCode('CUB-01', makeUser({ cubicleId: 'cub-03' })),
+    ).rejects.toThrow(ForbiddenException);
+  });
 });

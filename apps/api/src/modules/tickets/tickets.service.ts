@@ -17,6 +17,7 @@ import { CreateTicketDto } from './dto/create-ticket.dto';
 import { TicketCommandDto } from './dto/ticket-command.dto';
 import { PublicDisplayService } from '../public-display/public-display.service';
 import { CubiclesService } from '../cubicles/cubicles.service';
+import { resolveDailyTargetSeconds } from '../../config/sla-target.util';
 import { OperationalTelemetryService } from '../operational-telemetry/operational-telemetry.service';
 import { WmsIntegrationService } from '../wms-integration/wms-integration.service';
 import {
@@ -24,11 +25,15 @@ import {
   CubicleStatus,
   QueueCategory,
   DispensationResolution,
+  PharmacistStatus,
   UserRole,
   ApiErrorCode,
   CubicleSnapshot,
+  CancelTicketResponse,
   TicketHistoryResponse,
   TicketHistoryItem,
+  TicketTimelineDto,
+  maskDocument,
 } from '@cubiora/shared';
 
 export const ALLOWED_OPERATIONAL_REASONS = [
@@ -532,10 +537,12 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       });
     }
 
-    let cubicleId = ticket.cubicleId;
+    const cubicleId = ticket.cubicleId ?? actorCubicleId ?? null;
     if (!cubicleId) {
-      const defaultCubicle = await this.cubiclesService.getOrCreateCubicleByCode('CUB-03');
-      cubicleId = defaultCubicle.cubicle.id;
+      throw new ConflictException({
+        code: ApiErrorCode.STATE_CONFLICT,
+        message: 'El turno no tiene un cubículo asignado para realizar el llamado.',
+      });
     }
 
     const isFirstCall = ticket.status === TicketStatus.ASSIGNED;
@@ -564,6 +571,7 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
             updatedCubicleId: cubicleId,
             callNumber: 0,
             publicCode: ticket.publicCode,
+            cubicleCode: '',
             cubicleDisplayName: '',
           };
         }
@@ -605,6 +613,7 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
         data: {
           status: TicketStatus.CALLED,
           calledAt: now,
+          ...(ticket.cubicleId ? {} : { cubicleId }),
           version: { increment: 1 },
         },
       });
@@ -654,6 +663,7 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
         updatedCubicleId: cubicle.id,
         callNumber: nextCallNumber,
         publicCode: ticket.publicCode,
+        cubicleCode: (cubicle as { code?: string }).code ?? '',
         cubicleDisplayName: cubicle.displayName,
       };
     });
@@ -684,7 +694,7 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
         ticketId: ticket.id,
         publicCode: txResult.publicCode,
         queueCategory: ticket.queueCategory,
-        cubicleCode: txResult.cubicleDisplayName || 'CUB-01',
+        cubicleCode: txResult.cubicleCode || txResult.cubicleDisplayName,
         prescriptionBarcode: ticket.prescriptionBarcode ?? null,
         calledAt: now.toISOString(),
       });
@@ -924,36 +934,44 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       });
 
       // 1.1 Registrar la dispensación farmacéutica (resolución legal / medicamentos pendientes)
+      // Falla de manera atómica si no puede persistirse para preservar trazabilidad WORM y Resolución 1604.
       const dispensationId = ulid();
       const deadline =
         resolution === DispensationResolution.PENDING_48H
           ? new Date(now.getTime() + 48 * 60 * 60 * 1000)
           : null;
 
-      try {
-        if ((tx as any).dispensationRecord) {
-          await (tx as any).dispensationRecord.create({
-            data: {
-              id: dispensationId,
-              ticketId: ticket.id,
-              cubicleId,
-              operatorUserId: actorUserId,
-              resolution,
-              prescriptionCode: dto?.prescriptionCode?.trim() ?? null,
-              mipresNumber: dto?.mipresNumber?.trim() ?? null,
-              itemsDeliveredCount: dto?.itemsDeliveredCount ?? 0,
-              itemsPendingCount:
-                dto?.itemsPendingCount ?? (resolution === DispensationResolution.PENDING_48H ? 1 : 0),
-              pendingDetailsJson: (dto?.pendingDetailsJson as any) ?? Prisma.JsonNull,
-              deliveryAddress: dto?.deliveryAddress?.trim() ?? null,
-              deliveryPhone: dto?.deliveryPhone?.trim() ?? null,
-              deliveryDeadline: deadline,
-              createdAt: now,
-            },
-          });
-        }
-      } catch (dispErr) {
-        this.logger.warn(`No se pudo crear dispensationRecord en cierre: ${(dispErr as Error).message}`);
+      await tx.dispensationRecord.create({
+        data: {
+          id: dispensationId,
+          ticketId: ticket.id,
+          cubicleId,
+          operatorUserId: actorUserId,
+          resolution,
+          prescriptionCode: dto?.prescriptionCode?.trim() ?? null,
+          mipresNumber: dto?.mipresNumber?.trim() ?? null,
+          itemsDeliveredCount: dto?.itemsDeliveredCount ?? 0,
+          itemsPendingCount:
+            dto?.itemsPendingCount ?? (resolution === DispensationResolution.PENDING_48H ? 1 : 0),
+          pendingDetailsJson: (dto?.pendingDetailsJson as any) ?? Prisma.JsonNull,
+          deliveryAddress: dto?.deliveryAddress?.trim() ?? null,
+          deliveryPhone: dto?.deliveryPhone?.trim() ?? null,
+          deliveryDeadline: deadline,
+          createdAt: now,
+        },
+      });
+
+      // 1.2 Incrementar contador de despachos del farmacéutico asignado al cubículo
+      if (tx.pharmacist?.updateMany) {
+        await tx.pharmacist.updateMany({
+          where: {
+            cubicleId,
+            status: { not: PharmacistStatus.INACTIVE },
+          },
+          data: {
+            dispatchesCount: { increment: 1 },
+          },
+        });
       }
 
       // 2. Historial de cierre
@@ -1302,6 +1320,261 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * POST /api/v1/tickets/:publicId/cancel
+   * Cancela explícitamente un turno en estado PENDING, ASSIGNED o CALLED.
+   * Si tenía cubículo asignado, libera el cubículo y autoasigna el siguiente PENDING si existe.
+   */
+  async cancelTicket(
+    ticketIdOrPublicId: string,
+    actorUserId: string,
+    correlationId: string,
+    idempotencyKey?: string,
+    expectedVersion?: number,
+    actorUserRole?: UserRole,
+    actorCubicleId?: string | null,
+    reason?: string,
+  ): Promise<{ statusCode: number; data: CancelTicketResponse }> {
+    const ticket = await this.findTicket(ticketIdOrPublicId);
+
+    let effectiveRole = actorUserRole;
+    let effectiveCubicleId = actorCubicleId;
+    if (!effectiveRole && this.prisma.user?.findUnique) {
+      try {
+        const dbUser = await this.prisma.user.findUnique({
+          where: { id: actorUserId },
+          select: { role: true, cubicleId: true },
+        });
+        if (dbUser) {
+          effectiveRole = dbUser.role as UserRole;
+          effectiveCubicleId = dbUser.cubicleId;
+        }
+      } catch {
+        // Fallback si el mock no expone user.findUnique
+      }
+    }
+
+    if (effectiveRole === UserRole.CASHIER) {
+      if (!ticket.cubicleId || !effectiveCubicleId || ticket.cubicleId !== effectiveCubicleId) {
+        throw new ForbiddenException({
+          code: ApiErrorCode.FORBIDDEN,
+          message:
+            'Acceso denegado: el operador de caja solo puede cancelar turnos asignados a su propio cubículo.',
+        });
+      }
+    }
+
+    if (idempotencyKey) {
+      const existing = await this.prisma.idempotencyKey.findUnique({
+        where: {
+          uq_idempotency_key: {
+            actorUserId,
+            operation: `CANCEL_TICKET:${ticket.id}`,
+            idempotencyKey,
+          },
+        },
+      });
+      if (existing?.responseBody) {
+        return {
+          statusCode: 200,
+          data: existing.responseBody as unknown as CancelTicketResponse,
+        };
+      }
+    }
+
+    this.checkVersion(ticket.version, expectedVersion);
+
+    const cancellableStatuses: TicketStatus[] = [
+      TicketStatus.PENDING,
+      TicketStatus.ASSIGNED,
+      TicketStatus.CALLED,
+    ];
+    if (!cancellableStatuses.includes(ticket.status as TicketStatus)) {
+      throw new ConflictException({
+        code: ApiErrorCode.STATE_CONFLICT,
+        message: `El turno en estado ${ticket.status} no puede cancelarse. Solo se permite cancelar turnos PENDING, ASSIGNED o CALLED.`,
+      });
+    }
+
+    const normalizedReason = reason?.trim() || 'CANCELLED_BY_OPERATOR';
+    const now = new Date();
+
+    const txResult = await this.prisma.$transaction(async (tx) => {
+      try {
+        await tx.$executeRaw`SELECT id FROM tickets WHERE id = ${ticket.id} FOR UPDATE`;
+      } catch {
+        // Fallback para entornos donde executeRaw no soporte FOR UPDATE
+      }
+
+      const freshTicket = await tx.ticket.findUnique({ where: { id: ticket.id } });
+      if (
+        !freshTicket ||
+        !cancellableStatuses.includes(freshTicket.status as TicketStatus)
+      ) {
+        throw new ConflictException({
+          code: ApiErrorCode.STATE_CONFLICT,
+          message: `El turno en estado ${freshTicket?.status || ticket.status} no puede cancelarse.`,
+        });
+      }
+
+      const assignedCubicleId = freshTicket.cubicleId ?? null;
+
+      await tx.ticket.update({
+        where: { id: ticket.id },
+        data: {
+          status: TicketStatus.CANCELLED,
+          closedAt: now,
+          terminalReason: normalizedReason,
+          version: { increment: 1 },
+        },
+      });
+
+      await tx.ticketStatusHistory.create({
+        data: {
+          id: ulid(),
+          ticketId: ticket.id,
+          fromStatus: freshTicket.status,
+          toStatus: TicketStatus.CANCELLED,
+          cubicleId: assignedCubicleId,
+          actorUserId,
+          reasonCode: 'TICKET_CANCELLED',
+          correlationId: correlationId || ulid(),
+        },
+      });
+
+      if (assignedCubicleId) {
+        let nextTicketId: string | null = null;
+        const isPolicyApproved = this.isPreferentialPolicyEnabled();
+        try {
+          let pendingRows: { id: string }[];
+          if (isPolicyApproved) {
+            pendingRows = await tx.$queryRaw<{ id: string }[]>`
+              SELECT id FROM tickets
+              WHERE status = 'PENDING'
+              ORDER BY CASE WHEN queue_category = 'PREFERENTIAL' THEN 0 ELSE 1 END ASC, sequence_number ASC
+              LIMIT 1
+              FOR UPDATE SKIP LOCKED
+            `;
+          } else {
+            pendingRows = await tx.$queryRaw<{ id: string }[]>`
+              SELECT id FROM tickets
+              WHERE status = 'PENDING'
+              ORDER BY sequence_number ASC
+              LIMIT 1
+              FOR UPDATE SKIP LOCKED
+            `;
+          }
+          if (pendingRows[0]) {
+            nextTicketId = pendingRows[0].id;
+          }
+        } catch {
+          let nextPending;
+          if (isPolicyApproved) {
+            nextPending = await tx.ticket.findFirst({
+              where: { status: TicketStatus.PENDING, queueCategory: QueueCategory.PREFERENTIAL },
+              orderBy: { sequenceNumber: 'asc' },
+            });
+            if (!nextPending) {
+              nextPending = await tx.ticket.findFirst({
+                where: { status: TicketStatus.PENDING },
+                orderBy: { sequenceNumber: 'asc' },
+              });
+            }
+          } else {
+            nextPending = await tx.ticket.findFirst({
+              where: { status: TicketStatus.PENDING },
+              orderBy: { sequenceNumber: 'asc' },
+            });
+          }
+          if (nextPending) {
+            nextTicketId = nextPending.id;
+          }
+        }
+
+        if (nextTicketId) {
+          await tx.ticket.update({
+            where: { id: nextTicketId },
+            data: {
+              status: TicketStatus.ASSIGNED,
+              cubicleId: assignedCubicleId,
+              assignedAt: now,
+              version: { increment: 1 },
+            },
+          });
+
+          await tx.cubicle.update({
+            where: { id: assignedCubicleId },
+            data: {
+              status: CubicleStatus.RESERVED,
+              version: { increment: 1 },
+            },
+          });
+
+          await tx.ticketStatusHistory.create({
+            data: {
+              id: ulid(),
+              ticketId: nextTicketId,
+              fromStatus: TicketStatus.PENDING,
+              toStatus: TicketStatus.ASSIGNED,
+              cubicleId: assignedCubicleId,
+              actorUserId,
+              reasonCode: 'AUTO_ASSIGNED_NEXT',
+              correlationId: correlationId || ulid(),
+            },
+          });
+        } else {
+          await tx.cubicle.update({
+            where: { id: assignedCubicleId },
+            data: {
+              status: CubicleStatus.AVAILABLE,
+              version: { increment: 1 },
+            },
+          });
+        }
+      }
+
+      return { assignedCubicleId };
+    });
+
+    const cubicleSnapshot = txResult.assignedCubicleId
+      ? await this.cubiclesService.buildCubicleSnapshot(txResult.assignedCubicleId)
+      : null;
+
+    if (this.telemetryService) {
+      if (txResult.assignedCubicleId) {
+        void this.telemetryService.emitCubicleUpdate(txResult.assignedCubicleId);
+      }
+      void this.telemetryService.emitQueueUpdate();
+    }
+
+    const response: CancelTicketResponse = {
+      cancelled: true,
+      publicId: ticket.publicId,
+      publicCode: ticket.publicCode,
+      status: TicketStatus.CANCELLED,
+      cubicleSnapshot,
+    };
+
+    if (idempotencyKey && this.prisma.idempotencyKey?.create) {
+      await this.prisma.idempotencyKey.create({
+        data: {
+          id: ulid(),
+          actorUserId,
+          operation: `CANCEL_TICKET:${ticket.id}`,
+          idempotencyKey,
+          requestHash: idempotencyKey,
+          resourceType: 'Ticket',
+          resourcePublicId: ticket.publicId,
+          responseStatus: 200,
+          responseBody: response as unknown as Prisma.InputJsonValue,
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        },
+      });
+    }
+
+    return { statusCode: 200, data: response };
+  }
+
+  /**
    * Obtiene los últimos turnos creados para la pantalla de recepción.
    * Reglas de contrato:
    * 1. Alcance: Usuario autenticado actual.
@@ -1350,6 +1623,74 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     }));
   }
 
+  private mapTicketToHistoryItem(t: any, slaThresholdSeconds: number): TicketHistoryItem {
+    const serviceStarted = t.serviceStartedAt ? new Date(t.serviceStartedAt).getTime() : null;
+    const closed = t.closedAt ? new Date(t.closedAt).getTime() : null;
+    const created = new Date(t.createdAt).getTime();
+    const called = t.calledAt ? new Date(t.calledAt).getTime() : null;
+
+    const serviceDurationSeconds =
+      serviceStarted && closed ? Math.max(0, Math.round((closed - serviceStarted) / 1000)) : 0;
+    const waitingDurationSeconds =
+      called ? Math.max(0, Math.round((called - created) / 1000)) : 0;
+
+    // SLA nominal evaluado con el umbral unificado CUBICLE_DAILY_TARGET_SECONDS
+    const slaCompliant =
+      serviceDurationSeconds <= slaThresholdSeconds && t.status === TicketStatus.CLOSED;
+
+    const operatorName =
+      t.cubicle?.operatorName ||
+      t.cubicle?.currentOperator?.displayName ||
+      t.creator?.displayName ||
+      'Sin operador asignado';
+
+    const assignedStation = t.cubicle?.displayName || 'Sin estación';
+    const cubicleCode = t.cubicle?.code || '';
+
+    const dispensationDto = t.dispensation
+      ? {
+          id: t.dispensation.id,
+          ticketId: t.dispensation.ticketId,
+          cubicleId: t.dispensation.cubicleId,
+          operatorUserId: t.dispensation.operatorUserId,
+          resolution: t.dispensation.resolution as DispensationResolution,
+          prescriptionCode: t.dispensation.prescriptionCode,
+          mipresNumber: t.dispensation.mipresNumber,
+          itemsDeliveredCount: t.dispensation.itemsDeliveredCount,
+          itemsPendingCount: t.dispensation.itemsPendingCount,
+          pendingDetailsJson: t.dispensation.pendingDetailsJson,
+          deliveryAddress: t.dispensation.deliveryAddress,
+          deliveryPhone: t.dispensation.deliveryPhone,
+          deliveryDeadline: t.dispensation.deliveryDeadline
+            ? new Date(t.dispensation.deliveryDeadline).toISOString()
+            : null,
+          createdAt: new Date(t.dispensation.createdAt).toISOString(),
+        }
+      : null;
+
+    return {
+      id: t.id,
+      publicId: t.publicId,
+      publicCode: t.publicCode,
+      patientName: t.patientName,
+      maskedDocument: maskDocument(t.patientDocument),
+      status: t.status as TicketStatus,
+      queueCategory: (t.queueCategory as QueueCategory) || QueueCategory.GENERAL,
+      assignedStation,
+      cubicleCode,
+      operatorName,
+      serviceDurationSeconds,
+      waitingDurationSeconds,
+      slaCompliant,
+      createdAt: new Date(t.createdAt).toISOString(),
+      calledAt: t.calledAt ? new Date(t.calledAt).toISOString() : null,
+      serviceStartedAt: t.serviceStartedAt ? new Date(t.serviceStartedAt).toISOString() : null,
+      closedAt: t.closedAt ? new Date(t.closedAt).toISOString() : null,
+      terminalReason: t.terminalReason ?? null,
+      dispensation: dispensationDto,
+    };
+  }
+
   /**
    * Consulta paginada del historial operativo y auditoría de turnos (SCR-ADM-003).
    */
@@ -1357,10 +1698,11 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     search?: string | undefined;
     slaFilter?: string | undefined;
     queueCategory?: QueueCategory | undefined;
+    facilityId?: string | undefined;
     page: number;
     limit: number;
   }): Promise<TicketHistoryResponse> {
-    const { search, slaFilter, queueCategory, page, limit } = params;
+    const { search, slaFilter, queueCategory, facilityId, page, limit } = params;
 
     const where: Prisma.TicketWhereInput = {
       status: { in: [TicketStatus.CLOSED, TicketStatus.NO_SHOW, TicketStatus.CANCELLED] },
@@ -1368,6 +1710,10 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
 
     if (queueCategory) {
       where.queueCategory = queueCategory;
+    }
+
+    if (facilityId && facilityId.trim().length > 0 && facilityId !== 'ALL') {
+      where.cubicle = { is: { facilityId: facilityId.trim() } };
     }
 
     if (search && search.trim().length > 0) {
@@ -1380,113 +1726,135 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       ];
     }
 
+    const slaThresholdSeconds = resolveDailyTargetSeconds();
+    const requiresSlaSlice = slaFilter === 'IN_NORM' || slaFilter === 'EXCEEDED';
+
     let total = 0;
-    let tickets: any[] = [];
+    let items: TicketHistoryItem[] = [];
+
+    const historyInclude = {
+      cubicle: {
+        include: {
+          currentOperator: { select: { displayName: true } },
+        },
+      },
+      creator: { select: { displayName: true } },
+      dispensation: true,
+    };
 
     try {
-      if (this.prisma.ticket.count && this.prisma.ticket.findMany) {
-        [total, tickets] = await Promise.all([
+      if (requiresSlaSlice && this.prisma.ticket.findMany) {
+        const allMatching = await this.prisma.ticket.findMany({
+          where,
+          include: historyInclude,
+          orderBy: [{ closedAt: 'desc' }, { createdAt: 'desc' }],
+        });
+        const mapped = allMatching.map((t) =>
+          this.mapTicketToHistoryItem(t, slaThresholdSeconds),
+        );
+        const filtered =
+          slaFilter === 'IN_NORM'
+            ? mapped.filter((i) => i.slaCompliant)
+            : mapped.filter((i) => !i.slaCompliant);
+        total = filtered.length;
+        const startIndex = (page - 1) * limit;
+        items = filtered.slice(startIndex, startIndex + limit);
+      } else if (this.prisma.ticket.count && this.prisma.ticket.findMany) {
+        const [counted, tickets] = await Promise.all([
           this.prisma.ticket.count({ where }),
           this.prisma.ticket.findMany({
             where,
-            include: {
-              cubicle: {
-                include: {
-                  currentOperator: { select: { displayName: true } },
-                },
-              },
-              creator: { select: { displayName: true } },
-              dispensation: true,
-            },
-            orderBy: { closedAt: 'desc' },
+            include: historyInclude,
+            orderBy: [{ closedAt: 'desc' }, { createdAt: 'desc' }],
             skip: (page - 1) * limit,
             take: limit,
           }),
         ]);
+        total = counted;
+        items = tickets.map((t) => this.mapTicketToHistoryItem(t, slaThresholdSeconds));
       }
     } catch (err) {
       this.logger.warn(`Error al consultar historial de tickets en BD: ${(err as Error).message}`);
     }
 
-    const items: TicketHistoryItem[] = tickets.map((t) => {
-      const serviceStarted = t.serviceStartedAt ? new Date(t.serviceStartedAt).getTime() : null;
-      const closed = t.closedAt ? new Date(t.closedAt).getTime() : null;
-      const created = new Date(t.createdAt).getTime();
-      const called = t.calledAt ? new Date(t.calledAt).getTime() : null;
-
-      const serviceDurationSeconds =
-        serviceStarted && closed ? Math.max(0, Math.round((closed - serviceStarted) / 1000)) : 0;
-      const waitingDurationSeconds =
-        called ? Math.max(0, Math.round((called - created) / 1000)) : 0;
-
-      // SLA nominal (umbral <= 720 s / 12 min)
-      const slaCompliant = serviceDurationSeconds <= 720 && t.status === TicketStatus.CLOSED;
-
-      const operatorName =
-        t.cubicle?.operatorName ||
-        t.cubicle?.currentOperator?.displayName ||
-        t.creator?.displayName ||
-        'Operador en Ventanilla';
-
-      const assignedStation = t.cubicle?.displayName || 'Cubículo General';
-      const cubicleCode = t.cubicle?.code || 'CUB-01';
-
-      const dispensationDto = t.dispensation
-        ? {
-            id: t.dispensation.id,
-            ticketId: t.dispensation.ticketId,
-            cubicleId: t.dispensation.cubicleId,
-            operatorUserId: t.dispensation.operatorUserId,
-            resolution: t.dispensation.resolution as DispensationResolution,
-            prescriptionCode: t.dispensation.prescriptionCode,
-            mipresNumber: t.dispensation.mipresNumber,
-            itemsDeliveredCount: t.dispensation.itemsDeliveredCount,
-            itemsPendingCount: t.dispensation.itemsPendingCount,
-            pendingDetailsJson: t.dispensation.pendingDetailsJson,
-            deliveryAddress: t.dispensation.deliveryAddress,
-            deliveryPhone: t.dispensation.deliveryPhone,
-            deliveryDeadline: t.dispensation.deliveryDeadline
-              ? new Date(t.dispensation.deliveryDeadline).toISOString()
-              : null,
-            createdAt: new Date(t.dispensation.createdAt).toISOString(),
-          }
-        : null;
-
-      return {
-        id: t.id,
-        publicId: t.publicId,
-        publicCode: t.publicCode,
-        patientName: t.patientName,
-        maskedDocument: t.patientDocument ? `${t.patientDocument.slice(0, 3)}***` : null,
-        status: t.status as TicketStatus,
-        queueCategory: (t.queueCategory as QueueCategory) || QueueCategory.GENERAL,
-        assignedStation,
-        cubicleCode,
-        operatorName,
-        serviceDurationSeconds,
-        waitingDurationSeconds,
-        slaCompliant,
-        createdAt: new Date(t.createdAt).toISOString(),
-        calledAt: t.calledAt ? new Date(t.calledAt).toISOString() : null,
-        serviceStartedAt: t.serviceStartedAt ? new Date(t.serviceStartedAt).toISOString() : null,
-        closedAt: t.closedAt ? new Date(t.closedAt).toISOString() : null,
-        dispensation: dispensationDto,
-      };
-    });
-
-    let filteredItems = items;
-    if (slaFilter === 'IN_NORM') {
-      filteredItems = items.filter((i) => i.slaCompliant);
-    } else if (slaFilter === 'EXCEEDED') {
-      filteredItems = items.filter((i) => !i.slaCompliant);
-    }
-
     return {
-      items: filteredItems,
+      items,
       total,
       page,
       limit,
       totalPages: Math.max(1, Math.ceil(total / limit)),
+      slaThresholdSeconds,
+    };
+  }
+
+  /**
+   * GET /api/v1/tickets/:publicId/history
+   * Retorna la línea de tiempo integral WORM de un turno (estados, llamados y dispensación).
+   */
+  async getTicketTimeline(publicId: string): Promise<TicketTimelineDto> {
+    const ticket = await this.prisma.ticket.findFirst({
+      where: {
+        OR: [{ publicId }, { id: publicId }],
+      },
+      include: {
+        cubicle: {
+          include: {
+            currentOperator: { select: { displayName: true } },
+          },
+        },
+        creator: { select: { displayName: true } },
+        dispensation: true,
+        statusHistory: {
+          orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+          include: {
+            cubicle: { select: { code: true, displayName: true } },
+            actor: { select: { displayName: true, role: true } },
+          },
+        },
+        calls: {
+          orderBy: [{ callNumber: 'asc' }, { createdAt: 'asc' }],
+          include: {
+            cubicle: { select: { code: true, displayName: true } },
+            caller: { select: { displayName: true } },
+          },
+        },
+      },
+    });
+
+    if (!ticket) {
+      throw new NotFoundException({
+        code: ApiErrorCode.RESOURCE_NOT_FOUND,
+        message: `Turno no encontrado con el identificador provisto: ${publicId}`,
+      });
+    }
+
+    const slaThresholdSeconds = resolveDailyTargetSeconds();
+    const mappedTicket = this.mapTicketToHistoryItem(ticket, slaThresholdSeconds);
+
+    return {
+      ticket: mappedTicket,
+      terminalReason: ticket.terminalReason ?? null,
+      statusHistory: (ticket.statusHistory ?? []).map((entry: any) => ({
+        id: entry.id,
+        fromStatus: (entry.fromStatus as TicketStatus) ?? null,
+        toStatus: entry.toStatus as TicketStatus,
+        cubicleCode: entry.cubicle?.code ?? null,
+        cubicleDisplayName: entry.cubicle?.displayName ?? null,
+        actorName: entry.actor?.displayName ?? null,
+        actorRole: (entry.actor?.role as UserRole) ?? null,
+        reasonCode: entry.reasonCode ?? null,
+        correlationId: entry.correlationId,
+        createdAt: new Date(entry.createdAt).toISOString(),
+      })),
+      calls: (ticket.calls ?? []).map((call: any) => ({
+        id: call.id,
+        callNumber: call.callNumber,
+        cubicleCode: call.cubicle?.code ?? '',
+        cubicleDisplayName: call.cubicle?.displayName ?? '',
+        callerName: call.caller?.displayName ?? null,
+        createdAt: new Date(call.createdAt).toISOString(),
+      })),
+      dispensation: mappedTicket.dispensation ?? null,
     };
   }
 

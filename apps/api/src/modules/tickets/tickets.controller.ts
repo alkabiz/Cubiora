@@ -39,6 +39,7 @@ export class TicketsController {
     @Query('search') search?: string,
     @Query('slaFilter') slaFilter?: string,
     @Query('queueCategory') queueCategory?: QueueCategory,
+    @Query('facilityId') facilityId?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
@@ -49,10 +50,23 @@ export class TicketsController {
       search,
       slaFilter,
       queueCategory,
+      facilityId,
       page: pageNum,
       limit: limitNum,
     });
 
+    return {
+      success: true,
+      data,
+    };
+  }
+
+  @Roles(UserRole.ADMIN)
+  @Get(':publicId/history')
+  async getTicketTimeline(
+    @Param('publicId', ParsePublicIdPipe) publicId: string,
+  ) {
+    const data = await this.ticketsService.getTicketTimeline(publicId);
     return {
       success: true,
       data,
@@ -213,6 +227,41 @@ export class TicketsController {
       expectedVersion,
       user.role,
       user.cubicleId,
+    );
+
+    return res.status(statusCode || HttpStatus.OK).json({
+      success: true,
+      data,
+    });
+  }
+
+  @Roles(UserRole.RECEPTION, UserRole.CASHIER, UserRole.ADMIN)
+  @Post(':publicId/cancel')
+  async cancelTicket(
+    @Param('publicId', ParsePublicIdPipe) publicId: string,
+    @Body() dto: TicketCommandDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('idempotency-key') idempotencyKey: string | undefined,
+    @Headers('expected-version') expectedVersionHeader: string | undefined,
+    @Headers('if-match') ifMatchHeader: string | undefined,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const correlationId = (req.headers['x-correlation-id'] as string) || '';
+    const expectedVersion =
+      dto.expectedVersion ??
+      (expectedVersionHeader ? parseInt(expectedVersionHeader, 10) : undefined) ??
+      (ifMatchHeader ? parseInt(ifMatchHeader.replace(/"/g, ''), 10) : undefined);
+
+    const { statusCode, data } = await this.ticketsService.cancelTicket(
+      publicId,
+      user.id,
+      correlationId,
+      idempotencyKey,
+      expectedVersion,
+      user.role,
+      user.cubicleId,
+      dto.reason,
     );
 
     return res.status(statusCode || HttpStatus.OK).json({
