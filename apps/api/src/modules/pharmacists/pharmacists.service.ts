@@ -20,6 +20,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '../../generated/prisma/client';
 import { OperationalTelemetryService } from '../operational-telemetry/operational-telemetry.service';
+import { syncUserCubicleLink } from '../../common/utils/cubicle-assignment-sync.util';
 import { CreatePharmacistDto } from './dto/create-pharmacist.dto';
 import { UpdatePharmacistDto } from './dto/update-pharmacist.dto';
 
@@ -127,38 +128,127 @@ export class PharmacistsService {
       where.status = filters.status as PharmacistStatus;
     }
 
-    const [filteredRows, allPharmacists, closedTickets] = await Promise.all([
-      this.prisma.pharmacist.findMany({
-        where,
-        include: {
-          facility: { select: { id: true, code: true, name: true } },
-          cubicle: { select: { id: true, code: true, displayName: true } },
-        },
-        orderBy: [{ status: 'asc' }, { fullName: 'asc' }],
-      }),
-      this.prisma.pharmacist.findMany({
-        select: {
-          status: true,
-          dispatchesCount: true,
-          facilityId: true,
-        },
-      }),
-      this.prisma.ticket?.findMany
-        ? this.prisma.ticket.findMany({
-            where: {
-              status: TicketStatus.CLOSED,
-              serviceStartedAt: { not: null },
-              closedAt: { not: null },
-            },
-            select: {
-              serviceStartedAt: true,
-              closedAt: true,
-            },
-            take: 200,
-            orderBy: { closedAt: 'desc' },
-          })
-        : Promise.resolve([]),
-    ]);
+    const hasLiveDispatchSource =
+      typeof (this.prisma as { dispensationRecord?: { groupBy?: unknown } }).dispensationRecord
+        ?.groupBy === 'function' &&
+      typeof (this.prisma.ticket as { groupBy?: unknown })?.groupBy === 'function';
+
+    const [filteredRows, allPharmacists, closedTickets, dispensationGroups, legacyClosedGroups] =
+      await Promise.all([
+        this.prisma.pharmacist.findMany({
+          where,
+          include: {
+            facility: { select: { id: true, code: true, name: true } },
+            cubicle: { select: { id: true, code: true, displayName: true } },
+          },
+          orderBy: [{ status: 'asc' }, { fullName: 'asc' }],
+        }),
+        this.prisma.pharmacist.findMany({
+          select: {
+            id: true,
+            userId: true,
+            cubicleId: true,
+            status: true,
+            dispatchesCount: true,
+            facilityId: true,
+          },
+        }),
+        this.prisma.ticket?.findMany
+          ? this.prisma.ticket.findMany({
+              where: {
+                status: TicketStatus.CLOSED,
+                serviceStartedAt: { not: null },
+                closedAt: { not: null },
+              },
+              select: {
+                serviceStartedAt: true,
+                closedAt: true,
+              },
+              take: 200,
+              orderBy: { closedAt: 'desc' },
+            })
+          : Promise.resolve([]),
+        hasLiveDispatchSource
+          ? this.prisma.dispensationRecord.groupBy({
+              by: ['operatorUserId', 'cubicleId'],
+              _count: { _all: true },
+            })
+          : Promise.resolve([]),
+        hasLiveDispatchSource
+          ? this.prisma.ticket.groupBy({
+              by: ['cubicleId'],
+              where: {
+                status: TicketStatus.CLOSED,
+                cubicleId: { not: null },
+                dispensation: { is: null },
+              },
+              _count: { _all: true },
+            })
+          : Promise.resolve([]),
+      ]);
+
+    const derivedDispatchesByPharmacistId = new Map<string, number>();
+    if (hasLiveDispatchSource) {
+      const pharmacistIdByUserId = new Map<string, string>();
+      const pharmacistIdByCubicleId = new Map<string, string>();
+
+      for (const p of allPharmacists as Array<{
+        id?: string;
+        userId?: string | null;
+        cubicleId?: string | null;
+        status?: string;
+      }>) {
+        if (!p.id) continue;
+        derivedDispatchesByPharmacistId.set(p.id, 0);
+        if (p.userId) {
+          pharmacistIdByUserId.set(p.userId, p.id);
+        }
+        if (
+          p.cubicleId &&
+          (!pharmacistIdByCubicleId.has(p.cubicleId) || p.status !== PharmacistStatus.INACTIVE)
+        ) {
+          pharmacistIdByCubicleId.set(p.cubicleId, p.id);
+        }
+      }
+
+      for (const grp of dispensationGroups as Array<{
+        operatorUserId: string | null;
+        cubicleId: string | null;
+        _count?: { _all?: number };
+      }>) {
+        const cnt = grp._count?._all ?? 0;
+        const targetId =
+          (grp.operatorUserId ? pharmacistIdByUserId.get(grp.operatorUserId) : undefined) ??
+          (grp.cubicleId ? pharmacistIdByCubicleId.get(grp.cubicleId) : undefined);
+        if (targetId) {
+          derivedDispatchesByPharmacistId.set(
+            targetId,
+            (derivedDispatchesByPharmacistId.get(targetId) ?? 0) + cnt,
+          );
+        }
+      }
+
+      for (const grp of legacyClosedGroups as Array<{
+        cubicleId: string | null;
+        _count?: { _all?: number };
+      }>) {
+        const cnt = grp._count?._all ?? 0;
+        const targetId = grp.cubicleId ? pharmacistIdByCubicleId.get(grp.cubicleId) : undefined;
+        if (targetId) {
+          derivedDispatchesByPharmacistId.set(
+            targetId,
+            (derivedDispatchesByPharmacistId.get(targetId) ?? 0) + cnt,
+          );
+        }
+      }
+    }
+
+    const resolveCount = (p: { id?: string; dispatchesCount?: number }): number => {
+      if (hasLiveDispatchSource && p.id && derivedDispatchesByPharmacistId.has(p.id)) {
+        return derivedDispatchesByPharmacistId.get(p.id) ?? 0;
+      }
+      return p.dispatchesCount || 0;
+    };
 
     const serviceMinutes = closedTickets
       .map((t) => {
@@ -183,13 +273,18 @@ export class PharmacistsService {
       totalRegistered: allPharmacists.length,
       activeToday: allPharmacists.filter((p) => p.status === PharmacistStatus.ACTIVE).length,
       onLeaveCount: allPharmacists.filter((p) => p.status === PharmacistStatus.ON_LEAVE).length,
-      totalDispatches: allPharmacists.reduce((acc, p) => acc + (p.dispatchesCount || 0), 0),
+      totalDispatches: allPharmacists.reduce((acc, p) => acc + resolveCount(p), 0),
       averageServiceMinutes,
       assignedFacilitiesCount: assignedFacilities.size,
     };
 
     return {
-      items: filteredRows.map((row) => this.mapToDto(row)),
+      items: filteredRows.map((row) =>
+        this.mapToDto({
+          ...row,
+          dispatchesCount: resolveCount(row),
+        }),
+      ),
       metrics,
     };
   }
@@ -255,6 +350,34 @@ export class PharmacistsService {
       }
     }
 
+    if (typeof dto.userId === 'string' && dto.userId.length > 0) {
+      if ((this.prisma as { user?: { findUnique?: (...args: any[]) => Promise<any> } }).user?.findUnique) {
+        const linkedUser = await (this.prisma as any).user.findUnique({
+          where: { id: dto.userId },
+          select: { id: true },
+        });
+        if (!linkedUser) {
+          throw new NotFoundException({
+            code: ApiErrorCode.RESOURCE_NOT_FOUND,
+            message: `La cuenta de usuario con id '${dto.userId}' no existe.`,
+          });
+        }
+      }
+
+      if (this.prisma.pharmacist?.findUnique) {
+        const existingUserLink = await this.prisma.pharmacist.findUnique({
+          where: { userId: dto.userId },
+          select: { id: true },
+        });
+        if (existingUserLink) {
+          throw new ConflictException({
+            code: ApiErrorCode.STATE_CONFLICT,
+            message: 'La cuenta de usuario seleccionada ya está vinculada a otro farmacéutico.',
+          });
+        }
+      }
+    }
+
     const status = dto.status ?? PharmacistStatus.ACTIVE;
 
     const created = await this.prisma.$transaction(async (tx) => {
@@ -298,6 +421,13 @@ export class PharmacistsService {
         });
       }
 
+      await syncUserCubicleLink(tx as any, {
+        targetCubicleId: requestedCubicleId,
+        linkedUserId: persisted.userId ?? null,
+        shouldOccupyCubicle: status !== PharmacistStatus.INACTIVE && Boolean(requestedCubicleId),
+        clearTargetCubicleOtherUsers: Boolean(requestedCubicleId),
+      });
+
       return persisted;
     });
 
@@ -312,6 +442,7 @@ export class PharmacistsService {
       where: { id },
       select: {
         id: true,
+        userId: true,
         fullName: true,
         licenseNumber: true,
         email: true,
@@ -351,6 +482,37 @@ export class PharmacistsService {
               ? `La matrícula profesional '${normalizedLicense}' ya está en uso.`
               : `El correo electrónico '${normalizedEmail}' ya está en uso.`,
         });
+      }
+    }
+
+    const previousUserId = (existing as { userId?: string | null }).userId ?? null;
+    const nextUserId = dto.userId !== undefined ? dto.userId : previousUserId;
+
+    if (dto.userId !== undefined && dto.userId !== null && dto.userId !== previousUserId) {
+      if ((this.prisma as { user?: { findUnique?: (...args: any[]) => Promise<any> } }).user?.findUnique) {
+        const linkedUser = await (this.prisma as any).user.findUnique({
+          where: { id: dto.userId },
+          select: { id: true },
+        });
+        if (!linkedUser) {
+          throw new NotFoundException({
+            code: ApiErrorCode.RESOURCE_NOT_FOUND,
+            message: `La cuenta de usuario con id '${dto.userId}' no existe.`,
+          });
+        }
+      }
+
+      if (this.prisma.pharmacist?.findUnique) {
+        const existingOwner = await this.prisma.pharmacist.findUnique({
+          where: { userId: dto.userId },
+          select: { id: true },
+        });
+        if (existingOwner && existingOwner.id !== id) {
+          throw new ConflictException({
+            code: ApiErrorCode.STATE_CONFLICT,
+            message: 'La cuenta de usuario seleccionada ya está vinculada a otro farmacéutico.',
+          });
+        }
       }
     }
 
@@ -452,6 +614,38 @@ export class PharmacistsService {
         });
       }
 
+      const txUserDelegate = (tx as { user?: { updateMany?: (...args: any[]) => Promise<any> } }).user;
+      if (previousUserId && previousUserId !== nextUserId && txUserDelegate?.updateMany) {
+        await txUserDelegate.updateMany({
+          where: { id: previousUserId },
+          data: { cubicleId: null },
+        });
+      }
+
+      await syncUserCubicleLink(tx as any, {
+        targetCubicleId: finalCubicleId,
+        linkedUserId: nextUserId ?? null,
+        shouldOccupyCubicle:
+          persisted.status !== PharmacistStatus.INACTIVE && Boolean(finalCubicleId),
+        clearTargetCubicleOtherUsers: Boolean(finalCubicleId),
+        previousCubicleIdToClear:
+          existing.cubicleId && existing.cubicleId !== finalCubicleId
+            ? existing.cubicleId
+            : null,
+      });
+
+      if (
+        nextUserId &&
+        dto.fullName !== undefined &&
+        persisted.fullName !== existing.fullName &&
+        txUserDelegate?.updateMany
+      ) {
+        await txUserDelegate.updateMany({
+          where: { id: nextUserId, displayName: existing.fullName },
+          data: { displayName: persisted.fullName },
+        });
+      }
+
       return persisted;
     });
 
@@ -462,7 +656,7 @@ export class PharmacistsService {
   async updateStatus(id: string, status: PharmacistStatus): Promise<PharmacistDto> {
     const existing = await this.prisma.pharmacist.findUnique({
       where: { id },
-      select: { id: true, fullName: true, cubicleId: true },
+      select: { id: true, userId: true, fullName: true, cubicleId: true },
     });
 
     if (!existing) {
@@ -492,6 +686,14 @@ export class PharmacistsService {
         });
       }
 
+      await syncUserCubicleLink(tx as any, {
+        targetCubicleId: existing.cubicleId,
+        linkedUserId: (existing as { userId?: string | null }).userId ?? null,
+        shouldOccupyCubicle:
+          status !== PharmacistStatus.INACTIVE && Boolean(existing.cubicleId),
+        clearTargetCubicleOtherUsers: false,
+      });
+
       return persisted;
     });
 
@@ -502,7 +704,7 @@ export class PharmacistsService {
   async remove(id: string): Promise<{ deleted: true; id: string }> {
     const existing = await this.prisma.pharmacist.findUnique({
       where: { id },
-      select: { id: true, fullName: true, cubicleId: true },
+      select: { id: true, userId: true, fullName: true, cubicleId: true },
     });
 
     if (!existing) {
@@ -517,6 +719,15 @@ export class PharmacistsService {
         await tx.cubicle.updateMany({
           where: { id: existing.cubicleId, operatorName: existing.fullName },
           data: { operatorName: null, version: { increment: 1 } },
+        });
+      }
+
+      const linkedUserId = (existing as { userId?: string | null }).userId ?? null;
+      const txUserDelegate = (tx as { user?: { updateMany?: (...args: any[]) => Promise<any> } }).user;
+      if (linkedUserId && txUserDelegate?.updateMany) {
+        await txUserDelegate.updateMany({
+          where: { id: linkedUserId },
+          data: { cubicleId: null },
         });
       }
 

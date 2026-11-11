@@ -31,6 +31,11 @@ import {
   DEFAULT_DAILY_TARGET_SECONDS,
   resolveDailyTargetSeconds,
 } from '../../config/sla-target.util';
+import {
+  resolveEffectiveOperatorName,
+  syncFacilityEnabledCubiclesCount,
+  syncUserCubicleLink,
+} from '../../common/utils/cubicle-assignment-sync.util';
 
 export { DEFAULT_DAILY_TARGET_SECONDS, resolveDailyTargetSeconds };
 
@@ -197,6 +202,14 @@ export class CubiclesService {
       const displayNumber = rawCode.replace(/\D/g, '') || '01';
       const paddedNumber = displayNumber.padStart(2, '0');
       const cubicleId = ulid();
+      let primaryFacilityId: string | null = null;
+      if (this.prisma.facility?.findFirst) {
+        const primaryFacility = await this.prisma.facility.findFirst({
+          where: { isPrimary: true },
+          select: { id: true },
+        });
+        primaryFacilityId = primaryFacility?.id ?? null;
+      }
 
       cubicle = await this.prisma.cubicle.create({
         data: {
@@ -205,9 +218,11 @@ export class CubiclesService {
           displayName: `Cubículo ${paddedNumber}`,
           status: CubicleStatus.AVAILABLE,
           active: true,
+          ...(primaryFacilityId ? { facilityId: primaryFacilityId } : {}),
           version: 1,
         },
       });
+      await syncFacilityEnabledCubiclesCount(this.prisma as any, primaryFacilityId);
       this.logger.log(`Cubículo ${cubicle.code} inicializado automáticamente con id ${cubicle.id}`);
     }
 
@@ -443,6 +458,7 @@ export class CubiclesService {
               fullName: true,
               facilityId: true,
               cubicleId: true,
+              userId: true,
               status: true,
             },
           });
@@ -491,8 +507,16 @@ export class CubiclesService {
             },
           });
 
-          const effectiveName =
-            pharmacist.status === PharmacistStatus.INACTIVE ? null : pharmacist.fullName;
+          const isPharmacistActive = pharmacist.status !== PharmacistStatus.INACTIVE;
+          await syncUserCubicleLink(tx, {
+            targetCubicleId,
+            linkedUserId: pharmacist.userId ?? null,
+            shouldOccupyCubicle: isPharmacistActive,
+            clearTargetCubicleOtherUsers: true,
+            previousCubicleIdToClear: pharmacist.userId ? previousCubicleId : null,
+          });
+
+          const effectiveName = isPharmacistActive ? pharmacist.fullName : null;
 
           const updatedCub = await tx.cubicle.update({
             where: { id: targetCubicleId },
@@ -514,6 +538,12 @@ export class CubiclesService {
           await tx.pharmacist.updateMany({
             where: { cubicleId: targetCubicleId },
             data: { cubicleId: null },
+          });
+          await syncUserCubicleLink(tx, {
+            targetCubicleId,
+            linkedUserId: null,
+            shouldOccupyCubicle: false,
+            clearTargetCubicleOtherUsers: true,
           });
         } else {
           await tx.pharmacist.updateMany({
@@ -606,6 +636,9 @@ export class CubiclesService {
         orderBy: { code: 'asc' },
         include: {
           facility: { select: { id: true, code: true, name: true } },
+          currentOperator: {
+            select: { displayName: true, role: true, active: true },
+          },
           pharmacists: {
             orderBy: { updatedAt: 'desc' },
             take: 1,
@@ -637,15 +670,16 @@ export class CubiclesService {
 
     return cubicles.map((cub) => {
       const assignedPharmacist = cub.pharmacists[0] ?? null;
+      const derivedOperatorName = resolveEffectiveOperatorName({
+        pharmacists: cub.pharmacists,
+        currentOperator: (cub as { currentOperator?: any }).currentOperator ?? null,
+        legacyOperatorName: cub.operatorName,
+      });
       return {
         id: cub.id,
         code: cub.code,
         displayName: cub.displayName,
-        operatorName: assignedPharmacist
-          ? assignedPharmacist.status === PharmacistStatus.INACTIVE
-            ? null
-            : assignedPharmacist.fullName
-          : cub.operatorName,
+        operatorName: derivedOperatorName,
         status: cub.status as CubicleStatus,
         active: cub.active,
         allowedCategories: cub.allowedCategories as QueueCategory[],
@@ -671,6 +705,9 @@ export class CubiclesService {
         where: { id: cubicleId },
         include: {
           facility: { select: { id: true, code: true, name: true } },
+          currentOperator: {
+            select: { displayName: true, role: true, active: true },
+          },
           pharmacists: {
             orderBy: { updatedAt: 'desc' },
             take: 1,
@@ -700,15 +737,16 @@ export class CubiclesService {
     }
 
     const assignedPharmacist = cub.pharmacists[0] ?? null;
+    const derivedOperatorName = resolveEffectiveOperatorName({
+      pharmacists: cub.pharmacists,
+      currentOperator: (cub as { currentOperator?: any }).currentOperator ?? null,
+      legacyOperatorName: cub.operatorName,
+    });
     return {
       id: cub.id,
       code: cub.code,
       displayName: cub.displayName,
-      operatorName: assignedPharmacist
-        ? assignedPharmacist.status === PharmacistStatus.INACTIVE
-          ? null
-          : assignedPharmacist.fullName
-        : cub.operatorName,
+      operatorName: derivedOperatorName,
       status: cub.status as CubicleStatus,
       active: cub.active,
       allowedCategories: cub.allowedCategories as QueueCategory[],
@@ -757,7 +795,7 @@ export class CubiclesService {
   ): Promise<AdminCubicleConfigDto> {
     const cub = await this.prisma.cubicle.findFirst({
       where: { OR: [{ id: cubicleIdOrCode }, { code: cubicleIdOrCode }] },
-      select: { id: true, status: true },
+      select: { id: true, status: true, facilityId: true },
     });
 
     if (!cub) {
@@ -784,14 +822,33 @@ export class CubiclesService {
       }
     }
 
-    await this.prisma.cubicle.update({
-      where: { id: cub.id },
-      data: {
-        active,
-        status: active ? CubicleStatus.AVAILABLE : CubicleStatus.INACTIVE,
-        version: { increment: 1 },
-      },
-    });
+    if (
+      cub.facilityId &&
+      typeof (this.prisma as { $transaction?: unknown }).$transaction === 'function' &&
+      typeof (this.prisma.facility as { update?: unknown })?.update === 'function' &&
+      typeof (this.prisma.cubicle as { count?: unknown })?.count === 'function'
+    ) {
+      await this.prisma.$transaction(async (tx) => {
+        await tx.cubicle.update({
+          where: { id: cub.id },
+          data: {
+            active,
+            status: active ? CubicleStatus.AVAILABLE : CubicleStatus.INACTIVE,
+            version: { increment: 1 },
+          },
+        });
+        await syncFacilityEnabledCubiclesCount(tx, cub.facilityId);
+      });
+    } else {
+      await this.prisma.cubicle.update({
+        where: { id: cub.id },
+        data: {
+          active,
+          status: active ? CubicleStatus.AVAILABLE : CubicleStatus.INACTIVE,
+          version: { increment: 1 },
+        },
+      });
+    }
 
     await this.emitTelemetrySafe([cub.id]);
     return this.findAdminCubicleDtoOrThrow(cub.id);

@@ -3,12 +3,15 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { ulid } from 'ulid';
 import { AdminUserDto, ApiErrorCode, UserRole } from '@cubiora/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { resolveEffectiveOperatorName } from '../../common/utils/cubicle-assignment-sync.util';
+import { OperationalTelemetryService } from '../operational-telemetry/operational-telemetry.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
@@ -56,7 +59,66 @@ export interface ListUsersFilter {
 export class UsersService {
   private readonly logger = new Logger(UsersService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly telemetryService?: OperationalTelemetryService,
+  ) {}
+
+  private async emitTelemetrySafe(cubicleIds: Array<string | null | undefined>): Promise<void> {
+    if (!this.telemetryService) return;
+    const uniqueIds = Array.from(
+      new Set(cubicleIds.filter((id): id is string => typeof id === 'string' && id.length > 0)),
+    );
+    if (uniqueIds.length === 0) return;
+    try {
+      for (const cubicleId of uniqueIds) {
+        await this.telemetryService.emitCubicleUpdate(cubicleId);
+      }
+      await this.telemetryService.broadcastSnapshot();
+    } catch (err) {
+      this.logger.warn(`No se pudo emitir telemetría tras cambio en usuario: ${(err as Error).message}`);
+    }
+  }
+
+  private async recomputeCubicleOperatorName(
+    tx: any,
+    cubicleId: string | null | undefined,
+  ): Promise<void> {
+    if (!cubicleId || !tx.cubicle?.findUnique || !tx.cubicle?.update) {
+      return;
+    }
+
+    const cub = await tx.cubicle.findUnique({
+      where: { id: cubicleId },
+      select: {
+        id: true,
+        currentOperator: {
+          select: { displayName: true, role: true, active: true },
+        },
+        pharmacists: {
+          orderBy: { updatedAt: 'desc' },
+          take: 1,
+          select: { fullName: true, status: true },
+        },
+      },
+    });
+
+    if (!cub) return;
+
+    const effectiveName = resolveEffectiveOperatorName({
+      pharmacists: cub.pharmacists,
+      currentOperator: cub.currentOperator,
+      legacyOperatorName: null,
+    });
+
+    await tx.cubicle.update({
+      where: { id: cubicleId },
+      data: {
+        operatorName: effectiveName,
+        version: { increment: 1 },
+      },
+    });
+  }
 
   private mapToDto(row: SafeUserRow): AdminUserDto {
     return {
@@ -161,22 +223,49 @@ export class UsersService {
     const passwordHash = await bcrypt.hash(dto.password, 10);
     const id = ulid();
     const publicId = ulid();
+    const hasTransactionalSync =
+      typeof (this.prisma as { $transaction?: unknown }).$transaction === 'function' &&
+      Boolean((this.prisma as { pharmacist?: unknown }).pharmacist) &&
+      typeof (this.prisma.cubicle as { update?: unknown })?.update === 'function';
 
     try {
-      const created = await this.prisma.user.create({
-        data: {
-          id,
-          publicId,
-          username: normalizedUsername,
-          displayName: dto.displayName.trim(),
-          passwordHash,
-          role: dto.role,
-          cubicleId,
-          active: dto.active ?? true,
-        },
-        select: SAFE_USER_SELECT,
-      });
+      const created = hasTransactionalSync
+        ? await this.prisma.$transaction(async (tx) => {
+            const persisted = await tx.user.create({
+              data: {
+                id,
+                publicId,
+                username: normalizedUsername,
+                displayName: dto.displayName.trim(),
+                passwordHash,
+                role: dto.role,
+                cubicleId,
+                active: dto.active ?? true,
+              },
+              select: SAFE_USER_SELECT,
+            });
 
+            if (persisted.cubicleId) {
+              await this.recomputeCubicleOperatorName(tx, persisted.cubicleId);
+            }
+
+            return persisted;
+          })
+        : await this.prisma.user.create({
+            data: {
+              id,
+              publicId,
+              username: normalizedUsername,
+              displayName: dto.displayName.trim(),
+              passwordHash,
+              role: dto.role,
+              cubicleId,
+              active: dto.active ?? true,
+            },
+            select: SAFE_USER_SELECT,
+          });
+
+      await this.emitTelemetrySafe([created.cubicleId]);
       this.logger.log(`Cuenta operativa creada: ${created.username} (${created.role})`);
       return this.mapToDto(created as unknown as SafeUserRow);
     } catch (err: unknown) {
@@ -204,6 +293,7 @@ export class UsersService {
         id: true,
         publicId: true,
         username: true,
+        displayName: true,
         role: true,
         cubicleId: true,
         active: true,
@@ -240,7 +330,96 @@ export class UsersService {
       await this.ensureCubicleAvailable(dto.cubicleId, existing.id);
     }
 
+    const hasTransactionalSync =
+      typeof (this.prisma as { $transaction?: unknown }).$transaction === 'function' &&
+      Boolean((this.prisma as { pharmacist?: unknown }).pharmacist) &&
+      typeof (this.prisma.cubicle as { update?: unknown })?.update === 'function';
+
     try {
+      if (hasTransactionalSync) {
+        const { updated, affectedCubicleIds } = await this.prisma.$transaction(async (tx) => {
+          const persisted = await tx.user.update({
+            where: { id: existing.id },
+            data: {
+              ...(dto.displayName !== undefined ? { displayName: dto.displayName.trim() } : {}),
+              ...(dto.role !== undefined ? { role: dto.role } : {}),
+              ...(dto.cubicleId !== undefined ? { cubicleId: dto.cubicleId } : {}),
+              ...(dto.active !== undefined ? { active: dto.active } : {}),
+            },
+            select: SAFE_USER_SELECT,
+          });
+
+          const linkedPharmacist = await tx.pharmacist.findUnique({
+            where: { userId: existing.id },
+            select: {
+              id: true,
+              fullName: true,
+              cubicleId: true,
+              facilityId: true,
+            },
+          });
+
+          const touchedCubicles = new Set<string>();
+          if (existing.cubicleId) touchedCubicles.add(existing.cubicleId);
+          if (persisted.cubicleId) touchedCubicles.add(persisted.cubicleId);
+          if (linkedPharmacist?.cubicleId) touchedCubicles.add(linkedPharmacist.cubicleId);
+
+          if (linkedPharmacist) {
+            const pharmacistPatch: Record<string, unknown> = {};
+
+            if (dto.cubicleId !== undefined && dto.cubicleId !== linkedPharmacist.cubicleId) {
+              if (dto.cubicleId === null) {
+                pharmacistPatch['cubicleId'] = null;
+              } else {
+                const targetCubicle = await tx.cubicle.findUnique({
+                  where: { id: dto.cubicleId },
+                  select: { id: true, facilityId: true },
+                });
+                await tx.pharmacist.updateMany({
+                  where: { cubicleId: dto.cubicleId, id: { not: linkedPharmacist.id } },
+                  data: { cubicleId: null },
+                });
+                pharmacistPatch['cubicleId'] = dto.cubicleId;
+                if (targetCubicle) {
+                  pharmacistPatch['facilityId'] = targetCubicle.facilityId ?? null;
+                }
+              }
+            }
+
+            const previousDisplayName = (existing as { displayName?: string }).displayName;
+            if (
+              dto.displayName !== undefined &&
+              previousDisplayName !== undefined &&
+              linkedPharmacist.fullName === previousDisplayName &&
+              persisted.displayName !== linkedPharmacist.fullName
+            ) {
+              pharmacistPatch['fullName'] = persisted.displayName;
+            }
+
+            if (Object.keys(pharmacistPatch).length > 0) {
+              await tx.pharmacist.update({
+                where: { id: linkedPharmacist.id },
+                data: pharmacistPatch,
+              });
+            }
+          }
+
+          const affectedList = Array.from(touchedCubicles);
+          for (const cubId of affectedList) {
+            await this.recomputeCubicleOperatorName(tx, cubId);
+          }
+
+          return {
+            updated: persisted,
+            affectedCubicleIds: affectedList,
+          };
+        });
+
+        await this.emitTelemetrySafe(affectedCubicleIds);
+        this.logger.log(`Cuenta operativa actualizada: ${updated.username}`);
+        return this.mapToDto(updated as unknown as SafeUserRow);
+      }
+
       const updated = await this.prisma.user.update({
         where: { id: existing.id },
         data: {

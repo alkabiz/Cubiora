@@ -3,11 +3,11 @@ import { Subject, Observable } from 'rxjs';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CubiclesService } from '../cubicles/cubicles.service';
 import { resolveDailyTargetSeconds } from '../../config/sla-target.util';
+import { resolveEffectiveOperatorName } from '../../common/utils/cubicle-assignment-sync.util';
 import {
   CubicleStatus,
   QueueCategory,
   TicketStatus,
-  UserRole,
   TelemetryCubicleState,
   TelemetryQueuedTicket,
   TelemetryDailyKpis,
@@ -216,19 +216,13 @@ export class OperationalTelemetryService {
           serviceStartedAt !== null &&
           (Date.now() - serviceStartedAt.getTime()) / 1000 > slaThresholdSeconds);
 
-      // Operador: prioriza farmacéutico registrado, luego Cubicle.operatorName explícito, luego User cashier
-      const assignedPharmacist = (
-        cub as { pharmacists?: Array<{ fullName: string; status: string }> }
-      ).pharmacists?.[0];
-      const rawOperatorName = (cub as { operatorName?: string | null }).operatorName;
-      const operatorDisplayName =
-        assignedPharmacist && assignedPharmacist.status !== 'INACTIVE'
-          ? assignedPharmacist.fullName
-          : rawOperatorName !== undefined
-            ? rawOperatorName
-            : cub.currentOperator?.active && cub.currentOperator.role === UserRole.CASHIER
-              ? cub.currentOperator.displayName
-              : null;
+      // Operador: prioriza farmacéutico registrado, luego User CASHIER activo, luego Cubicle.operatorName
+      const operatorDisplayName = resolveEffectiveOperatorName({
+        pharmacists: (cub as { pharmacists?: Array<{ fullName: string; status: string }> })
+          .pharmacists,
+        currentOperator: cub.currentOperator,
+        legacyOperatorName: (cub as { operatorName?: string | null }).operatorName,
+      });
 
       // idleSinceAt: solo aplica cuando el cubículo está AVAILABLE
       const idleSinceAt =
@@ -552,18 +546,12 @@ export class OperationalTelemetryService {
       serviceStartedAt !== null &&
       (Date.now() - serviceStartedAt.getTime()) / 1000 > slaThresholdSeconds;
 
-    const assignedPharmacist = (
-      cub as { pharmacists?: Array<{ fullName: string; status: string }> }
-    ).pharmacists?.[0];
-    const rawOperatorName = (cub as { operatorName?: string | null }).operatorName;
-    const operatorDisplayName =
-      assignedPharmacist && assignedPharmacist.status !== 'INACTIVE'
-        ? assignedPharmacist.fullName
-        : rawOperatorName !== undefined
-          ? rawOperatorName
-          : cub.currentOperator?.active && cub.currentOperator.role === UserRole.CASHIER
-            ? cub.currentOperator.displayName
-            : null;
+    const operatorDisplayName = resolveEffectiveOperatorName({
+      pharmacists: (cub as { pharmacists?: Array<{ fullName: string; status: string }> })
+        .pharmacists,
+      currentOperator: cub.currentOperator,
+      legacyOperatorName: (cub as { operatorName?: string | null }).operatorName,
+    });
 
     return {
       cubicleCode: cub.code,

@@ -20,6 +20,11 @@ import {
 } from '@cubiora/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { OperationalTelemetryService } from '../operational-telemetry/operational-telemetry.service';
+import {
+  resolveEffectiveOperatorName,
+  syncFacilityEnabledCubiclesCount,
+  syncUserCubicleLink,
+} from '../../common/utils/cubicle-assignment-sync.util';
 import { AssignPharmacistToFacilityDto } from './dto/assign-pharmacist-to-facility.dto';
 import { CreateFacilityDto } from './dto/create-facility.dto';
 import { UpdateFacilityDto } from './dto/update-facility.dto';
@@ -44,7 +49,12 @@ type FacilityRowWithRelations = {
     status: string;
     active: boolean;
     operatorName: string | null;
-    pharmacists?: Array<{ id: string }>;
+    currentOperator?: {
+      displayName: string;
+      role: string;
+      active: boolean;
+    } | null;
+    pharmacists?: Array<{ id: string; fullName?: string; status?: string }>;
   }>;
   pharmacists?: Array<{
     id: string;
@@ -95,9 +105,18 @@ export class FacilitiesService {
       displayName: cub.displayName,
       status: cub.status as CubicleStatus,
       active: cub.active,
-      operatorName: cub.operatorName,
+      operatorName: resolveEffectiveOperatorName({
+        pharmacists: cub.pharmacists,
+        currentOperator: cub.currentOperator ?? null,
+        legacyOperatorName: cub.operatorName,
+      }),
       assignedPharmacistId: cub.pharmacists?.[0]?.id ?? null,
     }));
+
+    const activeCubiclesCount =
+      rawCubicles.length > 0
+        ? rawCubicles.filter((cub) => cub.active).length
+        : row.enabledCubiclesCount;
 
     return {
       id: row.id,
@@ -107,7 +126,7 @@ export class FacilitiesService {
       city: row.city,
       phone: row.phone,
       openingHours: row.openingHours,
-      enabledCubiclesCount: row.enabledCubiclesCount,
+      enabledCubiclesCount: activeCubiclesCount,
       status: row.status as FacilityStatus,
       isPrimary: row.isPrimary,
       cubiclesCount: rawCubicles.length > 0 ? rawCubicles.length : row.enabledCubiclesCount,
@@ -135,10 +154,13 @@ export class FacilitiesService {
         cubicles: {
           orderBy: { code: 'asc' },
           include: {
+            currentOperator: {
+              select: { displayName: true, role: true, active: true },
+            },
             pharmacists: {
               take: 1,
               orderBy: { updatedAt: 'desc' },
-              select: { id: true },
+              select: { id: true, fullName: true, status: true },
             },
           },
         },
@@ -168,10 +190,13 @@ export class FacilitiesService {
         cubicles: {
           orderBy: { code: 'asc' },
           include: {
+            currentOperator: {
+              select: { displayName: true, role: true, active: true },
+            },
             pharmacists: {
               take: 1,
               orderBy: { updatedAt: 'desc' },
-              select: { id: true },
+              select: { id: true, fullName: true, status: true },
             },
           },
         },
@@ -223,7 +248,7 @@ export class FacilitiesService {
           city: dto.city.trim(),
           phone: (dto.phone ?? '').trim(),
           openingHours: (dto.openingHours ?? '07:00 a 20:00 hs').trim(),
-          enabledCubiclesCount,
+          enabledCubiclesCount: isFacilityActive ? enabledCubiclesCount : 0,
           status,
           isPrimary: Boolean(dto.isPrimary),
         },
@@ -380,6 +405,8 @@ export class FacilitiesService {
           });
         }
       }
+
+      await syncFacilityEnabledCubiclesCount(tx as any, id);
     });
 
     if (this.telemetryService && (dto.isPrimary || existing.isPrimary)) {
@@ -439,7 +466,7 @@ export class FacilitiesService {
       }),
       this.prisma.pharmacist.findUnique({
         where: { id: dto.pharmacistId },
-        select: { id: true, fullName: true, status: true, cubicleId: true },
+        select: { id: true, userId: true, fullName: true, status: true, cubicleId: true },
       }),
     ]);
 
@@ -510,6 +537,18 @@ export class FacilitiesService {
           },
         });
       }
+
+      await syncUserCubicleLink(tx as any, {
+        targetCubicleId,
+        linkedUserId: (pharmacist as { userId?: string | null }).userId ?? null,
+        shouldOccupyCubicle:
+          pharmacist.status !== PharmacistStatus.INACTIVE && Boolean(targetCubicleId),
+        clearTargetCubicleOtherUsers: Boolean(targetCubicleId),
+        previousCubicleIdToClear:
+          pharmacist.cubicleId && pharmacist.cubicleId !== targetCubicleId
+            ? pharmacist.cubicleId
+            : null,
+      });
     });
 
     if (this.telemetryService) {
@@ -529,6 +568,9 @@ export class FacilitiesService {
     const existing = await this.prisma.facility.findUnique({
       where: { id },
       include: {
+        _count: {
+          select: { tickets: true },
+        },
         cubicles: {
           select: {
             id: true,
@@ -559,11 +601,29 @@ export class FacilitiesService {
       });
     }
 
+    const facilityTicketsCount =
+      (existing as { _count?: { tickets?: number } })._count?.tickets ?? 0;
+    if (facilityTicketsCount > 0) {
+      throw new ConflictException({
+        code: ApiErrorCode.STATE_CONFLICT,
+        message:
+          'No se puede eliminar la sede porque tiene turnos históricos asociados. Cambie su estado a Inactiva.',
+      });
+    }
+
     await this.prisma.$transaction(async (tx) => {
       await tx.pharmacist.updateMany({
         where: { facilityId: id },
         data: { facilityId: null, cubicleId: null },
       });
+
+      const txUserDelegate = (tx as { user?: { updateMany?: (...args: any[]) => Promise<any> } }).user;
+      if (txUserDelegate?.updateMany && existing.cubicles.length > 0) {
+        await txUserDelegate.updateMany({
+          where: { cubicleId: { in: existing.cubicles.map((cub) => cub.id) } },
+          data: { cubicleId: null },
+        });
+      }
 
       for (const cub of existing.cubicles) {
         const hasHistory =
