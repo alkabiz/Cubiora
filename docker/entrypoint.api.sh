@@ -43,6 +43,12 @@ elif [ -n "${DATABASE_CA_CERT:-}${CA_CERT:-}" ]; then
   '
 fi
 
+# Rechazar fail-closed ALLOW_DOCKER_INTERNAL_DB=true en producción antes de tocar BD
+if [ "${ALLOW_DOCKER_INTERNAL_DB:-false}" = "true" ] && [ "${NODE_ENV:-production}" = "production" ]; then
+  echo "❌ ERROR_SEGURIDAD_TLS_DOCKER_INTERNAL_PROHIBIDO: ALLOW_DOCKER_INTERNAL_DB=true está prohibido en producción."
+  exit 1
+fi
+
 MIGRATE_COMMAND_URL="$MIGRATION_URL"
 if [ -n "$CA_FILE" ]; then
   export NODE_EXTRA_CA_CERTS="$CA_FILE"
@@ -59,6 +65,18 @@ if [ -n "$CA_FILE" ]; then
       process.stdout.write(rawUrl);
     }
   ')"
+elif [ "${ALLOW_DOCKER_INTERNAL_DB:-false}" = "true" ] && [ "${NODE_ENV:-production}" != "production" ]; then
+  # En contenedores locales/staging no productivos sin CA montada, Prisma 7 CLI (pg v8)
+  # trata sslmode=require como verify-full; usar sslmode=no-verify evita TlsConnectionError.
+  MIGRATE_COMMAND_URL="$(MIGRATION_URL_INPUT="$MIGRATION_URL" node -e '
+    const rawUrl = process.env.MIGRATION_URL_INPUT;
+    if (/([?&])sslmode=[^&]+/i.test(rawUrl)) {
+      process.stdout.write(rawUrl.replace(/([?&])sslmode=[^&]+/i, "$1sslmode=no-verify"));
+    } else {
+      const sep = rawUrl.includes("?") ? "&" : "?";
+      process.stdout.write(`${rawUrl}${sep}sslmode=no-verify`);
+    }
+  ')"
 fi
 
 echo "==> [1/3] Aplicando migraciones formales de Prisma..."
@@ -66,13 +84,21 @@ if [ -n "$DIRECT_URL" ]; then
   echo "    Utilizando DIRECT_URL (rol migrador DDL) para migraciones formales."
 fi
 
-# Aplica migraciones pendientes de forma segura sin db push destructivo
-DATABASE_URL="$MIGRATE_COMMAND_URL" DIRECT_URL="$MIGRATE_COMMAND_URL" pnpm --filter api exec prisma migrate deploy
+# Aplica migraciones invocando directamente el binario local de Prisma 7 sin Corepack/pnpm
+(
+  cd apps/api
+  DATABASE_URL="$MIGRATE_COMMAND_URL" DIRECT_URL="$MIGRATE_COMMAND_URL" \
+    node ./node_modules/prisma/build/index.js migrate deploy
+)
 
 # Ejecución opcional de seed para inicializar topología y datos institucionales (default: false)
 if [ "${RUN_SEED_ON_BOOT:-false}" = "true" ]; then
   echo "==> [2/3] Variable RUN_SEED_ON_BOOT=true detectada. Ejecutando seed idempotente (fail-closed)..."
-  DATABASE_URL="$MIGRATION_URL" DIRECT_URL="$MIGRATION_URL" ALLOW_SEED_IN_PRODUCTION=true pnpm --filter api prisma:seed
+  (
+    cd apps/api
+    DATABASE_URL="$MIGRATION_URL" DIRECT_URL="$MIGRATION_URL" ALLOW_SEED_IN_PRODUCTION=true \
+      node ./node_modules/tsx/dist/cli.mjs prisma/seed.ts
+  )
 else
   echo "==> [2/3] RUN_SEED_ON_BOOT no está activo (${RUN_SEED_ON_BOOT:-false}). Omitiendo seed automático."
 fi
