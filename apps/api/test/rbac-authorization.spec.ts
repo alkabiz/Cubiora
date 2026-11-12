@@ -21,8 +21,10 @@ describe('Demostración de Autorización y Control de Acceso (RBAC)', () => {
       SESSION_SECRET: sessionSecret,
       DISPLAY_TOKEN: 'token_display_test_min_32_chars_123',
       CORS_ORIGINS: 'http://localhost:5173',
+      COOKIE_SECURE: 'auto',
       LOG_LEVEL: 'info',
       NO_SHOW_MAX_CALLS: 3,
+      CUBICLE_DAILY_TARGET_SECONDS: 720,
     });
   });
 

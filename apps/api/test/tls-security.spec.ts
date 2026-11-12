@@ -233,7 +233,11 @@ describe('Seguridad TLS y Validación de Arranque en Producción (verify-full ob
     expect(devResolved.ssl).toEqual({ rejectUnauthorized: false });
   });
 
-  it('assertDatabaseUrlSecurity rechaza host LAN en desarrollo y valida controles en ALLOW_DOCKER_INTERNAL_DB=true', () => {
+  it('assertDatabaseUrlSecurity rechaza host LAN en desarrollo sin flag y valida controles en ALLOW_DOCKER_INTERNAL_DB=true', () => {
+    const originalAllowDocker = process.env['ALLOW_DOCKER_INTERNAL_DB'];
+    const originalTlsRejectEnv = process.env['NODE_TLS_REJECT_UNAUTHORIZED'];
+    delete process.env['ALLOW_DOCKER_INTERNAL_DB'];
+
     expect(() =>
       assertDatabaseUrlSecurity(
         'postgresql://cubiora_app:pass@192.168.1.33:5432/cubiora_db',
@@ -242,17 +246,47 @@ describe('Seguridad TLS y Validación de Arranque en Producción (verify-full ob
       ),
     ).toThrow(/ERROR_SEGURIDAD_HOST_NO_LOCAL/);
 
-    const originalAllowDocker = process.env['ALLOW_DOCKER_INTERNAL_DB'];
-    const originalTlsRejectEnv = process.env['NODE_TLS_REJECT_UNAUTHORIZED'];
     delete process.env['DATABASE_CA_CERT'];
     delete process.env['CA_CERT'];
     process.env['DATABASE_CA_CERT_PATH'] = path.resolve(process.cwd(), 'non-existent-ca.crt');
     process.env['ALLOW_DOCKER_INTERNAL_DB'] = 'true';
     try {
-      // Con ALLOW_DOCKER_INTERNAL_DB=true en producción permite IP LAN y sslmode=require sin CA local ni FQDN
+      // En desarrollo con ALLOW_DOCKER_INTERNAL_DB=true: permite IP privada LAN con sslmode=require
       expect(() =>
         assertDatabaseUrlSecurity(
           'postgresql://cubiora_app:pass@192.168.1.33:5432/cubiora_db?sslmode=require',
+          'DATABASE_URL',
+          'development',
+        ),
+      ).not.toThrow();
+
+      // En desarrollo hacia IP LAN exige sslmode>=require y sigue bloqueando hosts públicos
+      expect(() =>
+        assertDatabaseUrlSecurity(
+          'postgresql://cubiora_app:pass@192.168.1.33:5432/cubiora_db?sslmode=disable',
+          'DATABASE_URL',
+          'development',
+        ),
+      ).toThrow(/ERROR_SEGURIDAD_SSL_REQUERIDO/);
+      expect(() =>
+        assertDatabaseUrlSecurity(
+          'postgresql://cubiora_app:pass@db.public-cloud.example:5432/cubiora_db?sslmode=require',
+          'DATABASE_URL',
+          'development',
+        ),
+      ).toThrow(/ERROR_SEGURIDAD_HOST_NO_LOCAL/);
+
+      // Con ALLOW_DOCKER_INTERNAL_DB=true en producción retorna tras validar rol y TLS global (sin exigir CA/FQDN/verify-full)
+      expect(() =>
+        assertDatabaseUrlSecurity(
+          'postgresql://cubiora_app:pass@192.168.1.33:5432/cubiora_db?sslmode=require',
+          'DATABASE_URL',
+          'production',
+        ),
+      ).not.toThrow();
+      expect(() =>
+        assertDatabaseUrlSecurity(
+          'postgresql://cubiora_app:pass@192.168.1.33:5432/cubiora_db?schema=public',
           'DATABASE_URL',
           'production',
         ),
@@ -273,15 +307,6 @@ describe('Seguridad TLS y Validación de Arranque en Producción (verify-full ob
           'production',
         ),
       ).toThrow(/ERROR_SEGURIDAD_ROL_INVALIDO/);
-
-      // Sigue prohibiendo sslmode=disable
-      expect(() =>
-        assertDatabaseUrlSecurity(
-          'postgresql://cubiora_app:pass@192.168.1.33:5432/cubiora_db?sslmode=disable',
-          'DATABASE_URL',
-          'production',
-        ),
-      ).toThrow(/ERROR_SEGURIDAD_SSL_REQUERIDO/);
 
       // Sigue prohibiendo NODE_TLS_REJECT_UNAUTHORIZED=0
       process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
@@ -328,7 +353,7 @@ describe('Seguridad TLS y Validación de Arranque en Producción (verify-full ob
     });
   });
 
-  it('validateEnv rechaza CORS_ORIGINS *, secretos débiles, COOKIE_SECURE=false y aplica defaults/excepciones seguras en producción', () => {
+  it('validateEnv rechaza CORS_ORIGINS * y secretos débiles; acepta COOKIE_SECURE auto/true/false con default auto en producción', () => {
     const prevSnapshot = { ...process.env };
     try {
       process.env['NODE_ENV'] = 'production';
@@ -345,19 +370,22 @@ describe('Seguridad TLS y Validación de Arranque en Producción (verify-full ob
 
       process.env['CORS_ORIGINS'] = 'https://cubiora.samlapspeed.com';
       process.env['COOKIE_SECURE'] = 'false';
-      expect(() => validateEnv()).toThrow(/ERROR_SEGURIDAD_COOKIE_SECURE/);
+      expect(validateEnv().COOKIE_SECURE).toBe('false');
+
+      process.env['COOKIE_SECURE'] = 'true';
+      expect(validateEnv().COOKIE_SECURE).toBe('true');
 
       process.env['COOKIE_SECURE'] = 'auto';
       expect(validateEnv().COOKIE_SECURE).toBe('auto');
 
-      // COOKIE_SECURE omitido o vacío en producción toma 'true' por defecto
+      // COOKIE_SECURE omitido o vacío toma 'auto' por defecto en producción para soporte dual HTTP local + HTTPS dominio
       delete process.env['COOKIE_SECURE'];
-      expect(validateEnv().COOKIE_SECURE).toBe('true');
+      expect(validateEnv().COOKIE_SECURE).toBe('auto');
       process.env['COOKIE_SECURE'] = '';
-      expect(validateEnv().COOKIE_SECURE).toBe('true');
+      expect(validateEnv().COOKIE_SECURE).toBe('auto');
 
       // DISPLAY_TOKEN débil falla; DISPLAY_TOKEN vacío resuelve a undefined
-      process.env['COOKIE_SECURE'] = 'true';
+      process.env['COOKIE_SECURE'] = 'auto';
       process.env['DISPLAY_TOKEN'] = 'cubiora_production_display_token_ultra_secure_min_32_chars!';
       expect(() => validateEnv()).toThrow(/ERROR_SEGURIDAD_DISPLAY_TOKEN_DEBIL/);
       process.env['DISPLAY_TOKEN'] = '';
@@ -379,7 +407,7 @@ describe('Seguridad TLS y Validación de Arranque en Producción (verify-full ob
       process.env['DISPLAY_TOKEN'] = '';
 
       const valid = validateEnv();
-      expect(valid.COOKIE_SECURE).toBe('true');
+      expect(valid.COOKIE_SECURE).toBe('auto');
       expect(valid.DISPLAY_TOKEN).toBeUndefined();
     } finally {
       process.env = prevSnapshot;
@@ -393,11 +421,13 @@ describe('Seguridad TLS y Validación de Arranque en Producción (verify-full ob
     expect(composeProd).toContain('ALLOW_DOCKER_INTERNAL_DB: ${ALLOW_DOCKER_INTERNAL_DB:-false}');
     expect(composeProd).toContain('ALLOW_NUMERIC_IP_EXCEPTION: ${ALLOW_NUMERIC_IP_EXCEPTION:-false}');
     expect(composeProd).toContain('ALLOW_VERIFY_CA_EXCEPTION: ${ALLOW_VERIFY_CA_EXCEPTION:-false}');
-    expect(composeProd).toContain('COOKIE_SECURE: ${COOKIE_SECURE:-true}');
+    expect(composeProd).toContain('COOKIE_SECURE: ${COOKIE_SECURE:-auto}');
     expect(composeProd).toContain('DISPLAY_TOKEN: ${DISPLAY_TOKEN:-}');
+    expect(composeProd).toContain(
+      'CORS_ORIGINS: ${CORS_ORIGINS:-https://cubiora.samlapspeed.com,https://coolify.samlapspeed.com,http://localhost:5173,http://localhost,http://127.0.0.1}',
+    );
     expect(composeProd).not.toContain('Admin2026!*');
     expect(composeProd).not.toContain('display_token_default_local_min_32_chars!');
-    expect(composeProd).not.toContain('http://localhost');
 
     const envProdExample = fs.readFileSync(path.join(repoRoot, '.env.production.example'), 'utf8');
     expect(envProdExample).toContain('ALLOW_DOCKER_INTERNAL_DB=false');

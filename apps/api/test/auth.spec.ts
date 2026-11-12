@@ -207,13 +207,23 @@ describe('Fase 3a — Autenticación y Autorización (D-01, D-09, RolesGuard)', 
       expect(resolveCookieSecure(req, { NODE_ENV: 'production', COOKIE_SECURE: 'auto' })).toBe(true);
     });
 
-    it('debe usar secure=false cuando COOKIE_SECURE=auto y la petición llega por HTTP local LAN', () => {
+    it('debe usar secure=false cuando COOKIE_SECURE=auto y la petición llega por HTTP local LAN (localhost / 192.168.x.x)', () => {
       const req = {
         secure: false,
-        headers: { 'x-forwarded-proto': 'http' },
+        headers: { host: '192.168.1.33', 'x-forwarded-proto': 'http' },
+      } as any;
+      const directHttpReq = {
+        secure: false,
+        headers: { host: 'localhost:5173' },
+      } as any;
+      const tlsReq = {
+        secure: true,
+        headers: { host: 'cubiora.samlapspeed.com' },
       } as any;
 
       expect(resolveCookieSecure(req, { NODE_ENV: 'production', COOKIE_SECURE: 'auto' })).toBe(false);
+      expect(resolveCookieSecure(directHttpReq, { NODE_ENV: 'production' })).toBe(false);
+      expect(resolveCookieSecure(tlsReq, { NODE_ENV: 'production' })).toBe(true);
     });
 
     it('debe respetar COOKIE_SECURE=true y COOKIE_SECURE=false de forma explícita', () => {

@@ -22,6 +22,7 @@ import { CorrelationIdMiddleware } from '../src/common/middleware/correlation-id
 import { LoggingInterceptor } from '../src/common/interceptors/logging.interceptor';
 import { GlobalExceptionFilter } from '../src/common/filters/global-exception.filter';
 import { AuthController, resolveCookieSecure } from '../src/modules/auth/auth.controller';
+import { isOriginAllowed } from '../src/common/utils/cors-origin.util';
 import { LoginDto } from '../src/modules/auth/dto/login.dto';
 import { CubiclesService } from '../src/modules/cubicles/cubicles.service';
 import { TicketsController } from '../src/modules/tickets/tickets.controller';
@@ -62,8 +63,10 @@ describe('Seguridad — Verificación de Remediaciones de Auditoría', () => {
       SESSION_SECRET: sessionSecret,
       DISPLAY_TOKEN: 'token_display_test_min_32_chars_123',
       CORS_ORIGINS: 'http://localhost:5173',
+      COOKIE_SECURE: 'auto',
       LOG_LEVEL: 'info',
       NO_SHOW_MAX_CALLS: 3,
+      CUBICLE_DAILY_TARGET_SECONDS: 720,
     });
   });
 
@@ -413,7 +416,7 @@ describe('Seguridad — Verificación de Remediaciones de Auditoría', () => {
       expect(() => rolesGuard.canActivate(ctx)).toThrow(ForbiddenException);
     });
 
-    it('CsrfOriginGuard bloquea cross-site, Origin nulo, Origin externo y same-site sin Origin autorizado', () => {
+    it('CsrfOriginGuard e isOriginAllowed soportan dual HTTP LAN 192.168.1.* + HTTPS dominio y bloquean orígenes externos', () => {
       const guard = new CsrfOriginGuard();
       const makeCtx = (method: string, headers: Record<string, string>) =>
         ({
@@ -423,7 +426,16 @@ describe('Seguridad — Verificación de Remediaciones de Auditoría', () => {
 
       expect(guard.canActivate(makeCtx('GET', { 'sec-fetch-site': 'cross-site' }))).toBe(true);
       expect(guard.canActivate(makeCtx('POST', { origin: 'http://localhost:5173' }))).toBe(true);
+      expect(guard.canActivate(makeCtx('POST', { origin: 'http://192.168.1.45:5173' }))).toBe(true);
+      expect(guard.canActivate(makeCtx('POST', { origin: 'http://192.168.1.33' }))).toBe(true);
       expect(guard.canActivate(makeCtx('POST', {}))).toBe(true);
+
+      const dualCors =
+        'https://cubiora.samlapspeed.com,https://coolify.samlapspeed.com,http://localhost:5173,http://localhost,http://127.0.0.1';
+      expect(isOriginAllowed('https://cubiora.samlapspeed.com', dualCors)).toBe(true);
+      expect(isOriginAllowed('http://192.168.1.99:8080', dualCors)).toBe(true);
+      expect(isOriginAllowed('http://192.168.2.99:8080', dualCors)).toBe(false);
+      expect(isOriginAllowed('https://attacker.example', dualCors)).toBe(false);
 
       expect(() =>
         guard.canActivate(makeCtx('POST', { 'sec-fetch-site': 'cross-site', origin: 'http://evil.test' })),
@@ -433,6 +445,9 @@ describe('Seguridad — Verificación de Remediaciones de Auditoría', () => {
       );
       expect(() =>
         guard.canActivate(makeCtx('PATCH', { origin: 'https://attacker.example' })),
+      ).toThrow(ForbiddenException);
+      expect(() =>
+        guard.canActivate(makeCtx('POST', { origin: 'http://192.168.2.50:5173' })),
       ).toThrow(ForbiddenException);
       expect(() =>
         guard.canActivate(makeCtx('POST', { 'sec-fetch-site': 'same-site' })),
