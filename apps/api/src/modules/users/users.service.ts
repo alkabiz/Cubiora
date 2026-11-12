@@ -10,7 +10,10 @@ import { ulid } from 'ulid';
 import { AdminUserDto, ApiErrorCode, UserRole } from '@cubiora/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
-import { resolveEffectiveOperatorName } from '../../common/utils/cubicle-assignment-sync.util';
+import {
+  lockCubicleRows,
+  resolveEffectiveOperatorName,
+} from '../../common/utils/cubicle-assignment-sync.util';
 import { OperationalTelemetryService } from '../operational-telemetry/operational-telemetry.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -215,7 +218,14 @@ export class UsersService {
       });
     }
 
+    const targetActive = dto.active ?? true;
     const cubicleId = dto.cubicleId ?? null;
+    if (cubicleId && (dto.role !== UserRole.CASHIER || targetActive === false)) {
+      throw new ConflictException({
+        code: ApiErrorCode.STATE_CONFLICT,
+        message: 'Solo las cuentas activas con rol CASHIER pueden asignarse a un cubículo.',
+      });
+    }
     if (cubicleId) {
       await this.ensureCubicleAvailable(cubicleId);
     }
@@ -231,6 +241,10 @@ export class UsersService {
     try {
       const created = hasTransactionalSync
         ? await this.prisma.$transaction(async (tx) => {
+            if (cubicleId) {
+              await lockCubicleRows(tx, [cubicleId]);
+            }
+
             const persisted = await tx.user.create({
               data: {
                 id,
@@ -240,7 +254,7 @@ export class UsersService {
                 passwordHash,
                 role: dto.role,
                 cubicleId,
-                active: dto.active ?? true,
+                active: targetActive,
               },
               select: SAFE_USER_SELECT,
             });
@@ -326,9 +340,34 @@ export class UsersService {
       }
     }
 
-    if (dto.cubicleId !== undefined && dto.cubicleId !== null) {
-      await this.ensureCubicleAvailable(dto.cubicleId, existing.id);
+    const nextRole = dto.role ?? (existing.role as UserRole);
+    const nextActive = dto.active ?? existing.active;
+
+    if (
+      dto.cubicleId !== undefined &&
+      dto.cubicleId !== null &&
+      (nextRole !== UserRole.CASHIER || nextActive === false)
+    ) {
+      throw new ConflictException({
+        code: ApiErrorCode.STATE_CONFLICT,
+        message: 'Solo las cuentas activas con rol CASHIER pueden permanecer asignadas a un cubículo.',
+      });
     }
+
+    const effectiveCubicleIdPatch: string | null | undefined =
+      dto.cubicleId !== undefined
+        ? dto.cubicleId
+        : (nextRole !== UserRole.CASHIER || nextActive === false) && existing.cubicleId !== null
+          ? null
+          : undefined;
+
+    if (effectiveCubicleIdPatch !== undefined && effectiveCubicleIdPatch !== null) {
+      await this.ensureCubicleAvailable(effectiveCubicleIdPatch, existing.id);
+    }
+
+    const shouldRevokeSessions =
+      dto.active === false ||
+      (dto.role !== undefined && dto.role !== existing.role);
 
     const hasTransactionalSync =
       typeof (this.prisma as { $transaction?: unknown }).$transaction === 'function' &&
@@ -338,13 +377,21 @@ export class UsersService {
     try {
       if (hasTransactionalSync) {
         const { updated, affectedCubicleIds } = await this.prisma.$transaction(async (tx) => {
+          await lockCubicleRows(tx, [
+            existing.cubicleId,
+            effectiveCubicleIdPatch === undefined ? null : effectiveCubicleIdPatch,
+          ]);
+
           const persisted = await tx.user.update({
             where: { id: existing.id },
             data: {
               ...(dto.displayName !== undefined ? { displayName: dto.displayName.trim() } : {}),
               ...(dto.role !== undefined ? { role: dto.role } : {}),
-              ...(dto.cubicleId !== undefined ? { cubicleId: dto.cubicleId } : {}),
+              ...(effectiveCubicleIdPatch !== undefined
+                ? { cubicleId: effectiveCubicleIdPatch }
+                : {}),
               ...(dto.active !== undefined ? { active: dto.active } : {}),
+              ...(shouldRevokeSessions ? { tokenVersion: { increment: 1 } } : {}),
             },
             select: SAFE_USER_SELECT,
           });
@@ -366,20 +413,24 @@ export class UsersService {
 
           if (linkedPharmacist) {
             const pharmacistPatch: Record<string, unknown> = {};
+            const finalUserCubicleId = persisted.cubicleId ?? null;
 
-            if (dto.cubicleId !== undefined && dto.cubicleId !== linkedPharmacist.cubicleId) {
-              if (dto.cubicleId === null) {
+            if (
+              effectiveCubicleIdPatch !== undefined &&
+              finalUserCubicleId !== linkedPharmacist.cubicleId
+            ) {
+              if (finalUserCubicleId === null) {
                 pharmacistPatch['cubicleId'] = null;
               } else {
                 const targetCubicle = await tx.cubicle.findUnique({
-                  where: { id: dto.cubicleId },
+                  where: { id: finalUserCubicleId },
                   select: { id: true, facilityId: true },
                 });
                 await tx.pharmacist.updateMany({
-                  where: { cubicleId: dto.cubicleId, id: { not: linkedPharmacist.id } },
+                  where: { cubicleId: finalUserCubicleId, id: { not: linkedPharmacist.id } },
                   data: { cubicleId: null },
                 });
-                pharmacistPatch['cubicleId'] = dto.cubicleId;
+                pharmacistPatch['cubicleId'] = finalUserCubicleId;
                 if (targetCubicle) {
                   pharmacistPatch['facilityId'] = targetCubicle.facilityId ?? null;
                 }
@@ -415,6 +466,9 @@ export class UsersService {
           };
         });
 
+        if (shouldRevokeSessions) {
+          this.telemetryService?.notifyUserSessionRevoked?.(existing.id);
+        }
         await this.emitTelemetrySafe(affectedCubicleIds);
         this.logger.log(`Cuenta operativa actualizada: ${updated.username}`);
         return this.mapToDto(updated as unknown as SafeUserRow);
@@ -425,11 +479,18 @@ export class UsersService {
         data: {
           ...(dto.displayName !== undefined ? { displayName: dto.displayName.trim() } : {}),
           ...(dto.role !== undefined ? { role: dto.role } : {}),
-          ...(dto.cubicleId !== undefined ? { cubicleId: dto.cubicleId } : {}),
+          ...(effectiveCubicleIdPatch !== undefined
+            ? { cubicleId: effectiveCubicleIdPatch }
+            : {}),
           ...(dto.active !== undefined ? { active: dto.active } : {}),
+          ...(shouldRevokeSessions ? { tokenVersion: { increment: 1 } } : {}),
         },
         select: SAFE_USER_SELECT,
       });
+
+      if (shouldRevokeSessions) {
+        this.telemetryService?.notifyUserSessionRevoked?.(existing.id);
+      }
 
       this.logger.log(`Cuenta operativa actualizada: ${updated.username}`);
       return this.mapToDto(updated as unknown as SafeUserRow);
@@ -466,9 +527,13 @@ export class UsersService {
     const passwordHash = await bcrypt.hash(newPassword, 10);
     await this.prisma.user.update({
       where: { id: existing.id },
-      data: { passwordHash },
+      data: {
+        passwordHash,
+        tokenVersion: { increment: 1 },
+      },
     });
 
+    this.telemetryService?.notifyUserSessionRevoked?.(existing.id);
     this.logger.log(`Contraseña restablecida administrativamente para '${existing.username}'.`);
     return {
       reset: true,

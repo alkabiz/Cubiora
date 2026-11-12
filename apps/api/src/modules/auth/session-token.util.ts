@@ -9,6 +9,7 @@ export interface SessionPayload {
   role: UserRole;
   cubicleId: string | null;
   cubicleCode?: string | null;
+  tokenVersion?: number;
   iat: number;
   exp: number;
 }
@@ -28,6 +29,7 @@ export class SessionTokenUtil {
     const now = Math.floor(Date.now() / 1000);
     const fullPayload: SessionPayload = {
       ...payload,
+      tokenVersion: payload.tokenVersion ?? 0,
       iat: now,
       exp: now + expiresInSeconds,
     };
@@ -69,9 +71,27 @@ export class SessionTokenUtil {
       const decodedJson = Buffer.from(payloadB64, 'base64url').toString('utf8');
       const payload = JSON.parse(decodedJson) as SessionPayload;
 
+      if (
+        typeof payload.sub !== 'string' ||
+        payload.sub.length === 0 ||
+        typeof payload.role !== 'string' ||
+        payload.role.length === 0
+      ) {
+        return null;
+      }
+
+      if (
+        payload.tokenVersion !== undefined &&
+        (typeof payload.tokenVersion !== 'number' ||
+          !Number.isInteger(payload.tokenVersion) ||
+          payload.tokenVersion < 0)
+      ) {
+        return null;
+      }
+
       const now = Math.floor(Date.now() / 1000);
-      if (payload.exp && payload.exp < now) {
-        return null; // Token expirado
+      if (typeof payload.exp !== 'number' || !Number.isFinite(payload.exp) || payload.exp < now) {
+        return null; // Token inválido o expirado
       }
 
       return payload;

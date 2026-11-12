@@ -4,9 +4,11 @@ import {
   BadRequestException,
   HttpException,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../prisma/prisma.service';
+import { OperationalTelemetryService } from '../operational-telemetry/operational-telemetry.service';
 import { SessionTokenUtil } from './session-token.util';
 import { getEnv } from '../../config/env.validation';
 import { UserRole, ApiErrorCode } from '@cubiora/shared';
@@ -24,11 +26,17 @@ export interface LoginResult {
   };
 }
 
+const DUMMY_BCRYPT_HASH =
+  '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy';
+
 @Injectable()
 export class AuthService {
   private readonly logger = new Logger(AuthService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly telemetryService?: OperationalTelemetryService,
+  ) {}
 
   /**
    * Valida credenciales contra la base de datos y emite token de sesión seguro.
@@ -57,6 +65,7 @@ export class AuthService {
       });
 
       if (!user || !user.active) {
+        await bcrypt.compare(pass, DUMMY_BCRYPT_HASH);
         throw new UnauthorizedException({
           code: ApiErrorCode.AUTH_REQUIRED,
           message: 'Credenciales inválidas o usuario inactivo',
@@ -64,6 +73,7 @@ export class AuthService {
       }
 
       if (!user.passwordHash || typeof user.passwordHash !== 'string') {
+        await bcrypt.compare(pass, DUMMY_BCRYPT_HASH);
         this.logger.warn(
           `Intento de login fallido para '${normalizedUsername}': hash de contraseña ausente o inválido.`,
         );
@@ -108,6 +118,7 @@ export class AuthService {
           role: user.role as UserRole,
           cubicleId: user.cubicleId,
           cubicleCode,
+          tokenVersion: user.tokenVersion ?? 0,
         },
         env.SESSION_SECRET,
       );
@@ -135,6 +146,28 @@ export class AuthService {
         error instanceof Error ? error.stack : undefined,
       );
       throw error;
+    }
+  }
+
+  /**
+   * Revoca todas las sesiones emitidas para un usuario incrementando `tokenVersion`.
+   */
+  async revokeSessions(userId: string): Promise<void> {
+    if (!this.prisma?.user?.update) {
+      return;
+    }
+    try {
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { tokenVersion: { increment: 1 } },
+      });
+      this.telemetryService?.notifyUserSessionRevoked?.(userId);
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo incrementar tokenVersion en logout para usuario '${userId}': ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
     }
   }
 

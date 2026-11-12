@@ -74,10 +74,10 @@ export class RolesGuard implements CanActivate {
         request.query?.cubicleId ??
         request.body?.cubicleId;
 
-      if (requestedCubicleId && user.cubicleId && requestedCubicleId !== user.cubicleId) {
+      if (requestedCubicleId && (!user.cubicleId || requestedCubicleId !== user.cubicleId)) {
         throw new ForbiddenException({
           code: ApiErrorCode.FORBIDDEN,
-          message: `Acceso denegado: El operador de caja está restringido a su cubículo (${user.cubicleId}) y no puede operar en el cubículo (${requestedCubicleId}).`,
+          message: `Acceso denegado: El operador de caja está restringido a su cubículo (${user.cubicleId ?? 'sin asignar'}) y no puede operar en el cubículo (${requestedCubicleId}).`,
         });
       }
     }

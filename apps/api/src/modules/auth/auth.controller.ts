@@ -10,6 +10,7 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
@@ -38,16 +39,15 @@ export function resolveCookieSecure(
 
     const forwardedProto = request.headers?.['x-forwarded-proto'];
     if (typeof forwardedProto === 'string') {
-      return forwardedProto
-        .split(',')
-        .some((proto) => proto.trim().toLowerCase() === 'https');
+      const firstProto = forwardedProto.split(',')[0]?.trim().toLowerCase();
+      return firstProto === 'https';
     }
     if (Array.isArray(forwardedProto)) {
-      return forwardedProto.some((entry) =>
-        entry
-          .split(',')
-          .some((proto) => proto.trim().toLowerCase() === 'https'),
-      );
+      const firstEntry = forwardedProto[0];
+      const firstProto = typeof firstEntry === 'string'
+        ? firstEntry.split(',')[0]?.trim().toLowerCase()
+        : undefined;
+      return firstProto === 'https';
     }
 
     return false;
@@ -63,6 +63,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Public()
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   async login(
@@ -107,7 +108,12 @@ export class AuthController {
   async logout(
     @Res({ passthrough: true }) response: Response,
     @Req() request?: Request,
+    @CurrentUser() user?: AuthenticatedUser,
   ) {
+    if (user?.id && typeof this.authService?.revokeSessions === 'function') {
+      await this.authService.revokeSessions(user.id);
+    }
+
     const env = getEnv();
     const isSecureCookie = resolveCookieSecure(request, env);
 

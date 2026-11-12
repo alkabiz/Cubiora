@@ -9,7 +9,7 @@ import { Reflector } from '@nestjs/core';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import { SessionTokenUtil } from '../../modules/auth/session-token.util';
 import { getEnv } from '../../config/env.validation';
-import { ApiErrorCode } from '@cubiora/shared';
+import { ApiErrorCode, UserRole } from '@cubiora/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 
 import { AuthenticatedUser } from '../decorators/current-user.decorator';
@@ -67,13 +67,14 @@ export class AuthGuard implements CanActivate {
     const attachUser = (
       freshCubicleId?: string | null,
       freshCubicleCode?: string | null,
+      freshRole?: UserRole,
     ) => {
       (request as unknown as { user: AuthenticatedUser }).user = {
         id: payload.sub,
         publicId: payload.publicId,
         username: payload.username,
         displayName: payload.displayName,
-        role: payload.role,
+        role: freshRole ?? payload.role,
         cubicleId: freshCubicleId !== undefined ? freshCubicleId : payload.cubicleId,
         cubicleCode:
           freshCubicleCode !== undefined
@@ -89,25 +90,46 @@ export class AuthGuard implements CanActivate {
           where: { id: payload.sub },
           select: {
             active: true,
+            role: true,
+            tokenVersion: true,
             cubicleId: true,
             cubicle: { select: { code: true } },
           },
         })
         .then((dbUser) => {
-          if (dbUser && !dbUser.active) {
+          if (!dbUser || !dbUser.active) {
             throw new UnauthorizedException({
               code: ApiErrorCode.AUTH_REQUIRED,
               message: 'Acceso denegado: el usuario se encuentra inactivo.',
             });
           }
+
+          if (
+            typeof (dbUser as { tokenVersion?: unknown }).tokenVersion === 'number' &&
+            payload.tokenVersion !== (dbUser as { tokenVersion: number }).tokenVersion
+          ) {
+            throw new UnauthorizedException({
+              code: ApiErrorCode.AUTH_REQUIRED,
+              message: 'Sesión revocada o expirada. Por favor inicie sesión nuevamente.',
+            });
+          }
+
           const resolvedCubicleId =
-            dbUser && dbUser.cubicleId !== undefined ? dbUser.cubicleId : payload.cubicleId;
+            dbUser.cubicleId !== undefined ? dbUser.cubicleId : payload.cubicleId;
           const resolvedCubicleCode =
-            dbUser && dbUser.cubicle !== undefined
+            dbUser.cubicle !== undefined
               ? (dbUser.cubicle?.code ?? null)
               : (payload.cubicleCode ?? null);
-          return attachUser(resolvedCubicleId, resolvedCubicleCode);
+          const resolvedRole = (dbUser.role as UserRole | undefined) ?? payload.role;
+          return attachUser(resolvedCubicleId, resolvedCubicleCode, resolvedRole);
         });
+    }
+
+    if (env.NODE_ENV !== 'test') {
+      throw new UnauthorizedException({
+        code: ApiErrorCode.AUTH_REQUIRED,
+        message: 'Servicio de verificación de sesión no disponible.',
+      });
     }
 
     return attachUser();
@@ -122,10 +144,13 @@ export class AuthGuard implements CanActivate {
       return request.cookies['cubiora_session'];
     }
 
-    // 2. Soporte fallback para tests automatizados vía header Authorization: Bearer <token>
-    const authHeader = request.headers?.authorization;
-    if (authHeader && typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
-      return authHeader.substring(7).trim();
+    // 2. Soporte fallback únicamente en entornos no productivos para tests automatizados
+    const nodeEnv = getEnv().NODE_ENV;
+    if (nodeEnv !== 'production') {
+      const authHeader = request.headers?.authorization;
+      if (authHeader && typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+        return authHeader.substring(7).trim();
+      }
     }
 
     return null;
