@@ -2,6 +2,26 @@ import { ApiError } from '@cubiora/shared';
 
 const API_BASE = '/api/v1';
 
+type UnauthorizedHandler = () => void;
+const unauthorizedListeners = new Set<UnauthorizedHandler>();
+
+export function onUnauthorizedResponse(listener: UnauthorizedHandler): () => void {
+  unauthorizedListeners.add(listener);
+  return () => {
+    unauthorizedListeners.delete(listener);
+  };
+}
+
+function notifyUnauthorized(): void {
+  for (const listener of unauthorizedListeners) {
+    try {
+      listener();
+    } catch {
+      // Ignorar errores en listeners de limpieza de sesión
+    }
+  }
+}
+
 export class ApiClientError extends Error {
   constructor(
     public readonly code: string,
@@ -37,6 +57,14 @@ export async function apiClient<T>(
       errorData = await response.json();
     } catch {
       // Ignorar si el body no es JSON
+    }
+
+    if (
+      response.status === 401 &&
+      !endpoint.startsWith('/auth/login') &&
+      !endpoint.startsWith('/auth/logout')
+    ) {
+      notifyUnauthorized();
     }
 
     throw new ApiClientError(

@@ -133,6 +133,11 @@ export interface ReceptionPageProps {
   allowPreferentialPolicy?: boolean;
 }
 
+const IS_DEMO_BARCODE_ENABLED =
+  typeof import.meta !== 'undefined' &&
+  Boolean(import.meta.env?.DEV) &&
+  import.meta.env?.MODE !== 'production';
+
 export const ReceptionPage: React.FC<ReceptionPageProps> = ({
   allowPreferentialPolicy = false,
 }) => {
@@ -206,9 +211,11 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
     setIdDocument('');
   };
 
-  const handleScanBarcodeDemo = () => {
-    setIdDocument('1023456789');
-  };
+  const handleScanBarcodeDemo = IS_DEMO_BARCODE_ENABLED
+    ? () => {
+        setIdDocument('1023456789');
+      }
+    : undefined;
 
   const isNameValid = patientName.trim().length >= 2;
   const isReasonValid =
@@ -363,17 +370,19 @@ export const ReceptionPage: React.FC<ReceptionPageProps> = ({
                       Documento <Text size="1" color="gray" weight="regular">(Opcional)</Text>
                     </label>
                     <Flex gap="2" align="center" wrap="wrap">
-                      <Button
-                        type="button"
-                        size="1"
-                        variant="soft"
-                        onClick={handleScanBarcodeDemo}
-                        className="min-h-[44px] px-3 cursor-pointer text-xs"
-                        title="Simular escaneo de código de barras PDF417 de cédula"
-                      >
-                        <ScanBarcode size={13} className="mr-1 inline" aria-hidden="true" />
-                        Escanear Cédula / Código de Barras
-                      </Button>
+                      {IS_DEMO_BARCODE_ENABLED && handleScanBarcodeDemo && (
+                        <Button
+                          type="button"
+                          size="1"
+                          variant="soft"
+                          onClick={handleScanBarcodeDemo}
+                          className="min-h-[44px] px-3 cursor-pointer text-xs"
+                          title="Simular escaneo de código de barras PDF417 de cédula"
+                        >
+                          <ScanBarcode size={13} className="mr-1 inline" aria-hidden="true" />
+                          Escanear Cédula / Código de Barras
+                        </Button>
+                      )}
                       <Button
                         type="button"
                         size="1"

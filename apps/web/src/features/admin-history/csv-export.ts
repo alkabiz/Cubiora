@@ -1,10 +1,12 @@
 // ─── [SCR-ADM-003] Utilidad de Exportación CSV con Soporte UTF-8 (BOM) ─────────
 import type { DailyAuditRecord } from './types';
 
-function escapeCsvField(value: unknown): string {
+export function escapeCsvField(value: unknown): string {
   if (value === null || value === undefined) return '""';
-  const str = String(value);
-  return `"${str.replace(/"/g, '""')}"`;
+  const raw = String(value);
+  // Neutraliza CSV/Formula Injection en hojas de cálculo (Excel / LibreOffice Calc)
+  const safe = /^[=+\-@\t\r\n|]/.test(raw) || /^\s+[=+\-@|]/.test(raw) ? `'${raw}` : raw;
+  return `"${safe.replace(/"/g, '""')}"`;
 }
 
 export function exportAuditRecordsToCsv(

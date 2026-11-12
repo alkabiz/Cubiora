@@ -41,9 +41,9 @@ export async function resetAdminUserPassword(
   dto: ResetAdminUserPasswordDto,
 ): Promise<{ reset: true; id: string }> {
   const response = await apiClient<WrappedApiResponse<{ reset: true; id: string }>>(
-    `/admin/users/${encodeURIComponent(id)}/reset-password`,
+    `/admin/users/${encodeURIComponent(id)}/password`,
     {
-      method: 'POST',
+      method: 'PATCH',
       body: JSON.stringify(dto),
     },
   );

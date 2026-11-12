@@ -16,7 +16,7 @@ const loginSchema = z.object({
 type LoginFormData = z.infer<typeof loginSchema>;
 
 export const LoginPage: React.FC = () => {
-  const { login, user } = useAuth();
+  const { login, user, isLoading } = useAuth();
   const navigate = useNavigate();
   const [serverError, setServerError] = useState<string | null>(null);
 
@@ -33,10 +33,10 @@ export const LoginPage: React.FC = () => {
   });
 
   useEffect(() => {
-    if (user) {
+    if (!isLoading && user) {
       navigate(DEFAULT_ROUTE_BY_ROLE[user.role], { replace: true });
     }
-  }, [user, navigate]);
+  }, [isLoading, user, navigate]);
 
   const onSubmit = async (data: LoginFormData) => {
     setServerError(null);

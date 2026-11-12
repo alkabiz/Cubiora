@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { apiClient, ApiClientError } from '../lib/api';
+import { apiClient, ApiClientError, onUnauthorizedResponse } from '../lib/api';
+import { useResolvedQueryClient } from '../lib/query-client';
 
 export interface AuthUser {
   publicId: string;
@@ -24,6 +25,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const USER_STORAGE_KEY = 'cubiora_user';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const resolvedQueryClient = useResolvedQueryClient();
   const [user, setUser] = useState<AuthUser | null>(() => {
     try {
       const cached = sessionStorage.getItem(USER_STORAGE_KEY);
@@ -34,6 +36,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
   const [isLoading, setIsLoading] = useState(true);
 
+  const clearClientSession = useCallback(() => {
+    setUser(null);
+    sessionStorage.removeItem(USER_STORAGE_KEY);
+    resolvedQueryClient.clear();
+  }, [resolvedQueryClient]);
+
   const refreshUser = useCallback(async () => {
     try {
       const res = await apiClient<{ success: boolean; data: AuthUser }>('/auth/me');
@@ -41,20 +49,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(res.data);
         sessionStorage.setItem(USER_STORAGE_KEY, JSON.stringify(res.data));
       } else {
-        setUser(null);
-        sessionStorage.removeItem(USER_STORAGE_KEY);
+        clearClientSession();
       }
     } catch {
-      setUser(null);
-      sessionStorage.removeItem(USER_STORAGE_KEY);
+      clearClientSession();
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [clearClientSession]);
 
   useEffect(() => {
     refreshUser();
   }, [refreshUser]);
+
+  useEffect(() => {
+    return onUnauthorizedResponse(() => {
+      clearClientSession();
+    });
+  }, [clearClientSession]);
 
   const login = async (username: string, pass: string): Promise<AuthUser> => {
     try {
@@ -63,6 +75,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         body: JSON.stringify({ username, password: pass }),
       });
 
+      resolvedQueryClient.clear();
       setUser(res.data);
       sessionStorage.setItem(USER_STORAGE_KEY, JSON.stringify(res.data));
       return res.data;
@@ -80,8 +93,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch {
       // Ignorar error al cerrar sesión
     } finally {
-      setUser(null);
-      sessionStorage.removeItem(USER_STORAGE_KEY);
+      clearClientSession();
     }
   };
 
