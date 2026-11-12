@@ -32,9 +32,9 @@ async function bootstrap() {
   initEnv();
   const env = getEnv();
 
-  // 2. Crear la aplicación NestJS (Express) y habilitar trust proxy (Cloudflare / Traefik / Nginx)
+  // 2. Crear la aplicación NestJS (Express) y restringir trust proxy a saltos internos/privados
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
-  app.set('trust proxy', true);
+  app.set('trust proxy', 'loopback, linklocal, uniquelocal');
 
   // 3. Seguridad con cabeceras HTTP (Helmet)
   app.use(helmet());
@@ -50,7 +50,14 @@ async function bootstrap() {
     origin: allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Correlation-ID', 'Idempotency-Key'],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'X-Correlation-ID',
+      'Idempotency-Key',
+      'Expected-Version',
+      'If-Match',
+    ],
   });
 
   // 5. Prefijo global de API

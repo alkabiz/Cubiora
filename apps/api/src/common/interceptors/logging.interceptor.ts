@@ -22,13 +22,22 @@ export class LoggingInterceptor implements NestInterceptor {
   private readonly logger = new Logger('HTTP');
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    if (typeof context.getType === 'function' && context.getType() !== 'http') {
+      return next.handle();
+    }
+
     const ctx = context.switchToHttp();
     const req = ctx.getRequest<Request>();
     const res = ctx.getResponse<Response>();
 
     const method = req.method;
-    const url = req.originalUrl || req.url;
-    const correlationId = (req.headers['x-correlation-id'] as string) || 'none';
+    const rawUrl = req.originalUrl || req.url || '';
+    const url = rawUrl.split('?')[0] ?? rawUrl;
+    const rawCorrelationId = req.headers['x-correlation-id'];
+    const correlationId =
+      typeof rawCorrelationId === 'string' && rawCorrelationId.length > 0
+        ? rawCorrelationId.slice(0, 36)
+        : 'none';
     const startTime = Date.now();
 
     return next.handle().pipe(

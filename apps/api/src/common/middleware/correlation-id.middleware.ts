@@ -13,15 +13,16 @@ import { v4 as uuidv4 } from 'uuid';
  * El correlationId queda disponible en req.headers['x-correlation-id']
  * para ser leído por el filtro de excepciones y el interceptor de logging.
  */
+const SAFE_CORRELATION_ID_RE = /^[A-Za-z0-9._-]{1,36}$/;
+
 @Injectable()
 export class CorrelationIdMiddleware implements NestMiddleware {
   use(req: Request, res: Response, next: NextFunction): void {
     const existing = req.headers['x-correlation-id'];
-    const correlationId = typeof existing === 'string' && existing.length > 0
-      ? existing
-      : uuidv4();
+    const trimmed = typeof existing === 'string' ? existing.trim() : '';
+    const correlationId = SAFE_CORRELATION_ID_RE.test(trimmed) ? trimmed : uuidv4();
 
-    // Normalizar: siempre string
+    // Normalizar: siempre string acotado a VarChar(36) sin caracteres de control
     req.headers['x-correlation-id'] = correlationId;
 
     // Propagar en la respuesta

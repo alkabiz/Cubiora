@@ -1,10 +1,14 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
-import * as fs from 'fs';
-import * as path from 'path';
 import { PrismaClient } from '../generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { Pool } from 'pg';
 import { getEnv } from '../config/env.validation';
+import {
+  loadInstitutionalCaCert,
+  normalizePemCertificate,
+} from '../common/utils/tls-ca.util';
+
+export { normalizePemCertificate } from '../common/utils/tls-ca.util';
 
 export interface ResolvedPgPoolOptions {
   connectionString: string;
@@ -13,9 +17,8 @@ export interface ResolvedPgPoolOptions {
 
 /**
  * Resuelve la cadena de conexión saneada y la configuración TLS para `pg.Pool`.
- * Cuando `ALLOW_DOCKER_INTERNAL_DB=true` (Coolify / LXC interno con `hostssl`
- * y certificado autofirmado), elimina `sslmode` de la URL y configura
- * `ssl: { rejectUnauthorized: false }` para que `pg-connection-string` no lo sobrescriba.
+ * En producción (`NODE_ENV === 'production'`) rechaza `ALLOW_DOCKER_INTERNAL_DB=true`,
+ * `sslmode=disable` y cualquier configuración sin certificado CA institucional verificable.
  */
 export function resolvePgPoolOptions(
   databaseUrl: string,
@@ -23,6 +26,9 @@ export function resolvePgPoolOptions(
   allowDockerInternalDb: boolean,
   caCert?: string,
 ): ResolvedPgPoolOptions {
+  const normalizedCaCert = caCert ? normalizePemCertificate(caCert) : undefined;
+  const effectiveCaCert =
+    normalizedCaCert && normalizedCaCert.length > 0 ? normalizedCaCert : undefined;
   const lowerDbUrl = databaseUrl.toLowerCase();
   const sslDisabled = lowerDbUrl.includes('sslmode=disable');
   const urlRequestsSsl =
@@ -30,22 +36,27 @@ export function resolvePgPoolOptions(
     lowerDbUrl.includes('sslmode=verify-ca') ||
     lowerDbUrl.includes('sslmode=verify-full');
 
-  const requiresStrictSsl = !allowDockerInternalDb && (urlRequestsSsl || nodeEnv === 'production');
-
-  if (nodeEnv === 'production' && !allowDockerInternalDb) {
-    if (!requiresStrictSsl || !caCert) {
+  if (nodeEnv === 'production') {
+    if (allowDockerInternalDb) {
+      throw new Error(
+        'FATAL_TLS_VERIFICATION_FAILED: ALLOW_DOCKER_INTERNAL_DB=true está estrictamente prohibido en producción. Utilice TLS verify-full con certificado CA institucional.',
+      );
+    }
+    if (sslDisabled || !effectiveCaCert) {
       throw new Error(
         'FATAL_TLS_VERIFICATION_FAILED: En producción es obligatorio el uso de TLS con CA interna verificada (rejectUnauthorized: true, verify-full). La API se niega a iniciar.',
       );
     }
   }
 
+  const requiresStrictSsl = !allowDockerInternalDb && (urlRequestsSsl || nodeEnv === 'production');
+
   let ssl: { rejectUnauthorized: boolean; ca?: string } | undefined;
   if (allowDockerInternalDb) {
     ssl = sslDisabled ? undefined : { rejectUnauthorized: false };
   } else if (requiresStrictSsl) {
-    if (caCert) {
-      ssl = { rejectUnauthorized: true, ca: caCert };
+    if (effectiveCaCert) {
+      ssl = { rejectUnauthorized: true, ca: effectiveCaCert };
     } else if (nodeEnv !== 'production' && lowerDbUrl.includes('sslmode=require')) {
       ssl = { rejectUnauthorized: false };
     } else {
@@ -87,17 +98,7 @@ export class PrismaService
     const env = getEnv();
 
     // ─── Configuración de CA Interna y TLS Estricto ─────────────────────────
-    let caCert: string | undefined;
-    const caCertPath = process.env['DATABASE_CA_CERT_PATH'] || path.resolve(process.cwd(), 'ca-cert.crt');
-    const caCertPathAlt = path.resolve(process.cwd(), 'apps/api/ca-cert.crt');
-
-    if (fs.existsSync(caCertPath)) {
-      caCert = fs.readFileSync(caCertPath, 'utf8');
-    } else if (fs.existsSync(caCertPathAlt)) {
-      caCert = fs.readFileSync(caCertPathAlt, 'utf8');
-    } else if (process.env['DATABASE_CA_CERT']) {
-      caCert = process.env['DATABASE_CA_CERT'];
-    }
+    const caCert = loadInstitutionalCaCert();
 
     const isDockerInternal = process.env['ALLOW_DOCKER_INTERNAL_DB'] === 'true';
     const pgOptions = resolvePgPoolOptions(

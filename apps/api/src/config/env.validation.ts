@@ -5,11 +5,19 @@
  *
  * Usa Zod 4 para parsing y validación.
  */
-import * as fs from 'fs';
-import * as path from 'path';
 import { z } from 'zod/v4';
+import {
+  hasPemCertificateMarkers,
+  loadInstitutionalCaCert,
+} from '../common/utils/tls-ca.util';
 
-const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '192.168.1.33', 'postgres']);
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', 'postgres']);
+
+const WEAK_PLACEHOLDER_SECRETS: ReadonlySet<string> = new Set([
+  'display_token_default_local_min_32_chars!',
+  'cubiora_production_display_token_ultra_secure_min_32_chars!',
+  'cubiora_production_session_secret_ultra_secure_min_32_chars!',
+]);
 
 /**
  * Valida de forma estricta que las URLs de base de datos cumplan con las reglas
@@ -50,9 +58,10 @@ export function assertDatabaseUrlSecurity(
 
   // 3. Blindaje en producción: rol exclusivo cubiora_app y sslmode estricto verify-full
   if (nodeEnv === 'production') {
-    // Si se despliega en red interna aislada de Docker Compose (ej. Coolify), se permite la conexión directa
     if (process.env['ALLOW_DOCKER_INTERNAL_DB'] === 'true') {
-      return;
+      throw new Error(
+        `[Seguridad] ERROR_SEGURIDAD_TLS_DOCKER_INTERNAL_PROHIBIDO: ALLOW_DOCKER_INTERNAL_DB=true está prohibido en producción. Configure PostgreSQL con TLS 'sslmode=verify-full' y certificado CA institucional.`,
+      );
     }
 
     if (varName === 'DATABASE_URL') {
@@ -90,24 +99,18 @@ export function assertDatabaseUrlSecurity(
       );
     }
 
-    // - Exigir ruta o contenido de CA institucional
-    const caCertContent = process.env['DATABASE_CA_CERT'] || process.env['CA_CERT'];
-    const caCertPath = process.env['DATABASE_CA_CERT_PATH'] || process.env['CA_CERT_PATH'];
+    // - Exigir ruta o contenido de CA institucional en formato PEM válido
+    const caCert = loadInstitutionalCaCert();
 
-    let hasCa = false;
-    if (caCertContent && caCertContent.trim().length > 0) {
-      hasCa = true;
-    } else if (caCertPath) {
-      hasCa = fs.existsSync(caCertPath);
-    } else {
-      const defaultCaFile = path.resolve(process.cwd(), 'ca-cert.crt');
-      const defaultCaFileApi = path.resolve(process.cwd(), 'apps/api/ca-cert.crt');
-      hasCa = fs.existsSync(defaultCaFile) || fs.existsSync(defaultCaFileApi);
-    }
-
-    if (!hasCa) {
+    if (!caCert) {
       throw new Error(
         `[Seguridad] ERROR_SEGURIDAD_CA_REQUERIDA: En producción con verify-full se exige la ruta o contenido del certificado CA institucional (DATABASE_CA_CERT, DATABASE_CA_CERT_PATH o ca-cert.crt).`,
+      );
+    }
+
+    if (!hasPemCertificateMarkers(caCert)) {
+      throw new Error(
+        `[Seguridad] ERROR_SEGURIDAD_CA_INVALIDA: El certificado CA proporcionado no tiene formato PEM X.509 válido (BEGIN/END CERTIFICATE).`,
       );
     }
 
@@ -140,7 +143,7 @@ const envSchema = z
     DISPLAY_TOKEN: z
       .string()
       .min(32, 'DISPLAY_TOKEN debe tener al menos 32 caracteres')
-      .default('display_token_default_local_min_32_chars!'),
+      .optional(),
     CORS_ORIGINS: z.string().min(1, 'CORS_ORIGINS es obligatorio'),
     COOKIE_SECURE: z
       .preprocess(
@@ -168,6 +171,43 @@ const envSchema = z
       .default(12 * 60),
   })
   .superRefine((data, ctx) => {
+    const origins = data.CORS_ORIGINS.split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean);
+    if (origins.length === 0 || origins.some((origin) => origin === '*')) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "[Seguridad] ERROR_SEGURIDAD_CORS: CORS_ORIGINS no puede estar vacío ni incluir el comodín '*'.",
+        path: ['CORS_ORIGINS'],
+      });
+    }
+
+    if (data.NODE_ENV === 'production') {
+      if (WEAK_PLACEHOLDER_SECRETS.has(data.SESSION_SECRET.trim())) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: '[Seguridad] ERROR_SEGURIDAD_SECRET_DEBIL: SESSION_SECRET no puede usar un valor de plantilla o ejemplo en producción.',
+          path: ['SESSION_SECRET'],
+        });
+      }
+
+      if (data.DISPLAY_TOKEN && WEAK_PLACEHOLDER_SECRETS.has(data.DISPLAY_TOKEN.trim())) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: '[Seguridad] ERROR_SEGURIDAD_DISPLAY_TOKEN_DEBIL: DISPLAY_TOKEN no puede usar un valor de ejemplo en producción.',
+          path: ['DISPLAY_TOKEN'],
+        });
+      }
+
+      if (data.COOKIE_SECURE !== 'true') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "[Seguridad] ERROR_SEGURIDAD_COOKIE_SECURE: En producción COOKIE_SECURE debe ser explícitamente 'true'.",
+          path: ['COOKIE_SECURE'],
+        });
+      }
+    }
+
     try {
       assertDatabaseUrlSecurity(data.DATABASE_URL, 'DATABASE_URL', data.NODE_ENV);
     } catch (err) {

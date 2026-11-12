@@ -39,12 +39,24 @@ export class GlobalExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(GlobalExceptionFilter.name);
 
   catch(exception: unknown, host: ArgumentsHost): void {
+    if (typeof host.getType === 'function' && host.getType() !== 'http') {
+      return;
+    }
+
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
 
+    if ((response as { headersSent?: boolean })?.headersSent) {
+      return;
+    }
+
     // Leer correlationId inyectado por el middleware
-    const correlationId = (request.headers['x-correlation-id'] as string) ?? 'unknown';
+    const rawCorrelation = request.headers['x-correlation-id'];
+    const correlationId =
+      typeof rawCorrelation === 'string' && rawCorrelation.length > 0
+        ? rawCorrelation.slice(0, 36)
+        : 'unknown';
 
     let statusCode: number;
     let errorCode: ApiErrorCode;
@@ -75,11 +87,12 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       errorCode = ApiErrorCode.INTERNAL_ERROR;
       message = 'Ha ocurrido un error interno. Por favor intente más tarde.';
 
-      // Registrar el error completo en el log (nunca en la respuesta)
+      // Registrar el error completo en el log (nunca en la respuesta ni con query params PII)
+      const safePath = (request.url ?? '').split('?')[0] ?? '';
       this.logger.error(
         {
           correlationId,
-          path: request.url,
+          path: safePath,
           method: request.method,
         },
         exception instanceof Error ? exception.message : String(exception),
