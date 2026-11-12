@@ -56,13 +56,9 @@ export function assertDatabaseUrlSecurity(
     );
   }
 
-  // 3. Blindaje en producción: rol exclusivo cubiora_app y sslmode estricto verify-full
+  // 3. Blindaje en producción: rol exclusivo cubiora_app y TLS obligatorio
   if (nodeEnv === 'production') {
-    if (process.env['ALLOW_DOCKER_INTERNAL_DB'] === 'true') {
-      throw new Error(
-        `[Seguridad] ERROR_SEGURIDAD_TLS_DOCKER_INTERNAL_PROHIBIDO: ALLOW_DOCKER_INTERNAL_DB=true está prohibido en producción. Configure PostgreSQL con TLS 'sslmode=verify-full' y certificado CA institucional.`,
-      );
-    }
+    const allowDockerInternalDb = process.env['ALLOW_DOCKER_INTERNAL_DB'] === 'true';
 
     if (varName === 'DATABASE_URL') {
       const username = decodeURIComponent(parsedUrl.username);
@@ -75,7 +71,19 @@ export function assertDatabaseUrlSecurity(
 
     const sslmode = parsedUrl.searchParams.get('sslmode')?.toLowerCase();
 
-    // - require falla categóricamente en producción
+    if (allowDockerInternalDb) {
+      // Excepción explícita para PostgreSQL en red interna/LAN con certificado autofirmado:
+      // permite sslmode=require (o superior) sin exigir CA local ni FQDN, rechazando sslmode=disable.
+      const allowedInternalSslModes = new Set(['require', 'verify-ca', 'verify-full']);
+      if (!sslmode || !allowedInternalSslModes.has(sslmode)) {
+        throw new Error(
+          `[Seguridad] ERROR_SEGURIDAD_SSL_REQUERIDO: En producción con ALLOW_DOCKER_INTERNAL_DB=true, ${varName} debe incluir al menos 'sslmode=require'. Modo detectado: '${sslmode ?? 'ninguno'}'.`,
+        );
+      }
+      return;
+    }
+
+    // - require falla categóricamente en producción estricta
     if (sslmode === 'require') {
       throw new Error(
         `[Seguridad] ERROR_SEGURIDAD_SSL_REQUIRE_RECHAZADO: 'sslmode=require' es insuficiente en producción. Se exige verificación completa con 'sslmode=verify-full'.`,
@@ -140,10 +148,13 @@ const envSchema = z
     SESSION_SECRET: z
       .string()
       .min(32, 'SESSION_SECRET debe tener al menos 32 caracteres'),
-    DISPLAY_TOKEN: z
-      .string()
-      .min(32, 'DISPLAY_TOKEN debe tener al menos 32 caracteres')
-      .optional(),
+    DISPLAY_TOKEN: z.preprocess(
+      (val) => (typeof val === 'string' && val.trim() === '' ? undefined : val),
+      z
+        .string()
+        .min(32, 'DISPLAY_TOKEN debe tener al menos 32 caracteres')
+        .optional(),
+    ),
     CORS_ORIGINS: z.string().min(1, 'CORS_ORIGINS es obligatorio'),
     COOKIE_SECURE: z
       .preprocess(
@@ -199,10 +210,10 @@ const envSchema = z
         });
       }
 
-      if (data.COOKIE_SECURE !== 'true') {
+      if (data.COOKIE_SECURE === 'false') {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: "[Seguridad] ERROR_SEGURIDAD_COOKIE_SECURE: En producción COOKIE_SECURE debe ser explícitamente 'true'.",
+          message: "[Seguridad] ERROR_SEGURIDAD_COOKIE_SECURE: En producción COOKIE_SECURE no puede ser 'false' (use 'true' o 'auto').",
           path: ['COOKIE_SECURE'],
         });
       }
@@ -229,7 +240,12 @@ const envSchema = z
         });
       }
     }
-  });
+  })
+  .transform((data) => ({
+    ...data,
+    COOKIE_SECURE:
+      data.COOKIE_SECURE ?? (data.NODE_ENV === 'production' ? ('true' as const) : undefined),
+  }));
 
 export type AppEnv = z.infer<typeof envSchema>;
 

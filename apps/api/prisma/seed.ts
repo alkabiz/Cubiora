@@ -146,15 +146,15 @@ if (!caCert && !explicitCaPath) {
   }
 }
 
-if (process.env.NODE_ENV === 'production' && (isDockerInternal || sslDisabled || !caCert)) {
+if (process.env.NODE_ENV === 'production' && (sslDisabled || (!isDockerInternal && !caCert))) {
   console.error(
-    '❌ ERROR_SEGURIDAD_TLS: En producción, el seed exige TLS verificado con certificado CA institucional y prohíbe ALLOW_DOCKER_INTERNAL_DB=true.',
+    '❌ ERROR_SEGURIDAD_TLS: En producción sin ALLOW_DOCKER_INTERNAL_DB=true, el seed exige TLS verificado con certificado CA institucional.',
   );
   process.exit(1);
 }
 
 let ssl: { rejectUnauthorized: boolean; ca?: string } | undefined;
-if (isDockerInternal && process.env.NODE_ENV !== 'production') {
+if (isDockerInternal) {
   ssl = sslDisabled ? undefined : { rejectUnauthorized: false };
 } else if (urlRequestsSsl || process.env.NODE_ENV === 'production') {
   if (caCert) {

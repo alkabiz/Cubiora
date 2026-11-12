@@ -17,8 +17,8 @@ export interface ResolvedPgPoolOptions {
 
 /**
  * Resuelve la cadena de conexión saneada y la configuración TLS para `pg.Pool`.
- * En producción (`NODE_ENV === 'production'`) rechaza `ALLOW_DOCKER_INTERNAL_DB=true`,
- * `sslmode=disable` y cualquier configuración sin certificado CA institucional verificable.
+ * En producción (`NODE_ENV === 'production'`) rechaza `sslmode=disable` y exige
+ * certificado CA institucional verificable (salvo excepción explícita `ALLOW_DOCKER_INTERNAL_DB=true`).
  */
 export function resolvePgPoolOptions(
   databaseUrl: string,
@@ -37,12 +37,12 @@ export function resolvePgPoolOptions(
     lowerDbUrl.includes('sslmode=verify-full');
 
   if (nodeEnv === 'production') {
-    if (allowDockerInternalDb) {
+    if (sslDisabled) {
       throw new Error(
-        'FATAL_TLS_VERIFICATION_FAILED: ALLOW_DOCKER_INTERNAL_DB=true está estrictamente prohibido en producción. Utilice TLS verify-full con certificado CA institucional.',
+        'FATAL_TLS_VERIFICATION_FAILED: sslmode=disable está estrictamente prohibido en producción.',
       );
     }
-    if (sslDisabled || !effectiveCaCert) {
+    if (!allowDockerInternalDb && !effectiveCaCert) {
       throw new Error(
         'FATAL_TLS_VERIFICATION_FAILED: En producción es obligatorio el uso de TLS con CA interna verificada (rejectUnauthorized: true, verify-full). La API se niega a iniciar.',
       );
