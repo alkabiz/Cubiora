@@ -202,14 +202,24 @@ describe('Seguridad TLS y Validación de Arranque en Producción (verify-full ob
     expect((sslStatus as any).secret).toBeUndefined();
   });
 
-  it('resolvePgPoolOptions rechaza ALLOW_DOCKER_INTERNAL_DB=true en producción y solo permite dev/test sin CA', () => {
+  it('resolvePgPoolOptions soporta ALLOW_DOCKER_INTERNAL_DB=true con sslmode=require y rechaza sslmode=disable en producción', () => {
     expect(() =>
       resolvePgPoolOptions(
-        'postgresql://cubiora_app:pass@postgres.internal:5432/cubiora_db?schema=public&sslmode=require',
+        'postgresql://cubiora_app:pass@192.168.1.33:5432/cubiora_db?schema=public&sslmode=disable',
         'production',
         true,
       ),
     ).toThrow(/FATAL_TLS_VERIFICATION_FAILED/);
+
+    const internalProdResolved = resolvePgPoolOptions(
+      'postgresql://cubiora_app:pass@192.168.1.33:5432/cubiora_db?schema=public&sslmode=require',
+      'production',
+      true,
+    );
+    expect(internalProdResolved.connectionString).toBe(
+      'postgresql://cubiora_app:pass@192.168.1.33:5432/cubiora_db?schema=public',
+    );
+    expect(internalProdResolved.ssl).toEqual({ rejectUnauthorized: false });
 
     const devResolved = resolvePgPoolOptions(
       'postgresql://cubiora_app:pass@postgres:5432/cubiora_dev?schema=public&sslmode=require',
@@ -223,7 +233,7 @@ describe('Seguridad TLS y Validación de Arranque en Producción (verify-full ob
     expect(devResolved.ssl).toEqual({ rejectUnauthorized: false });
   });
 
-  it('assertDatabaseUrlSecurity rechaza host LAN en desarrollo y ALLOW_DOCKER_INTERNAL_DB=true en producción', () => {
+  it('assertDatabaseUrlSecurity rechaza host LAN en desarrollo y valida controles en ALLOW_DOCKER_INTERNAL_DB=true', () => {
     expect(() =>
       assertDatabaseUrlSecurity(
         'postgresql://cubiora_app:pass@192.168.1.33:5432/cubiora_db',
@@ -233,20 +243,65 @@ describe('Seguridad TLS y Validación de Arranque en Producción (verify-full ob
     ).toThrow(/ERROR_SEGURIDAD_HOST_NO_LOCAL/);
 
     const originalAllowDocker = process.env['ALLOW_DOCKER_INTERNAL_DB'];
+    const originalTlsRejectEnv = process.env['NODE_TLS_REJECT_UNAUTHORIZED'];
+    delete process.env['DATABASE_CA_CERT'];
+    delete process.env['CA_CERT'];
+    process.env['DATABASE_CA_CERT_PATH'] = path.resolve(process.cwd(), 'non-existent-ca.crt');
     process.env['ALLOW_DOCKER_INTERNAL_DB'] = 'true';
     try {
+      // Con ALLOW_DOCKER_INTERNAL_DB=true en producción permite IP LAN y sslmode=require sin CA local ni FQDN
       expect(() =>
         assertDatabaseUrlSecurity(
-          'postgresql://cubiora_app:pass@postgres.internal:5432/cubiora_db?sslmode=verify-full',
+          'postgresql://cubiora_app:pass@192.168.1.33:5432/cubiora_db?sslmode=require',
           'DATABASE_URL',
           'production',
         ),
-      ).toThrow(/ERROR_SEGURIDAD_TLS_DOCKER_INTERNAL_PROHIBIDO/);
+      ).not.toThrow();
+      expect(() =>
+        assertDatabaseUrlSecurity(
+          'postgresql://cubiora_migrator:pass@192.168.1.33:5432/cubiora_db?sslmode=require',
+          'DIRECT_URL',
+          'production',
+        ),
+      ).not.toThrow();
+
+      // Sigue exigiendo rol cubiora_app en DATABASE_URL
+      expect(() =>
+        assertDatabaseUrlSecurity(
+          'postgresql://cubiora_migrator:pass@192.168.1.33:5432/cubiora_db?sslmode=require',
+          'DATABASE_URL',
+          'production',
+        ),
+      ).toThrow(/ERROR_SEGURIDAD_ROL_INVALIDO/);
+
+      // Sigue prohibiendo sslmode=disable
+      expect(() =>
+        assertDatabaseUrlSecurity(
+          'postgresql://cubiora_app:pass@192.168.1.33:5432/cubiora_db?sslmode=disable',
+          'DATABASE_URL',
+          'production',
+        ),
+      ).toThrow(/ERROR_SEGURIDAD_SSL_REQUERIDO/);
+
+      // Sigue prohibiendo NODE_TLS_REJECT_UNAUTHORIZED=0
+      process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = '0';
+      expect(() =>
+        assertDatabaseUrlSecurity(
+          'postgresql://cubiora_app:pass@192.168.1.33:5432/cubiora_db?sslmode=require',
+          'DATABASE_URL',
+          'production',
+        ),
+      ).toThrow(/ERROR_SEGURIDAD_TLS_INSEGURO/);
     } finally {
       if (originalAllowDocker !== undefined) {
         process.env['ALLOW_DOCKER_INTERNAL_DB'] = originalAllowDocker;
       } else {
         delete process.env['ALLOW_DOCKER_INTERNAL_DB'];
+      }
+      if (originalTlsRejectEnv !== undefined) {
+        process.env['NODE_TLS_REJECT_UNAUTHORIZED'] = originalTlsRejectEnv;
+      } else {
+        delete process.env['NODE_TLS_REJECT_UNAUTHORIZED'];
       }
     }
   });
@@ -273,7 +328,7 @@ describe('Seguridad TLS y Validación de Arranque en Producción (verify-full ob
     });
   });
 
-  it('validateEnv rechaza CORS_ORIGINS comodín *, secretos de plantilla y COOKIE_SECURE != true en producción', () => {
+  it('validateEnv rechaza CORS_ORIGINS *, secretos débiles, COOKIE_SECURE=false y aplica defaults/excepciones seguras en producción', () => {
     const prevSnapshot = { ...process.env };
     try {
       process.env['NODE_ENV'] = 'production';
@@ -289,14 +344,40 @@ describe('Seguridad TLS y Validación de Arranque en Producción (verify-full ob
       expect(() => validateEnv()).toThrow(/ERROR_SEGURIDAD_CORS/);
 
       process.env['CORS_ORIGINS'] = 'https://cubiora.samlapspeed.com';
-      process.env['COOKIE_SECURE'] = 'auto';
+      process.env['COOKIE_SECURE'] = 'false';
       expect(() => validateEnv()).toThrow(/ERROR_SEGURIDAD_COOKIE_SECURE/);
 
+      process.env['COOKIE_SECURE'] = 'auto';
+      expect(validateEnv().COOKIE_SECURE).toBe('auto');
+
+      // COOKIE_SECURE omitido o vacío en producción toma 'true' por defecto
+      delete process.env['COOKIE_SECURE'];
+      expect(validateEnv().COOKIE_SECURE).toBe('true');
+      process.env['COOKIE_SECURE'] = '';
+      expect(validateEnv().COOKIE_SECURE).toBe('true');
+
+      // DISPLAY_TOKEN débil falla; DISPLAY_TOKEN vacío resuelve a undefined
       process.env['COOKIE_SECURE'] = 'true';
+      process.env['DISPLAY_TOKEN'] = 'cubiora_production_display_token_ultra_secure_min_32_chars!';
+      expect(() => validateEnv()).toThrow(/ERROR_SEGURIDAD_DISPLAY_TOKEN_DEBIL/);
+      process.env['DISPLAY_TOKEN'] = '';
+      expect(validateEnv().DISPLAY_TOKEN).toBeUndefined();
+
       process.env['SESSION_SECRET'] = 'cubiora_production_session_secret_ultra_secure_min_32_chars!';
       expect(() => validateEnv()).toThrow(/ERROR_SEGURIDAD_SECRET_DEBIL/);
 
+      // Escenario Coolify LAN: ALLOW_DOCKER_INTERNAL_DB=true con 192.168.1.33 y sslmode=require sin CA
       process.env['SESSION_SECRET'] = 'RealStrongRandomSessionSecretAtLeast32Chars!';
+      process.env['ALLOW_DOCKER_INTERNAL_DB'] = 'true';
+      process.env['DATABASE_URL'] =
+        'postgresql://cubiora_app:StrongPass!123@192.168.1.33:5432/cubiora_db?sslmode=require';
+      process.env['DIRECT_URL'] =
+        'postgresql://cubiora_migrator:StrongPass!123@192.168.1.33:5432/cubiora_db?sslmode=require';
+      delete process.env['DATABASE_CA_CERT'];
+      delete process.env['CA_CERT'];
+      delete process.env['COOKIE_SECURE'];
+      process.env['DISPLAY_TOKEN'] = '';
+
       const valid = validateEnv();
       expect(valid.COOKIE_SECURE).toBe('true');
       expect(valid.DISPLAY_TOKEN).toBeUndefined();
@@ -309,10 +390,11 @@ describe('Seguridad TLS y Validación de Arranque en Producción (verify-full ob
     const repoRoot = path.resolve(__dirname, '..', '..', '..');
 
     const composeProd = fs.readFileSync(path.join(repoRoot, 'docker-compose.yaml'), 'utf8');
-    expect(composeProd).toContain('ALLOW_DOCKER_INTERNAL_DB: "false"');
+    expect(composeProd).toContain('ALLOW_DOCKER_INTERNAL_DB: ${ALLOW_DOCKER_INTERNAL_DB:-false}');
     expect(composeProd).toContain('ALLOW_NUMERIC_IP_EXCEPTION: ${ALLOW_NUMERIC_IP_EXCEPTION:-false}');
     expect(composeProd).toContain('ALLOW_VERIFY_CA_EXCEPTION: ${ALLOW_VERIFY_CA_EXCEPTION:-false}');
-    expect(composeProd).toContain('${COOKIE_SECURE:-true}');
+    expect(composeProd).toContain('COOKIE_SECURE: ${COOKIE_SECURE:-true}');
+    expect(composeProd).toContain('DISPLAY_TOKEN: ${DISPLAY_TOKEN:-}');
     expect(composeProd).not.toContain('Admin2026!*');
     expect(composeProd).not.toContain('display_token_default_local_min_32_chars!');
     expect(composeProd).not.toContain('http://localhost');
