@@ -37,14 +37,14 @@ if (!connectionString) {
   process.exit(1);
 }
 
-// 3. Guarda de host local: prohibida cualquier IP o dominio externo (salvo red interna configurada)
+// 3. Guarda de host local: prohibida cualquier IP LAN o dominio externo en dev/test
 try {
   const parsedUrl = new URL(connectionString);
   const host = parsedUrl.hostname.toLowerCase();
-  const allowedHosts = ['localhost', '127.0.0.1', '::1', '192.168.1.33', 'postgres'];
-  if (!allowedHosts.includes(host) && process.env.ALLOW_SEED_IN_PRODUCTION !== 'true') {
+  const allowedHosts = ['localhost', '127.0.0.1', '::1', 'postgres'];
+  if (process.env.NODE_ENV !== 'production' && !allowedHosts.includes(host)) {
     console.error(
-      `❌ ERROR_SEGURIDAD_HOST_NO_LOCAL: El seed solo puede ejecutarse contra localhost, 127.0.0.1, ::1, 192.168.1.33 o postgres. Host detectado: '${host}'. Conexión remota prohibida.`,
+      `❌ ERROR_SEGURIDAD_HOST_NO_LOCAL: El seed en entorno '${process.env.NODE_ENV ?? 'development'}' solo puede ejecutarse contra localhost, 127.0.0.1, ::1 o postgres. Host detectado: '${host}'. Conexión remota o LAN prohibida.`,
     );
     process.exit(1);
   }
@@ -53,17 +53,34 @@ try {
   process.exit(1);
 }
 
-// 4. Exigir contraseña obligatoria por entorno (con fallback a DEFAULT_ADMIN_PASSWORD si está definido)
-const devPassword = process.env.DEV_SEED_USER_PASSWORD || process.env.DEFAULT_ADMIN_PASSWORD;
-const adminPassword = process.env.DEFAULT_ADMIN_PASSWORD || process.env.DEV_SEED_USER_PASSWORD;
-if (!devPassword || devPassword.length < 8 || !adminPassword || adminPassword.length < 8) {
+// 4. Exigir contraseñas separadas para cuentas operativas y administrativas sin valores débiles
+const FORBIDDEN_SEED_PASSWORDS = new Set([
+  'admin2026!*',
+  'password',
+  'password123',
+  '12345678',
+  'cubiora123',
+  'admin1234',
+]);
+const devPassword = process.env.DEV_SEED_USER_PASSWORD;
+const adminPassword = process.env.DEFAULT_ADMIN_PASSWORD;
+const minLen = process.env.NODE_ENV === 'production' ? 12 : 8;
+if (
+  !devPassword ||
+  devPassword.length < minLen ||
+  !adminPassword ||
+  adminPassword.length < minLen ||
+  FORBIDDEN_SEED_PASSWORDS.has(devPassword.toLowerCase()) ||
+  FORBIDDEN_SEED_PASSWORDS.has(adminPassword.toLowerCase()) ||
+  (process.env.NODE_ENV === 'production' && devPassword === adminPassword)
+) {
   console.error(
-    '❌ ERROR DE SEGURIDAD: La variable DEV_SEED_USER_PASSWORD o DEFAULT_ADMIN_PASSWORD es obligatoria en el entorno (mínimo 8 caracteres) para crear usuarios.',
+    `❌ ERROR DE SEGURIDAD: Defina DEV_SEED_USER_PASSWORD y DEFAULT_ADMIN_PASSWORD explícitas y robustas (mínimo ${minLen} caracteres, distintas entre sí en producción y nunca valores de ejemplo como 'Admin2026!*').`,
   );
   process.exit(1);
 }
 
-// 5. Configurar TLS compatible con certificado autofirmado en red interna Docker / LXC (ALLOW_DOCKER_INTERNAL_DB=true)
+// 5. Configurar TLS estricto con verificación CA en producción
 const isDockerInternal = process.env.ALLOW_DOCKER_INTERNAL_DB === 'true';
 const lowerConn = connectionString.toLowerCase();
 const sslDisabled = lowerConn.includes('sslmode=disable');
@@ -72,27 +89,77 @@ const urlRequestsSsl =
   lowerConn.includes('sslmode=verify-ca') ||
   lowerConn.includes('sslmode=verify-full');
 
+const normalizePemCertificate = (rawCert: string): string => {
+  let normalized = rawCert.trim();
+  if (
+    (normalized.startsWith('"') && normalized.endsWith('"')) ||
+    (normalized.startsWith("'") && normalized.endsWith("'"))
+  ) {
+    normalized = normalized.slice(1, -1).trim();
+  }
+  return normalized
+    .replace(/\\r\\n/g, '\n')
+    .replace(/\\n/g, '\n')
+    .replace(/\r\n/g, '\n')
+    .trim();
+};
+
 let caCert: string | undefined;
-const caCertPath = process.env.DATABASE_CA_CERT_PATH || path.resolve(process.cwd(), 'ca-cert.crt');
-const caCertPathAlt = path.resolve(process.cwd(), 'apps/api/ca-cert.crt');
-const caCertPathSeed = path.resolve(__dirname, '../ca-cert.crt');
-if (fs.existsSync(caCertPath)) {
-  caCert = fs.readFileSync(caCertPath, 'utf8');
-} else if (fs.existsSync(caCertPathAlt)) {
-  caCert = fs.readFileSync(caCertPathAlt, 'utf8');
-} else if (fs.existsSync(caCertPathSeed)) {
-  caCert = fs.readFileSync(caCertPathSeed, 'utf8');
-} else if (process.env.DATABASE_CA_CERT) {
-  caCert = process.env.DATABASE_CA_CERT;
+const explicitCaPath = (
+  process.env.DATABASE_CA_CERT_PATH ||
+  process.env.CA_CERT_PATH ||
+  ''
+).trim();
+const explicitCaCert = (
+  process.env.DATABASE_CA_CERT ||
+  process.env.CA_CERT ||
+  ''
+).trim();
+
+if (explicitCaPath && fs.existsSync(explicitCaPath)) {
+  const filePem = normalizePemCertificate(fs.readFileSync(explicitCaPath, 'utf8'));
+  if (filePem.length > 0) {
+    caCert = filePem;
+  }
+}
+
+if (!caCert && explicitCaCert) {
+  const inlinePem = normalizePemCertificate(explicitCaCert);
+  if (inlinePem.length > 0) {
+    caCert = inlinePem;
+  }
+}
+
+if (!caCert && !explicitCaPath) {
+  for (const candidate of [
+    path.resolve(process.cwd(), 'ca-cert.crt'),
+    path.resolve(process.cwd(), 'apps/api/ca-cert.crt'),
+    path.resolve(__dirname, '../ca-cert.crt'),
+  ]) {
+    if (fs.existsSync(candidate)) {
+      const defaultPem = normalizePemCertificate(fs.readFileSync(candidate, 'utf8'));
+      if (defaultPem.length > 0) {
+        caCert = defaultPem;
+        break;
+      }
+    }
+  }
+}
+
+if (process.env.NODE_ENV === 'production' && (isDockerInternal || sslDisabled || !caCert)) {
+  console.error(
+    '❌ ERROR_SEGURIDAD_TLS: En producción, el seed exige TLS verificado con certificado CA institucional y prohíbe ALLOW_DOCKER_INTERNAL_DB=true.',
+  );
+  process.exit(1);
 }
 
 let ssl: { rejectUnauthorized: boolean; ca?: string } | undefined;
-if (isDockerInternal) {
+if (isDockerInternal && process.env.NODE_ENV !== 'production') {
   ssl = sslDisabled ? undefined : { rejectUnauthorized: false };
-} else if (urlRequestsSsl) {
+} else if (urlRequestsSsl || process.env.NODE_ENV === 'production') {
   if (caCert) {
     ssl = { rejectUnauthorized: true, ca: caCert };
-  } else if (lowerConn.includes('sslmode=require')) {
+  } else if (process.env.NODE_ENV !== 'production' && lowerConn.includes('sslmode=require')) {
     ssl = { rejectUnauthorized: false };
   } else {
     ssl = { rejectUnauthorized: true };
@@ -369,12 +436,7 @@ async function main() {
   }
   console.log('✅ Cubículos asegurados respetando estado operativo y asignaciones actuales');
 
-  // 2. Usuarios de prueba para desarrollo local con publicId e id ULID válidos
-  const salt = await bcrypt.genSalt(10);
-  const passwordHash = await bcrypt.hash(devPassword, salt);
-  const adminPasswordHash =
-    adminPassword === devPassword ? passwordHash : await bcrypt.hash(adminPassword, salt);
-
+  // 2. Usuarios de prueba para desarrollo local con sal bcrypt única por usuario
   const testUsers = [
     {
       id: ulid(),
@@ -383,7 +445,7 @@ async function main() {
       displayName: 'Recepción de Farmacia',
       role: UserRole.RECEPTION,
       cubicleId: null,
-      passwordHash,
+      passwordHash: await bcrypt.hash(devPassword, 10),
     },
     {
       id: ulid(),
@@ -392,7 +454,7 @@ async function main() {
       displayName: 'Recepcionista Turnos',
       role: UserRole.RECEPTION,
       cubicleId: null,
-      passwordHash,
+      passwordHash: await bcrypt.hash(devPassword, 10),
     },
     {
       id: ulid(),
@@ -401,7 +463,7 @@ async function main() {
       displayName: 'Administrador Sistema',
       role: UserRole.ADMIN,
       cubicleId: null,
-      passwordHash: adminPasswordHash,
+      passwordHash: await bcrypt.hash(adminPassword, 10),
     },
     {
       id: ulid(),
@@ -410,7 +472,7 @@ async function main() {
       displayName: 'Administrador del Sistema',
       role: UserRole.ADMIN,
       cubicleId: null,
-      passwordHash: adminPasswordHash,
+      passwordHash: await bcrypt.hash(adminPassword, 10),
     },
     {
       id: ulid(),
@@ -419,7 +481,7 @@ async function main() {
       displayName: 'Lic. M. Arismendi',
       role: UserRole.CASHIER,
       cubicleId: cubicleIds.get('CUB-01') ?? null,
-      passwordHash,
+      passwordHash: await bcrypt.hash(devPassword, 10),
     },
     {
       id: ulid(),
@@ -428,7 +490,7 @@ async function main() {
       displayName: 'Farm. J. Duarte',
       role: UserRole.CASHIER,
       cubicleId: cubicleIds.get('CUB-02') ?? null,
-      passwordHash,
+      passwordHash: await bcrypt.hash(devPassword, 10),
     },
     {
       id: ulid(),
@@ -437,7 +499,7 @@ async function main() {
       displayName: 'Lic. R. Mendoza',
       role: UserRole.CASHIER,
       cubicleId: cubicleIds.get('CUB-03') ?? null,
-      passwordHash,
+      passwordHash: await bcrypt.hash(devPassword, 10),
     },
     {
       id: ulid(),
@@ -446,7 +508,7 @@ async function main() {
       displayName: 'Farm. S. Quintero',
       role: UserRole.CASHIER,
       cubicleId: cubicleIds.get('CUB-04') ?? null,
-      passwordHash,
+      passwordHash: await bcrypt.hash(devPassword, 10),
     },
   ];
 
@@ -465,7 +527,13 @@ async function main() {
 
     const updateData: { cubicleId?: string; passwordHash?: string } = {};
     if (existingUser.cubicleId === null && user.cubicleId !== null) {
-      updateData.cubicleId = user.cubicleId;
+      const occupant = await prisma.user.findFirst({
+        where: { cubicleId: user.cubicleId, id: { not: existingUser.id } },
+        select: { id: true },
+      });
+      if (!occupant) {
+        updateData.cubicleId = user.cubicleId;
+      }
     }
     if (resetSeedPasswords) {
       updateData.passwordHash = user.passwordHash;
@@ -632,11 +700,28 @@ async function main() {
     if (existingPharm.facilityId === null && facilityId !== null) {
       backfillData.facilityId = facilityId;
     }
-    if (existingPharm.cubicleId === null && cubicleId !== null) {
-      backfillData.cubicleId = cubicleId;
+    const targetFacilityId = backfillData.facilityId ?? existingPharm.facilityId;
+    if (
+      existingPharm.cubicleId === null &&
+      cubicleId !== null &&
+      targetFacilityId === facilityId
+    ) {
+      const occupiedCubicle = await prisma.pharmacist.findFirst({
+        where: { cubicleId, id: { not: existingPharm.id } },
+        select: { id: true },
+      });
+      if (!occupiedCubicle) {
+        backfillData.cubicleId = cubicleId;
+      }
     }
     if (existingPharm.userId === null && userId !== null) {
-      backfillData.userId = userId;
+      const occupiedUser = await prisma.pharmacist.findFirst({
+        where: { userId, id: { not: existingPharm.id } },
+        select: { id: true },
+      });
+      if (!occupiedUser) {
+        backfillData.userId = userId;
+      }
     }
 
     if (Object.keys(backfillData).length > 0) {
@@ -829,60 +914,52 @@ async function main() {
       });
 
       if (cubicleId) {
-        await prisma.dispensationRecord.upsert({
+        const existingDispensation = await prisma.dispensationRecord.findUnique({
           where: { ticketId: ticket.id },
-          update: {
-            resolution: item.dispensation.resolution,
-            prescriptionCode: item.dispensation.prescriptionCode,
-            mipresNumber: item.dispensation.mipresNumber,
-            itemsDeliveredCount: item.dispensation.itemsDeliveredCount,
-            itemsPendingCount: item.dispensation.itemsPendingCount,
-            pendingDetailsJson: item.dispensation.pendingDetailsJson,
-            deliveryAddress: item.dispensation.deliveryAddress,
-            deliveryPhone: item.dispensation.deliveryPhone,
-            deliveryDeadline: item.dispensation.deliveryDeadline,
-            cubicleId,
-            operatorUserId,
-          },
-          create: {
-            id: ulid(),
-            ticketId: ticket.id,
-            cubicleId,
-            operatorUserId,
-            resolution: item.dispensation.resolution,
-            prescriptionCode: item.dispensation.prescriptionCode,
-            mipresNumber: item.dispensation.mipresNumber,
-            itemsDeliveredCount: item.dispensation.itemsDeliveredCount,
-            itemsPendingCount: item.dispensation.itemsPendingCount,
-            pendingDetailsJson: item.dispensation.pendingDetailsJson,
-            deliveryAddress: item.dispensation.deliveryAddress,
-            deliveryPhone: item.dispensation.deliveryPhone,
-            deliveryDeadline: item.dispensation.deliveryDeadline,
-            createdAt: closedAt,
-          },
+          select: { id: true },
         });
+        if (!existingDispensation) {
+          await prisma.dispensationRecord.create({
+            data: {
+              id: ulid(),
+              ticketId: ticket.id,
+              cubicleId,
+              operatorUserId,
+              resolution: item.dispensation.resolution,
+              prescriptionCode: item.dispensation.prescriptionCode,
+              mipresNumber: item.dispensation.mipresNumber,
+              itemsDeliveredCount: item.dispensation.itemsDeliveredCount,
+              itemsPendingCount: item.dispensation.itemsPendingCount,
+              pendingDetailsJson: item.dispensation.pendingDetailsJson,
+              deliveryAddress: item.dispensation.deliveryAddress,
+              deliveryPhone: item.dispensation.deliveryPhone,
+              deliveryDeadline: item.dispensation.deliveryDeadline,
+              createdAt: closedAt,
+            },
+          });
+        }
 
-        await prisma.ticketCall.upsert({
+        const existingCall = await prisma.ticketCall.findUnique({
           where: {
             ticketId_callNumber: {
               ticketId: ticket.id,
               callNumber: 1,
             },
           },
-          update: {
-            cubicleId,
-            calledBy: operatorUserId,
-            createdAt: calledAt,
-          },
-          create: {
-            id: ulid(),
-            ticketId: ticket.id,
-            cubicleId,
-            calledBy: operatorUserId,
-            callNumber: 1,
-            createdAt: calledAt,
-          },
+          select: { id: true },
         });
+        if (!existingCall) {
+          await prisma.ticketCall.create({
+            data: {
+              id: ulid(),
+              ticketId: ticket.id,
+              cubicleId,
+              calledBy: operatorUserId,
+              callNumber: 1,
+              createdAt: calledAt,
+            },
+          });
+        }
       }
     }
     console.log('✅ 4 Turnos cerrados con registro de dispensación (1 PENDING_48H, 3 TOTAL_DELIVERED)');

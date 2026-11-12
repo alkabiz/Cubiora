@@ -47,17 +47,22 @@ GRANT CONNECT ON DATABASE cubiora_dev TO cubiora_app;
 -- 5. Conectar a cubiora_dev para configurar el esquema public
 \connect cubiora_dev
 
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 GRANT ALL ON SCHEMA public TO cubiora_migrator;
 ALTER SCHEMA public OWNER TO cubiora_migrator;
 
 GRANT USAGE ON SCHEMA public TO cubiora_app;
 
--- Permisos por defecto para que las tablas y secuencias creadas por el migrador
--- puedan ser consultadas y operadas por la aplicacion
+-- Sin permisos automáticos amplios sobre tablas futuras: los GRANT explícitos se aplican
+-- por tabla mediante migraciones formales de Prisma (mínimo privilegio + WORM).
 ALTER DEFAULT PRIVILEGES FOR ROLE cubiora_migrator IN SCHEMA public
-  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO cubiora_app;
+  REVOKE ALL ON TABLES FROM PUBLIC, cubiora_app;
 
 ALTER DEFAULT PRIVILEGES FOR ROLE cubiora_migrator IN SCHEMA public
   GRANT USAGE, SELECT ON SEQUENCES TO cubiora_app;
 
-RAISE NOTICE '✅ Base cubiora_dev y roles cubiora_migrator / cubiora_app configurados correctamente.';
+DO $$
+BEGIN
+  RAISE NOTICE '✅ Base cubiora_dev y roles cubiora_migrator / cubiora_app configurados correctamente.';
+END
+$$;

@@ -33,37 +33,55 @@ GRANT ALL PRIVILEGES ON DATABASE cubiora_dev TO cubiora_migrator;
 
 \connect cubiora_dev
 
--- El migrador es dueño del esquema para ejecutar DDL
+-- El migrador es dueño del esquema para ejecutar DDL; PUBLIC no puede crear objetos
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 GRANT ALL ON SCHEMA public TO cubiora_migrator;
 ALTER SCHEMA public OWNER TO cubiora_migrator;
 
 -- La aplicación solo tiene uso del esquema
 GRANT USAGE ON SCHEMA public TO cubiora_app;
 
--- 4. Permisos de mínimo privilegio para cubiora_app:
--- A) SELECT, INSERT, UPDATE en tablas mutables operativas
-GRANT SELECT, INSERT, UPDATE ON
-  users,
-  cubicles,
-  tickets,
-  system_sequences,
-  idempotency_keys
-TO cubiora_app;
+-- 4. Permisos de mínimo privilegio para cubiora_app (si las tablas ya existen tras migración):
+DO $$
+BEGIN
+  IF to_regclass('public.users') IS NOT NULL THEN
+    -- A) Tablas mutables sin borrado físico operativo
+    REVOKE ALL ON TABLE users, tickets, system_sequences FROM PUBLIC, cubiora_app;
+    GRANT SELECT, INSERT, UPDATE ON TABLE users, tickets, system_sequences TO cubiora_app;
 
--- B) SELECT, INSERT (ESTRICTAMENTE SIN UPDATE NI DELETE) en tablas inmutables WORM
-GRANT SELECT, INSERT ON
-  ticket_status_history,
-  ticket_calls
-TO cubiora_app;
+    -- B) Tablas de configuración/ciclo de vida gestionado y llaves idempotentes
+    IF to_regclass('public.facilities') IS NOT NULL
+       AND to_regclass('public.pharmacists') IS NOT NULL THEN
+      REVOKE ALL ON TABLE idempotency_keys, facilities, pharmacists, cubicles FROM PUBLIC, cubiora_app;
+      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE idempotency_keys, facilities, pharmacists, cubicles TO cubiora_app;
+    ELSE
+      REVOKE ALL ON TABLE idempotency_keys, cubicles FROM PUBLIC, cubiora_app;
+      GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE idempotency_keys, cubicles TO cubiora_app;
+    END IF;
 
--- C) DELETE ÚNICAMENTE en tabla de idempotencia (admite expiración)
-GRANT DELETE ON
-  idempotency_keys
-TO cubiora_app;
+    -- C) Tablas inmutables WORM (ESTRICTAMENTE SELECT e INSERT; sin UPDATE/DELETE/TRUNCATE)
+    REVOKE ALL ON TABLE ticket_status_history, ticket_calls FROM PUBLIC, cubiora_app;
+    GRANT SELECT, INSERT ON TABLE ticket_status_history, ticket_calls TO cubiora_app;
 
--- D) Uso de secuencias para autoincrementables
+    IF to_regclass('public.dispensation_records') IS NOT NULL THEN
+      REVOKE ALL ON TABLE dispensation_records FROM PUBLIC, cubiora_app;
+      GRANT SELECT, INSERT ON TABLE dispensation_records TO cubiora_app;
+    END IF;
+
+    -- D) Tabla interna de migraciones aislada
+    IF to_regclass('public._prisma_migrations') IS NOT NULL THEN
+      REVOKE ALL ON TABLE _prisma_migrations FROM PUBLIC, cubiora_app;
+    END IF;
+  END IF;
+END
+$$;
+
+-- E) Uso de secuencias para autoincrementables
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO cubiora_app;
 
--- Permisos por defecto para futuras secuencias creadas por cubiora_migrator
+-- Prohibir concesiones amplias por defecto sobre tablas futuras (grants explícitos en migraciones)
+ALTER DEFAULT PRIVILEGES FOR ROLE cubiora_migrator IN SCHEMA public
+  REVOKE ALL ON TABLES FROM PUBLIC, cubiora_app;
+
 ALTER DEFAULT PRIVILEGES FOR ROLE cubiora_migrator IN SCHEMA public
   GRANT USAGE, SELECT ON SEQUENCES TO cubiora_app;

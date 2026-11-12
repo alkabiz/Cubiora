@@ -17,9 +17,11 @@ if (!connectionUrl) {
   );
 }
 
-// Guarda de seguridad: en desarrollo o pruebas, la CLI solo puede apuntar a localhost
+// Guarda de seguridad: en desarrollo o pruebas, comandos que operan sobre la BD solo pueden apuntar a localhost
+const isSchemaOnlyPrismaCommand =
+  process.argv.includes('validate') || process.argv.includes('generate');
 const nodeEnv = process.env.NODE_ENV ?? 'development';
-if (nodeEnv !== 'production') {
+if (nodeEnv !== 'production' && !isSchemaOnlyPrismaCommand) {
   let parsedUrl: URL;
   try {
     parsedUrl = new URL(connectionUrl);
@@ -28,9 +30,9 @@ if (nodeEnv !== 'production') {
   }
 
   const host = parsedUrl.hostname.toLowerCase();
-  if (!['localhost', '127.0.0.1', '::1', '192.168.1.33', 'postgres'].includes(host)) {
+  if (!['localhost', '127.0.0.1', '::1', 'postgres'].includes(host)) {
     throw new Error(
-      `❌ ERROR_SEGURIDAD_HOST_NO_LOCAL: Prisma CLI solo puede operar contra localhost, 127.0.0.1, ::1, 192.168.1.33 o postgres en entorno '${nodeEnv}'. Host detectado: '${host}'. Conexión externa o remota terminantemente prohibida.`,
+      `❌ ERROR_SEGURIDAD_HOST_NO_LOCAL: Prisma CLI solo puede operar contra localhost, 127.0.0.1, ::1 o postgres en entorno '${nodeEnv}'. Host detectado: '${host}'. Conexión externa o remota terminantemente prohibida.`,
     );
   }
 }
