@@ -43,12 +43,6 @@ elif [ -n "${DATABASE_CA_CERT:-}${CA_CERT:-}" ]; then
   '
 fi
 
-# Rechazar fail-closed ALLOW_DOCKER_INTERNAL_DB=true en producción antes de tocar BD
-if [ "${ALLOW_DOCKER_INTERNAL_DB:-false}" = "true" ] && [ "${NODE_ENV:-production}" = "production" ]; then
-  echo "❌ ERROR_SEGURIDAD_TLS_DOCKER_INTERNAL_PROHIBIDO: ALLOW_DOCKER_INTERNAL_DB=true está prohibido en producción."
-  exit 1
-fi
-
 MIGRATE_COMMAND_URL="$MIGRATION_URL"
 if [ -n "$CA_FILE" ]; then
   export NODE_EXTRA_CA_CERTS="$CA_FILE"
@@ -65,9 +59,9 @@ if [ -n "$CA_FILE" ]; then
       process.stdout.write(rawUrl);
     }
   ')"
-elif [ "${ALLOW_DOCKER_INTERNAL_DB:-false}" = "true" ] && [ "${NODE_ENV:-production}" != "production" ]; then
-  # En contenedores locales/staging no productivos sin CA montada, Prisma 7 CLI (pg v8)
-  # trata sslmode=require como verify-full; usar sslmode=no-verify evita TlsConnectionError.
+elif [ "${ALLOW_DOCKER_INTERNAL_DB:-false}" = "true" ]; then
+  # Cuando se habilita ALLOW_DOCKER_INTERNAL_DB=true sin CA montada (ej. LAN 192.168.1.33),
+  # Prisma 7 CLI (pg v8) trata sslmode=require como verify-full; usar sslmode=no-verify evita TlsConnectionError.
   MIGRATE_COMMAND_URL="$(MIGRATION_URL_INPUT="$MIGRATION_URL" node -e '
     const rawUrl = process.env.MIGRATION_URL_INPUT;
     if (/([?&])sslmode=[^&]+/i.test(rawUrl)) {
