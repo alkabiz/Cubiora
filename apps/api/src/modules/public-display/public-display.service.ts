@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { Subject, Observable, merge, interval } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -24,13 +24,25 @@ const TERMINAL_TICKET_STATUSES: ReadonlySet<string> = new Set([
   TicketStatus.CANCELLED,
 ]);
 
+function readPositiveIntEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : fallback;
+}
+
 @Injectable()
 export class PublicDisplayService {
   private static readonly DEFAULT_NOTICE_TTL_MS = 5 * 60 * 1000;
+  private static readonly DEFAULT_MAX_SUBSCRIBERS = 200;
+  private static readonly DEFAULT_MAX_SUBSCRIBERS_PER_IP = 20;
+  private static readonly DEFAULT_MAX_STREAM_TTL_MS = 4 * 60 * 60 * 1000;
 
   private readonly logger = new Logger(PublicDisplayService.name);
   private readonly eventSubject = new Subject<PublicDisplayEvent>();
   private activeNoticeState: { notice: PublicBroadcastNotice; expiresAtMs: number } | null = null;
+  private activeSubscribers = 0;
+  private readonly subscribersByIp = new Map<string, number>();
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -158,26 +170,121 @@ export class PublicDisplayService {
     };
   }
 
+  private assertSubscriberCapacity(normalizedClientKey: string): {
+    maxTotal: number;
+    maxPerIp: number;
+  } {
+    const maxTotal = readPositiveIntEnv(
+      'SSE_MAX_SUBSCRIBERS',
+      PublicDisplayService.DEFAULT_MAX_SUBSCRIBERS,
+    );
+    const maxPerIp = readPositiveIntEnv(
+      'SSE_MAX_SUBSCRIBERS_PER_IP',
+      PublicDisplayService.DEFAULT_MAX_SUBSCRIBERS_PER_IP,
+    );
+
+    const perIpCount = this.subscribersByIp.get(normalizedClientKey) ?? 0;
+    if (this.activeSubscribers >= maxTotal || perIpCount >= maxPerIp) {
+      this.logger.warn(
+        `Límite de conexiones SSE alcanzado (total=${this.activeSubscribers}/${maxTotal}, cliente=${perIpCount}/${maxPerIp}).`,
+      );
+      throw new HttpException(
+        {
+          code: 'TOO_MANY_REQUESTS',
+          message: 'Demasiadas conexiones activas a la pantalla pública. Intente nuevamente en unos momentos.',
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    return { maxTotal, maxPerIp };
+  }
+
   /**
    * Stream reactivo para SSE.
-   * Combina eventos de llamadas en tiempo real con un heartbeat periódico.
+   * Combina eventos de llamadas en tiempo real con un heartbeat periódico,
+   * aplicando límites globales/por-IP y TTL máximo por conexión.
    */
-  getEventStream(): Observable<SseMessage> {
-    const eventsStream$ = this.eventSubject.asObservable().pipe(
-      map((event) => ({
-        type: event.type,
-        data: JSON.stringify(event.data),
-      })),
-    );
+  getEventStream(clientKey = 'unknown'): Observable<SseMessage> {
+    const normalizedClientKey = clientKey.trim() || 'unknown';
+    this.assertSubscriberCapacity(normalizedClientKey);
 
-    // Heartbeat cada 20 segundos para evitar que proxies y firewalls cierren la conexión SSE
-    const heartbeatStream$ = interval(20000).pipe(
-      map(() => ({
-        type: 'heartbeat',
-        data: JSON.stringify({ timestamp: new Date().toISOString() }),
-      })),
-    );
+    return new Observable<SseMessage>((subscriber) => {
+      try {
+        this.assertSubscriberCapacity(normalizedClientKey);
+      } catch (err) {
+        subscriber.error(err);
+        return undefined;
+      }
 
-    return merge(eventsStream$, heartbeatStream$);
+      this.activeSubscribers += 1;
+      this.subscribersByIp.set(
+        normalizedClientKey,
+        (this.subscribersByIp.get(normalizedClientKey) ?? 0) + 1,
+      );
+
+      let released = false;
+      let ttlTimer: ReturnType<typeof setTimeout> | undefined;
+
+      const release = () => {
+        if (released) return;
+        released = true;
+        if (ttlTimer) {
+          clearTimeout(ttlTimer);
+          ttlTimer = undefined;
+        }
+        this.activeSubscribers = Math.max(0, this.activeSubscribers - 1);
+        const current = this.subscribersByIp.get(normalizedClientKey) ?? 0;
+        if (current <= 1) {
+          this.subscribersByIp.delete(normalizedClientKey);
+        } else {
+          this.subscribersByIp.set(normalizedClientKey, current - 1);
+        }
+      };
+
+      const maxTtlMs = readPositiveIntEnv(
+        'SSE_MAX_STREAM_TTL_MS',
+        PublicDisplayService.DEFAULT_MAX_STREAM_TTL_MS,
+      );
+
+      const eventsStream$ = this.eventSubject.asObservable().pipe(
+        map((event) => ({
+          type: event.type,
+          data: JSON.stringify(event.data),
+        })),
+      );
+
+      // Heartbeat cada 20 segundos para evitar que proxies y firewalls cierren la conexión SSE
+      const heartbeatStream$ = interval(20000).pipe(
+        map(() => ({
+          type: 'heartbeat',
+          data: JSON.stringify({ timestamp: new Date().toISOString() }),
+        })),
+      );
+
+      const innerSubscription = merge(eventsStream$, heartbeatStream$).subscribe({
+        next: (msg) => subscriber.next(msg),
+        error: (err) => {
+          release();
+          subscriber.error(err);
+        },
+        complete: () => {
+          release();
+          subscriber.complete();
+        },
+      });
+
+      ttlTimer = setTimeout(() => {
+        innerSubscription.unsubscribe();
+        release();
+        subscriber.complete();
+      }, maxTtlMs);
+      ttlTimer.unref?.();
+
+      return () => {
+        innerSubscription.unsubscribe();
+        release();
+      };
+    });
   }
 }

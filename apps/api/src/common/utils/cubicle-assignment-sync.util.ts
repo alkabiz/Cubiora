@@ -19,9 +19,44 @@ export interface SyncTxClient {
     updateMany?: (...args: any[]) => Promise<any>;
   };
   user?: {
+    findFirst?: (...args: any[]) => Promise<any>;
+    findUnique?: (...args: any[]) => Promise<any>;
     update?: (...args: any[]) => Promise<any>;
     updateMany?: (...args: any[]) => Promise<any>;
   };
+  $queryRaw?: (strings: TemplateStringsArray, ...values: unknown[]) => Promise<unknown>;
+}
+
+/**
+ * Adquiere bloqueos pesimistas (SELECT ... FOR UPDATE) en orden lexicográfico
+ * determinístico sobre las filas de cubículos involucradas dentro de la transacción.
+ */
+export async function lockCubicleRows(
+  tx: SyncTxClient | unknown,
+  cubicleIds: Array<string | null | undefined>,
+): Promise<void> {
+  if (!tx || typeof tx !== 'object') {
+    return;
+  }
+  const queryRawFn = (tx as SyncTxClient).$queryRaw;
+  if (typeof queryRawFn !== 'function') {
+    return;
+  }
+
+  const orderedIds = Array.from(
+    new Set(cubicleIds.filter((id): id is string => typeof id === 'string' && id.length > 0)),
+  ).sort();
+
+  for (const cubicleId of orderedIds) {
+    try {
+      await queryRawFn`SELECT id FROM cubicles WHERE id = ${cubicleId} FOR UPDATE`;
+    } catch (err: unknown) {
+      const errObj = err as { code?: string; meta?: { code?: string } } | null;
+      if (errObj?.code || errObj?.meta?.code) {
+        throw err;
+      }
+    }
+  }
 }
 
 export interface OperatorResolutionInput {

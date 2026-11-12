@@ -79,6 +79,12 @@ export class OperationalTelemetryService {
   private readonly cubicleUpdateSubject = new Subject<CubicleStateChangedPayload>();
   private readonly queueUpdateSubject = new Subject<QueueUpdatedPayload>();
   private readonly snapshotBroadcastSubject = new Subject<TelemetrySnapshotPayload>();
+  private readonly userSessionRevokedSubject = new Subject<string>();
+
+  private readonly snapshotInFlight = new Map<string, Promise<TelemetrySnapshotPayload>>();
+  private readonly cubicleEmitInFlight = new Map<string, Promise<void>>();
+  private queueEmitInFlight: Promise<void> | null = null;
+  private broadcastInFlight: Promise<void> | null = null;
 
   public readonly onCubicleUpdate$: Observable<CubicleStateChangedPayload> =
     this.cubicleUpdateSubject.asObservable();
@@ -86,6 +92,8 @@ export class OperationalTelemetryService {
     this.queueUpdateSubject.asObservable();
   public readonly onSnapshotBroadcast$: Observable<TelemetrySnapshotPayload> =
     this.snapshotBroadcastSubject.asObservable();
+  public readonly onUserSessionRevoked$: Observable<string> =
+    this.userSessionRevokedSubject.asObservable();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -95,10 +103,36 @@ export class OperationalTelemetryService {
   ) {}
 
   /**
+   * Notifica la revocación inmediata de sesiones de un usuario (logout / baja / cambio de rol / reset password).
+   */
+  notifyUserSessionRevoked(userId: string): void {
+    if (typeof userId !== 'string' || userId.trim().length === 0) {
+      return;
+    }
+    this.userSessionRevokedSubject.next(userId.trim());
+  }
+
+  /**
    * Construye el snapshot completo de telemetría para SCR-ADM-001.
+   * Coalesce llamadas concurrentes en vuelo y acota resultados SQL.
    * Solo expone publicCode — CERO PII.
    */
-  async buildSnapshot(): Promise<TelemetrySnapshotPayload> {
+  async buildSnapshot(facilityId?: string): Promise<TelemetrySnapshotPayload> {
+    const normalizedFacilityId = facilityId?.trim() || '';
+    const cacheKey = normalizedFacilityId || '__PRIMARY__';
+    const existing = this.snapshotInFlight.get(cacheKey);
+    if (existing) {
+      return existing;
+    }
+
+    const promise = this.computeSnapshotInternal(normalizedFacilityId || undefined).finally(() => {
+      this.snapshotInFlight.delete(cacheKey);
+    });
+    this.snapshotInFlight.set(cacheKey, promise);
+    return promise;
+  }
+
+  private async computeSnapshotInternal(facilityId?: string): Promise<TelemetrySnapshotPayload> {
     const slaThresholdSeconds = resolveDailyTargetSeconds();
     const now = new Date();
     const startOfDay = new Date(now);
@@ -106,19 +140,26 @@ export class OperationalTelemetryService {
     const endOfDay = new Date(startOfDay);
     endOfDay.setDate(startOfDay.getDate() + 1);
 
-    // Resolver sede primaria activa (si el modelo Facility está disponible)
+    // Resolver sede solicitada o sede primaria activa (si el modelo Facility está disponible)
     let primaryFacilityId: string | null = null;
     let primaryFacilityCode: string | null = null;
     let primaryFacilityName: string | null = null;
     if (this.prisma.facility?.findFirst) {
-      const primaryFacility = await this.prisma.facility.findFirst({
-        where: { isPrimary: true },
-        select: { id: true, code: true, name: true },
-      });
-      primaryFacilityId = primaryFacility?.id ?? null;
-      primaryFacilityCode = primaryFacility?.code ?? null;
-      primaryFacilityName = primaryFacility?.name ?? null;
+      const targetFacility = facilityId?.trim()
+        ? await this.prisma.facility.findFirst({
+            where: { id: facilityId.trim() },
+            select: { id: true, code: true, name: true },
+          })
+        : await this.prisma.facility.findFirst({
+            where: { isPrimary: true },
+            select: { id: true, code: true, name: true },
+          });
+      primaryFacilityId = targetFacility?.id ?? null;
+      primaryFacilityCode = targetFacility?.code ?? null;
+      primaryFacilityName = targetFacility?.name ?? null;
     }
+
+    const ticketFacilityWhere = primaryFacilityId ? { facilityId: primaryFacilityId } : {};
 
     // ─── Consultas paralelas ───────────────────────────────────────────────────
     const [cubiclesRaw, pendingTickets, closedToday, noShowToday] = await Promise.all([
@@ -162,10 +203,11 @@ export class OperationalTelemetryService {
         },
       }),
 
-      // Turnos en espera (PENDING) ordenados por prioridad + secuencia
+      // Turnos en espera (PENDING) ordenados por prioridad + secuencia, acotados por sede y volumen
       this.prisma.ticket.findMany({
-        where: { status: TicketStatus.PENDING },
+        where: { status: TicketStatus.PENDING, ...ticketFacilityWhere },
         orderBy: [{ sequenceNumber: 'asc' }],
+        take: 500,
         select: {
           publicCode: true,
           queueCategory: true,
@@ -173,12 +215,15 @@ export class OperationalTelemetryService {
         },
       }),
 
-      // Turnos cerrados hoy con sus tiempos de servicio
+      // Turnos cerrados hoy con sus tiempos de servicio, acotados por sede y volumen
       this.prisma.ticket.findMany({
         where: {
           status: TicketStatus.CLOSED,
           closedAt: { gte: startOfDay, lt: endOfDay },
+          ...ticketFacilityWhere,
         },
+        orderBy: { closedAt: 'desc' },
+        take: 2000,
         select: {
           serviceStartedAt: true,
           closedAt: true,
@@ -186,11 +231,12 @@ export class OperationalTelemetryService {
         },
       }),
 
-      // No presentados hoy
+      // No presentados hoy, acotados por sede
       this.prisma.ticket.count({
         where: {
           status: TicketStatus.NO_SHOW,
           closedAt: { gte: startOfDay, lt: endOfDay },
+          ...ticketFacilityWhere,
         },
       }),
     ]);
@@ -287,16 +333,28 @@ export class OperationalTelemetryService {
 
     if (typeof this.prisma.$queryRaw === 'function') {
       try {
-        const rawAgg = await this.prisma.$queryRaw<
-          Array<{ awt_seconds: number | string; tmm_seconds: number | string }>
-        >`
-          SELECT
-            COALESCE(ROUND(AVG(EXTRACT(EPOCH FROM (called_at - created_at)))), 0)::int AS awt_seconds,
-            COALESCE(ROUND(AVG(EXTRACT(EPOCH FROM (closed_at - service_started_at)))), 0)::int AS tmm_seconds
-          FROM tickets
-          WHERE called_at IS NOT NULL
-            AND created_at >= ${startOfDay};
-        `;
+        const rawAgg = primaryFacilityId
+          ? await this.prisma.$queryRaw<
+              Array<{ awt_seconds: number | string; tmm_seconds: number | string }>
+            >`
+              SELECT
+                COALESCE(ROUND(AVG(EXTRACT(EPOCH FROM (called_at - created_at)))), 0)::int AS awt_seconds,
+                COALESCE(ROUND(AVG(EXTRACT(EPOCH FROM (closed_at - service_started_at)))), 0)::int AS tmm_seconds
+              FROM tickets
+              WHERE called_at IS NOT NULL
+                AND created_at >= ${startOfDay}
+                AND facility_id = ${primaryFacilityId};
+            `
+          : await this.prisma.$queryRaw<
+              Array<{ awt_seconds: number | string; tmm_seconds: number | string }>
+            >`
+              SELECT
+                COALESCE(ROUND(AVG(EXTRACT(EPOCH FROM (called_at - created_at)))), 0)::int AS awt_seconds,
+                COALESCE(ROUND(AVG(EXTRACT(EPOCH FROM (closed_at - service_started_at)))), 0)::int AS tmm_seconds
+              FROM tickets
+              WHERE called_at IS NOT NULL
+                AND created_at >= ${startOfDay};
+            `;
         if (rawAgg && rawAgg.length > 0 && rawAgg[0]) {
           averageWaitSeconds = Number(rawAgg[0].awt_seconds);
           averageServiceSeconds = Number(rawAgg[0].tmm_seconds);
@@ -575,52 +633,84 @@ export class OperationalTelemetryService {
    * Notifica cambio de estado de un cubículo a los clientes conectados.
    */
   async emitCubicleUpdate(cubicleId: string): Promise<void> {
-    try {
-      const cubicle = await this.buildCubicleState(cubicleId);
-      this.cubicleUpdateSubject.next({
-        cubicle,
-        serverTime: new Date().toISOString(),
-      });
-      this.logger.debug(
-        `Emitida actualización reactiva de cubículo ${cubicle.cubicleCode} (${cubicle.visualStatus})`,
-      );
-    } catch (err) {
-      this.logger.error(`Error emitiendo telemetría para cubículo ${cubicleId}:`, err);
+    const existing = this.cubicleEmitInFlight.get(cubicleId);
+    if (existing) {
+      return existing;
     }
+
+    const promise = (async () => {
+      try {
+        const cubicle = await this.buildCubicleState(cubicleId);
+        this.cubicleUpdateSubject.next({
+          cubicle,
+          serverTime: new Date().toISOString(),
+        });
+        this.logger.debug(
+          `Emitida actualización reactiva de cubículo ${cubicle.cubicleCode} (${cubicle.visualStatus})`,
+        );
+      } catch (err) {
+        this.logger.error(`Error emitiendo telemetría para cubículo ${cubicleId}:`, err);
+      }
+    })().finally(() => {
+      this.cubicleEmitInFlight.delete(cubicleId);
+    });
+
+    this.cubicleEmitInFlight.set(cubicleId, promise);
+    return promise;
   }
 
   /**
    * Notifica actualización de cola y KPIs a los clientes conectados.
    */
   async emitQueueUpdate(): Promise<void> {
-    try {
-      const snapshot = await this.buildSnapshot();
-      this.queueUpdateSubject.next({
-        queue: snapshot.queue,
-        kpis: snapshot.kpis,
-        slaAlert: snapshot.slaAlert,
-        bottleneckRecommendation: snapshot.bottleneckRecommendation,
-        serverTime: snapshot.serverTime,
-      });
-      this.logger.debug(
-        `Emitida actualización reactiva de cola: ${snapshot.queue.length} turnos en espera`,
-      );
-    } catch (err) {
-      this.logger.error('Error emitiendo telemetría de cola:', err);
+    if (this.queueEmitInFlight) {
+      return this.queueEmitInFlight;
     }
+
+    this.queueEmitInFlight = (async () => {
+      try {
+        const snapshot = await this.buildSnapshot();
+        this.queueUpdateSubject.next({
+          queue: snapshot.queue,
+          kpis: snapshot.kpis,
+          slaAlert: snapshot.slaAlert,
+          bottleneckRecommendation: snapshot.bottleneckRecommendation,
+          serverTime: snapshot.serverTime,
+        });
+        this.logger.debug(
+          `Emitida actualización reactiva de cola: ${snapshot.queue.length} turnos en espera`,
+        );
+      } catch (err) {
+        this.logger.error('Error emitiendo telemetría de cola:', err);
+      }
+    })().finally(() => {
+      this.queueEmitInFlight = null;
+    });
+
+    return this.queueEmitInFlight;
   }
 
   /**
    * Fuerza el broadcast de un snapshot completo a todos los administradores.
    */
   async broadcastSnapshot(): Promise<void> {
-    try {
-      const snapshot = await this.buildSnapshot();
-      this.snapshotBroadcastSubject.next(snapshot);
-      this.logger.debug('Snapshot global de telemetría emitido por broadcast');
-    } catch (err) {
-      this.logger.error('Error en broadcast de snapshot de telemetría:', err);
+    if (this.broadcastInFlight) {
+      return this.broadcastInFlight;
     }
+
+    this.broadcastInFlight = (async () => {
+      try {
+        const snapshot = await this.buildSnapshot();
+        this.snapshotBroadcastSubject.next(snapshot);
+        this.logger.debug('Snapshot global de telemetría emitido por broadcast');
+      } catch (err) {
+        this.logger.error('Error en broadcast de snapshot de telemetría:', err);
+      }
+    })().finally(() => {
+      this.broadcastInFlight = null;
+    });
+
+    return this.broadcastInFlight;
   }
 }
 

@@ -14,7 +14,10 @@ import { ulid } from 'ulid';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '../../generated/prisma/client';
 import { CreateTicketDto } from './dto/create-ticket.dto';
-import { TicketCommandDto } from './dto/ticket-command.dto';
+import {
+  TicketCommandDto,
+  assertValidPendingDetailsJson,
+} from './dto/ticket-command.dto';
 import { PublicDisplayService } from '../public-display/public-display.service';
 import { CubiclesService } from '../cubicles/cubicles.service';
 import { resolveDailyTargetSeconds } from '../../config/sla-target.util';
@@ -102,13 +105,215 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     return process.env['PREFERENTIAL_POLICY_ENABLED'] === 'true';
   }
 
+  private validateIdempotencyKeyHeader(idempotencyKey?: string): string | undefined {
+    if (idempotencyKey === undefined || idempotencyKey === null) {
+      return undefined;
+    }
+    const trimmed = idempotencyKey.trim();
+    if (!trimmed) {
+      return undefined;
+    }
+    if (trimmed.length > 100) {
+      throw new BadRequestException({
+        code: ApiErrorCode.REQUEST_INVALID,
+        message: 'El encabezado Idempotency-Key no puede superar los 100 caracteres.',
+      });
+    }
+    return trimmed;
+  }
+
+  private buildRequestHash(payload: Record<string, unknown>): string {
+    return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+  }
+
+  private validatePendingDetailsJsonOrThrow(value: unknown): void {
+    try {
+      assertValidPendingDetailsJson(value);
+    } catch (err) {
+      throw new BadRequestException({
+        code: ApiErrorCode.REQUEST_INVALID,
+        message:
+          err instanceof Error
+            ? err.message
+            : 'pendingDetailsJson contiene datos inválidos o demasiado grandes.',
+      });
+    }
+  }
+
+  private redactCreatedTicketForIdempotency(payload: CreatedTicketResult): CreatedTicketResult {
+    return {
+      ...payload,
+      patientName: '',
+    };
+  }
+
+  private redactSnapshotForIdempotency(snapshot: CubicleSnapshot): CubicleSnapshot {
+    if (!snapshot.activeTicket) {
+      return snapshot;
+    }
+    return {
+      ...snapshot,
+      activeTicket: {
+        ...snapshot.activeTicket,
+        patientName: '',
+        maskedDocument: null,
+      },
+    };
+  }
+
+  private redactCancelResponseForIdempotency(
+    response: CancelTicketResponse,
+  ): CancelTicketResponse {
+    return {
+      ...response,
+      cubicleSnapshot: response.cubicleSnapshot
+        ? this.redactSnapshotForIdempotency(response.cubicleSnapshot)
+        : null,
+    };
+  }
+
+  private isPostgresDriverError(err: unknown): boolean {
+    const errObj = err as { code?: string; meta?: { code?: string } } | null;
+    return Boolean(errObj?.code || errObj?.meta?.code);
+  }
+
+  private async lockTicketRow(tx: Prisma.TransactionClient, ticketId: string): Promise<void> {
+    const queryRaw = (tx as { $queryRaw?: unknown }).$queryRaw;
+    if (typeof queryRaw !== 'function') {
+      return;
+    }
+    try {
+      await tx.$queryRaw`SELECT id FROM tickets WHERE id = ${ticketId} FOR UPDATE`;
+    } catch (err) {
+      if (this.isPostgresDriverError(err)) {
+        throw err;
+      }
+    }
+  }
+
+  private async checkIdempotencyPreTx<T>(
+    actorUserId: string,
+    operation: string,
+    idempotencyKey: string | undefined,
+    requestHash: string,
+  ): Promise<{ statusCode: number; data: T } | null> {
+    const idemDelegate = (this.prisma as { idempotencyKey?: PrismaService['idempotencyKey'] })
+      .idempotencyKey;
+    if (!idempotencyKey || typeof idemDelegate?.findUnique !== 'function') {
+      return null;
+    }
+
+    const existing = await idemDelegate.findUnique({
+      where: {
+        uq_idempotency_key: {
+          actorUserId,
+          operation,
+          idempotencyKey,
+        },
+      },
+    });
+
+    if (!existing) {
+      return null;
+    }
+
+    const now = new Date();
+    if (existing.expiresAt && new Date(existing.expiresAt).getTime() <= now.getTime()) {
+      if (typeof (idemDelegate as { deleteMany?: unknown }).deleteMany === 'function') {
+        await idemDelegate.deleteMany({
+          where: {
+            actorUserId,
+            operation,
+            idempotencyKey,
+            expiresAt: { lte: now },
+          },
+        });
+      }
+      return null;
+    }
+
+    if (existing.requestHash !== requestHash) {
+      throw new ConflictException({
+        code: ApiErrorCode.STATE_CONFLICT,
+        message: 'Idempotency-Key reutilizada con un cuerpo de petición diferente.',
+      });
+    }
+
+    if (existing.responseBody) {
+      return {
+        statusCode: existing.responseStatus ?? 200,
+        data: existing.responseBody as unknown as T,
+      };
+    }
+
+    return null;
+  }
+
+  private async handleIdempotencyInTx<T>(
+    tx: Prisma.TransactionClient,
+    actorUserId: string,
+    operation: string,
+    idempotencyKey: string | undefined,
+    requestHash: string,
+  ): Promise<T | null> {
+    const txIdem = (tx as { idempotencyKey?: PrismaService['idempotencyKey'] }).idempotencyKey;
+    if (!idempotencyKey || typeof txIdem?.findUnique !== 'function') {
+      return null;
+    }
+
+    const existing = await txIdem.findUnique({
+      where: {
+        uq_idempotency_key: {
+          actorUserId,
+          operation,
+          idempotencyKey,
+        },
+      },
+    });
+
+    if (!existing) {
+      return null;
+    }
+
+    const now = new Date();
+    if (existing.expiresAt && new Date(existing.expiresAt).getTime() <= now.getTime()) {
+      if (typeof (txIdem as { deleteMany?: unknown }).deleteMany === 'function') {
+        await txIdem.deleteMany({
+          where: {
+            actorUserId,
+            operation,
+            idempotencyKey,
+            expiresAt: { lte: now },
+          },
+        });
+      }
+      return null;
+    }
+
+    if (existing.requestHash !== requestHash) {
+      throw new ConflictException({
+        code: ApiErrorCode.STATE_CONFLICT,
+        message: 'Idempotency-Key reutilizada con un cuerpo de petición diferente.',
+      });
+    }
+
+    if (existing.responseBody) {
+      return existing.responseBody as unknown as T;
+    }
+
+    throw new ConflictException({
+      code: ApiErrorCode.STATE_CONFLICT,
+      message: 'Una petición idéntica con esta Idempotency-Key está en curso.',
+    });
+  }
+
   /**
    * Crea un nuevo turno de manera atómica:
    * 1. Comprueba clave de idempotencia previa si fue provista.
    * 2. Bloquea la secuencia global con FOR UPDATE para garantizar correlativos sin saltos ni colisiones.
    * 3. Inserta el ticket con código TUR-NNNNNN-XX y publicId ULID.
    * 4. Registra el historial de estado inicial en la misma transacción.
-   * 5. Almacena la clave de idempotencia con el payload de respuesta.
+   * 5. Almacena la clave de idempotencia con el payload de respuesta (CERO PII).
    */
   async createTicket(
     dto: CreateTicketDto,
@@ -117,6 +322,8 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     idempotencyKey?: string,
     actorUserRole?: UserRole,
   ): Promise<{ statusCode: number; data: CreatedTicketResult }> {
+    const normalizedIdempotencyKey = this.validateIdempotencyKeyHeader(idempotencyKey);
+
     let resolvedCategory = QueueCategory.GENERAL;
     if (dto.queueCategory) {
       resolvedCategory = dto.queueCategory;
@@ -157,49 +364,50 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    const requestHash = crypto
-      .createHash('sha256')
-      .update(
-        JSON.stringify({
-          patientName: dto.patientName,
-          patientDocument: dto.patientDocument,
-          queueCategory: resolvedCategory,
-          operationalReason: dto.operationalReason,
-        }),
-      )
-      .digest('hex');
+    const requestHash = this.buildRequestHash({
+      operation: 'CREATE_TICKET',
+      patientName: dto.patientName,
+      patientDocument: dto.patientDocument ?? null,
+      prescriptionBarcode: dto.prescriptionBarcode?.trim() ?? null,
+      queueCategory: resolvedCategory,
+      operationalReason: dto.operationalReason ?? null,
+    });
 
     // 1. Verificación previa de idempotencia (fuera de la transacción de escritura)
-    if (idempotencyKey) {
-      const existingKey = await this.prisma.idempotencyKey.findUnique({
-        where: {
-          uq_idempotency_key: {
-            actorUserId,
-            operation: 'CREATE_TICKET',
-            idempotencyKey,
-          },
-        },
-      });
-
-      if (existingKey) {
-        if (existingKey.requestHash !== requestHash) {
-          throw new ConflictException({
-            code: ApiErrorCode.STATE_CONFLICT,
-            message: 'Idempotency-Key reutilizada con un cuerpo de petición diferente.',
-          });
-        }
-
-        if (existingKey.responseBody) {
-          return {
-            statusCode: existingKey.responseStatus ?? 201,
-            data: existingKey.responseBody as unknown as CreatedTicketResult,
-          };
-        }
-      }
+    const preTxDuplicate = await this.checkIdempotencyPreTx<CreatedTicketResult>(
+      actorUserId,
+      'CREATE_TICKET',
+      normalizedIdempotencyKey,
+      requestHash,
+    );
+    if (preTxDuplicate) {
+      return preTxDuplicate;
     }
 
     // 2. Transacción atómica con aislamiento y bloqueo pesimista
-    const result = await this.prisma.$transaction(async (tx) => {
+    const txResult = await this.prisma.$transaction(async (tx) => {
+      if (normalizedIdempotencyKey && typeof tx.$queryRaw === 'function') {
+        const advisoryLockKey = `CREATE_TICKET:${actorUserId}:${normalizedIdempotencyKey}`;
+        try {
+          await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${advisoryLockKey}))`;
+        } catch (lockErr) {
+          if (this.isPostgresDriverError(lockErr)) {
+            throw lockErr;
+          }
+        }
+      }
+
+      const inTxDuplicate = await this.handleIdempotencyInTx<CreatedTicketResult>(
+        tx,
+        actorUserId,
+        'CREATE_TICKET',
+        normalizedIdempotencyKey,
+        requestHash,
+      );
+      if (inTxDuplicate) {
+        return { isDuplicate: true, payload: inTxDuplicate };
+      }
+
       // 2. Incremento atómico en 1 solo paso con UPDATE ... RETURNING
       let seqRows = await tx.$queryRaw<Array<{ current_value: bigint }>>`
         UPDATE "system_sequences"
@@ -314,45 +522,68 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       try {
         let availableCubicle: any = null;
         try {
-          const cubicleRows = await tx.$queryRaw<
-            Array<{ id: string; display_name: string; facility_id?: string | null }>
-          >`
-            SELECT c.id, c.display_name, c.facility_id
-            FROM cubicles c
-            LEFT JOIN facilities f ON f.id = c.facility_id
-            LEFT JOIN tickets t ON t.cubicle_id = c.id AND t.status IN ('ASSIGNED', 'CALLED', 'IN_SERVICE')
-            WHERE c.status = 'AVAILABLE'
-              AND c.active = true
-              AND t.id IS NULL
-              AND (c.facility_id IS NULL OR f.is_primary = true)
-            ORDER BY c.code ASC 
-            LIMIT 1 
-            FOR UPDATE OF c SKIP LOCKED
-          `;
+          const cubicleRows = primaryFacilityId
+            ? await tx.$queryRaw<
+                Array<{ id: string; display_name: string; facility_id?: string | null }>
+              >`
+                SELECT c.id, c.display_name, c.facility_id
+                FROM cubicles c
+                LEFT JOIN tickets t ON t.cubicle_id = c.id AND t.status IN ('ASSIGNED', 'CALLED', 'IN_SERVICE')
+                WHERE c.status = 'AVAILABLE'
+                  AND c.active = true
+                  AND t.id IS NULL
+                  AND c.facility_id = ${primaryFacilityId}
+                ORDER BY c.code ASC
+                LIMIT 1
+                FOR UPDATE OF c SKIP LOCKED
+              `
+            : await tx.$queryRaw<
+                Array<{ id: string; display_name: string; facility_id?: string | null }>
+              >`
+                SELECT c.id, c.display_name, c.facility_id
+                FROM cubicles c
+                LEFT JOIN facilities f ON f.id = c.facility_id
+                LEFT JOIN tickets t ON t.cubicle_id = c.id AND t.status IN ('ASSIGNED', 'CALLED', 'IN_SERVICE')
+                WHERE c.status = 'AVAILABLE'
+                  AND c.active = true
+                  AND t.id IS NULL
+                  AND (c.facility_id IS NULL OR f.is_primary = true)
+                ORDER BY c.code ASC
+                LIMIT 1
+                FOR UPDATE OF c SKIP LOCKED
+              `;
           if (cubicleRows && cubicleRows.length > 0) {
             availableCubicle = cubicleRows[0];
           }
-        } catch {
-          // Fallback para entornos en memoria o pruebas
-          availableCubicle = await tx.cubicle.findFirst({
-            where: {
-              status: CubicleStatus.AVAILABLE,
-              active: true,
-              OR: [{ facilityId: null }, { facility: { isPrimary: true } }],
-              tickets: {
-                none: {
-                  status: {
-                    in: [
-                      TicketStatus.ASSIGNED,
-                      TicketStatus.CALLED,
-                      TicketStatus.IN_SERVICE,
-                    ],
+        } catch (cubQueryErr) {
+          if (this.isPostgresDriverError(cubQueryErr)) {
+            throw cubQueryErr;
+          }
+          const txCubicleDelegate = (tx as { cubicle?: PrismaService['cubicle'] }).cubicle;
+          if (typeof txCubicleDelegate?.findFirst === 'function') {
+            // Fallback para entornos en memoria o pruebas
+            availableCubicle = await txCubicleDelegate.findFirst({
+              where: {
+                status: CubicleStatus.AVAILABLE,
+                active: true,
+                ...(primaryFacilityId
+                  ? { facilityId: primaryFacilityId }
+                  : { OR: [{ facilityId: null }, { facility: { isPrimary: true } }] }),
+                tickets: {
+                  none: {
+                    status: {
+                      in: [
+                        TicketStatus.ASSIGNED,
+                        TicketStatus.CALLED,
+                        TicketStatus.IN_SERVICE,
+                      ],
+                    },
                   },
                 },
               },
-            },
-            orderBy: { code: 'asc' },
-          });
+              orderBy: { code: 'asc' },
+            });
+          }
         }
 
         if (availableCubicle) {
@@ -396,43 +627,53 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
             availableCubicle.display_name || availableCubicle.displayName;
         }
       } catch (assignErr) {
+        if (this.isPostgresDriverError(assignErr)) {
+          throw assignErr;
+        }
         this.logger.warn(
           `No se pudo autoasignar cubículo en creación: ${(assignErr as Error).message}`,
         );
       }
 
-      // Si se proporcionó Idempotency-Key, persistir la clave
-      if (idempotencyKey) {
+      // Si se proporcionó Idempotency-Key, persistir la clave redactando PII en responseBody
+      if (normalizedIdempotencyKey && tx.idempotencyKey?.create) {
         await tx.idempotencyKey.create({
           data: {
             id: ulid(),
             actorUserId,
             operation: 'CREATE_TICKET',
-            idempotencyKey,
+            idempotencyKey: normalizedIdempotencyKey,
             requestHash,
             resourceType: 'Ticket',
             resourcePublicId: ticket.publicId,
             responseStatus: 201,
-            responseBody: responsePayload as unknown as Prisma.InputJsonValue,
+            responseBody: this.redactCreatedTicketForIdempotency(
+              responsePayload,
+            ) as unknown as Prisma.InputJsonValue,
             expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 horas
           },
         });
       }
 
-      return responsePayload;
+      return { isDuplicate: false, payload: responsePayload };
     });
 
-    if (this.telemetryService) {
-      void this.telemetryService.emitQueueUpdate();
-      if (result.assignedCubicle) {
-        // En caso de autoasignación, emitir también el estado actualizado del cubículo
-        void this.telemetryService.broadcastSnapshot();
+    if (!txResult.isDuplicate && this.telemetryService) {
+      void this.telemetryService.emitQueueUpdate().catch((err) => {
+        this.logger.warn(`Error emitiendo cola tras crear turno: ${(err as Error).message}`);
+      });
+      if (txResult.payload.assignedCubicle) {
+        void this.telemetryService.broadcastSnapshot().catch((err) => {
+          this.logger.warn(
+            `Error emitiendo snapshot tras autoasignación: ${(err as Error).message}`,
+          );
+        });
       }
     }
 
     return {
       statusCode: 201,
-      data: result,
+      data: txResult.payload,
     };
   }
 
@@ -485,8 +726,6 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     actorUserRole?: UserRole,
     actorCubicleId?: string | null,
   ): Promise<void> {
-    if (!ticketCubicleId) return;
-
     let role = actorUserRole;
     let cubicleId = actorCubicleId;
 
@@ -505,11 +744,117 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    if (role === UserRole.CASHIER && cubicleId && ticketCubicleId !== cubicleId) {
-      throw new ForbiddenException({
-        code: ApiErrorCode.FORBIDDEN,
-        message: `El operador de caja está asignado al cubículo (${cubicleId}) y no puede operar en el cubículo (${ticketCubicleId}).`,
+    if (role === UserRole.CASHIER) {
+      if (!cubicleId || !ticketCubicleId || ticketCubicleId !== cubicleId) {
+        throw new ForbiddenException({
+          code: ApiErrorCode.FORBIDDEN,
+          message: `El operador de caja está asignado al cubículo (${cubicleId ?? 'sin asignar'}) y no puede operar en el cubículo (${ticketCubicleId ?? 'sin asignar'}).`,
+        });
+      }
+    }
+  }
+
+  /**
+   * Selecciona de forma atómica (FOR UPDATE SKIP LOCKED) el siguiente turno PENDING
+   * estrictamente perteneciente a la sede del cubículo (o sin sede si el cubículo no está asignado).
+   */
+  private async findNextPendingTicketForCubicle(
+    tx: Prisma.TransactionClient,
+    cubicleId: string,
+  ): Promise<string | null> {
+    let cubicleFacilityId: string | null = null;
+    if (typeof tx.cubicle?.findUnique === 'function') {
+      const cub = await tx.cubicle.findUnique({
+        where: { id: cubicleId },
+        select: { facilityId: true },
       });
+      cubicleFacilityId = cub?.facilityId ?? null;
+    }
+
+    const isPolicyApproved = this.isPreferentialPolicyEnabled();
+    try {
+      let pendingRows: { id: string }[];
+      if (cubicleFacilityId) {
+        if (isPolicyApproved) {
+          pendingRows = await tx.$queryRaw<{ id: string }[]>`
+            SELECT id FROM tickets
+            WHERE status = 'PENDING'
+              AND facility_id = ${cubicleFacilityId}
+            ORDER BY CASE WHEN queue_category = 'PREFERENTIAL' THEN 0 ELSE 1 END ASC, sequence_number ASC
+            LIMIT 1
+            FOR UPDATE SKIP LOCKED
+          `;
+        } else {
+          pendingRows = await tx.$queryRaw<{ id: string }[]>`
+            SELECT id FROM tickets
+            WHERE status = 'PENDING'
+              AND facility_id = ${cubicleFacilityId}
+            ORDER BY sequence_number ASC
+            LIMIT 1
+            FOR UPDATE SKIP LOCKED
+          `;
+        }
+      } else if (isPolicyApproved) {
+        pendingRows = await tx.$queryRaw<{ id: string }[]>`
+          SELECT t.id FROM tickets t
+          LEFT JOIN facilities f ON f.id = t.facility_id
+          WHERE t.status = 'PENDING'
+            AND (t.facility_id IS NULL OR f.is_primary = true)
+          ORDER BY CASE WHEN t.queue_category = 'PREFERENTIAL' THEN 0 ELSE 1 END ASC, t.sequence_number ASC
+          LIMIT 1
+          FOR UPDATE OF t SKIP LOCKED
+        `;
+      } else {
+        pendingRows = await tx.$queryRaw<{ id: string }[]>`
+          SELECT t.id FROM tickets t
+          LEFT JOIN facilities f ON f.id = t.facility_id
+          WHERE t.status = 'PENDING'
+            AND (t.facility_id IS NULL OR f.is_primary = true)
+          ORDER BY t.sequence_number ASC
+          LIMIT 1
+          FOR UPDATE OF t SKIP LOCKED
+        `;
+      }
+      return pendingRows[0]?.id ?? null;
+    } catch (nextQueryErr) {
+      if (this.isPostgresDriverError(nextQueryErr)) {
+        throw nextQueryErr;
+      }
+      let scopedFacilityId = cubicleFacilityId;
+      const txFacility = (
+        tx as { facility?: { findFirst?: (...args: unknown[]) => Promise<{ id: string } | null> } }
+      ).facility;
+      if (!scopedFacilityId && typeof txFacility?.findFirst === 'function') {
+        const primaryFacility = await txFacility.findFirst({
+          where: { isPrimary: true },
+          select: { id: true },
+        });
+        scopedFacilityId = primaryFacility?.id ?? null;
+      }
+      const facilityFilter = scopedFacilityId ? { facilityId: scopedFacilityId } : {};
+      let nextPending;
+      if (isPolicyApproved) {
+        nextPending = await tx.ticket.findFirst({
+          where: {
+            status: TicketStatus.PENDING,
+            queueCategory: QueueCategory.PREFERENTIAL,
+            ...facilityFilter,
+          },
+          orderBy: { sequenceNumber: 'asc' },
+        });
+        if (!nextPending) {
+          nextPending = await tx.ticket.findFirst({
+            where: { status: TicketStatus.PENDING, ...facilityFilter },
+            orderBy: { sequenceNumber: 'asc' },
+          });
+        }
+      } else {
+        nextPending = await tx.ticket.findFirst({
+          where: { status: TicketStatus.PENDING, ...facilityFilter },
+          orderBy: { sequenceNumber: 'asc' },
+        });
+      }
+      return nextPending?.id ?? null;
     }
   }
 
@@ -527,26 +872,30 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     actorUserRole?: UserRole,
     actorCubicleId?: string | null,
   ): Promise<{ statusCode: number; data: CubicleSnapshot }> {
+    const normalizedIdempotencyKey = this.validateIdempotencyKeyHeader(idempotencyKey);
     const ticket = await this.findTicket(ticketIdOrPublicId);
-    await this.validateCashierCubicleAssignment(ticket.cubicleId, actorUserId, actorUserRole, actorCubicleId);
+    await this.validateCashierCubicleAssignment(
+      ticket.cubicleId,
+      actorUserId,
+      actorUserRole,
+      actorCubicleId,
+    );
 
-    // Idempotencia
-    if (idempotencyKey) {
-      const existing = await this.prisma.idempotencyKey.findUnique({
-        where: {
-          uq_idempotency_key: {
-            actorUserId,
-            operation: `CALL_TICKET:${ticket.id}`,
-            idempotencyKey,
-          },
-        },
-      });
-      if (existing?.responseBody) {
-        return {
-          statusCode: 200,
-          data: existing.responseBody as unknown as CubicleSnapshot,
-        };
-      }
+    const operation = `CALL_TICKET:${ticket.id}`;
+    const requestHash = this.buildRequestHash({
+      operation: 'CALL_TICKET',
+      ticketId: ticket.id,
+      expectedVersion: expectedVersion ?? null,
+    });
+
+    const preTxDuplicate = await this.checkIdempotencyPreTx<CubicleSnapshot>(
+      actorUserId,
+      operation,
+      normalizedIdempotencyKey,
+      requestHash,
+    );
+    if (preTxDuplicate) {
+      return preTxDuplicate;
     }
 
     this.checkVersion(ticket.version, expectedVersion);
@@ -566,53 +915,65 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       });
     }
 
-    const isFirstCall = ticket.status === TicketStatus.ASSIGNED;
     const now = new Date();
 
     const txResult = await this.prisma.$transaction(async (tx) => {
-      try {
-        await tx.$executeRaw`SELECT id FROM tickets WHERE id = ${ticket.id} FOR UPDATE`;
-      } catch {
-        // Fallback para entornos donde executeRaw no soporte FOR UPDATE
-      }
+      await this.lockTicketRow(tx, ticket.id);
 
-      if (idempotencyKey && tx.idempotencyKey) {
-        const existingInTx = await tx.idempotencyKey.findUnique({
-          where: {
-            uq_idempotency_key: {
-              actorUserId,
-              operation: `CALL_TICKET:${ticket.id}`,
-              idempotencyKey,
-            },
-          },
-        });
-        if (existingInTx) {
-          return {
-            isDuplicate: true,
-            updatedCubicleId: cubicleId,
-            callNumber: 0,
-            publicCode: ticket.publicCode,
-            cubicleCode: '',
-            cubicleDisplayName: '',
-          };
-        }
+      const inTxDuplicate = await this.handleIdempotencyInTx<CubicleSnapshot>(
+        tx,
+        actorUserId,
+        operation,
+        normalizedIdempotencyKey,
+        requestHash,
+      );
+      if (inTxDuplicate) {
+        return {
+          isDuplicate: true as const,
+          snapshot: inTxDuplicate,
+          updatedCubicleId: cubicleId,
+          callNumber: 0,
+          isFirstCall: false,
+          publicCode: ticket.publicCode,
+          queueCategory: ticket.queueCategory,
+          prescriptionBarcode: ticket.prescriptionBarcode ?? null,
+          cubicleCode: '',
+          cubicleDisplayName: '',
+        };
       }
 
       const freshTicket = await tx.ticket.findUnique({ where: { id: ticket.id } });
-      if (
-        !freshTicket ||
-        (freshTicket.status !== TicketStatus.ASSIGNED &&
-          freshTicket.status !== TicketStatus.CALLED)
-      ) {
-        throw new ConflictException({
-          code: ApiErrorCode.STATE_CONFLICT,
-          message: `El turno en estado ${freshTicket?.status} no puede ser llamado. Debe estar en ASSIGNED o CALLED.`,
+      if (!freshTicket) {
+        throw new NotFoundException({
+          code: ApiErrorCode.RESOURCE_NOT_FOUND,
+          message: `Turno no encontrado con el identificador provisto: ${ticketIdOrPublicId}`,
         });
       }
 
+      await this.validateCashierCubicleAssignment(
+        freshTicket.cubicleId,
+        actorUserId,
+        actorUserRole,
+        actorCubicleId,
+      );
+      this.checkVersion(freshTicket.version, expectedVersion);
+
+      if (
+        freshTicket.status !== TicketStatus.ASSIGNED &&
+        freshTicket.status !== TicketStatus.CALLED
+      ) {
+        throw new ConflictException({
+          code: ApiErrorCode.STATE_CONFLICT,
+          message: `El turno en estado ${freshTicket.status} no puede ser llamado. Debe estar en ASSIGNED o CALLED.`,
+        });
+      }
+
+      const effectiveCubicleId = freshTicket.cubicleId ?? cubicleId;
+      const isFirstCall = freshTicket.status === TicketStatus.ASSIGNED;
+
       // Contar llamadas previas para calcular número de llamada
       const callCount = await tx.ticketCall.count({
-        where: { ticketId: ticket.id },
+        where: { ticketId: freshTicket.id },
       });
       const nextCallNumber = callCount + 1;
 
@@ -620,8 +981,8 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       await tx.ticketCall.create({
         data: {
           id: ulid(),
-          ticketId: ticket.id,
-          cubicleId,
+          ticketId: freshTicket.id,
+          cubicleId: effectiveCubicleId,
           calledBy: actorUserId,
           callNumber: nextCallNumber,
           createdAt: now,
@@ -630,18 +991,18 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
 
       // Actualizar ticket
       await tx.ticket.update({
-        where: { id: ticket.id },
+        where: { id: freshTicket.id },
         data: {
           status: TicketStatus.CALLED,
           calledAt: now,
-          ...(ticket.cubicleId ? {} : { cubicleId }),
+          ...(freshTicket.cubicleId ? {} : { cubicleId: effectiveCubicleId }),
           version: { increment: 1 },
         },
       });
 
       // Actualizar estado del cubículo a CALLING
       const cubicle = await tx.cubicle.update({
-        where: { id: cubicleId },
+        where: { id: effectiveCubicleId },
         data: {
           status: CubicleStatus.CALLING,
           version: { increment: 1 },
@@ -652,51 +1013,61 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       await tx.ticketStatusHistory.create({
         data: {
           id: ulid(),
-          ticketId: ticket.id,
-          fromStatus: ticket.status,
+          ticketId: freshTicket.id,
+          fromStatus: freshTicket.status,
           toStatus: TicketStatus.CALLED,
-          cubicleId,
+          cubicleId: effectiveCubicleId,
           actorUserId,
           reasonCode: isFirstCall ? 'TICKET_CALLED' : 'TICKET_RECALLED',
           correlationId: correlationId || ulid(),
         },
       });
 
-      if (idempotencyKey && tx.idempotencyKey) {
+      const snapshot = await this.cubiclesService.buildCubicleSnapshot(
+        cubicle.id,
+        tx as unknown as Pick<PrismaService, 'cubicle' | 'ticket'>,
+      );
+
+      if (normalizedIdempotencyKey && tx.idempotencyKey?.create) {
         await tx.idempotencyKey.create({
           data: {
             id: ulid(),
             actorUserId,
-            operation: `CALL_TICKET:${ticket.id}`,
-            idempotencyKey,
-            requestHash: idempotencyKey,
+            operation,
+            idempotencyKey: normalizedIdempotencyKey,
+            requestHash,
             resourceType: 'Cubicle',
             resourcePublicId: cubicle.id,
             responseStatus: 200,
-            responseBody: {} as any,
+            responseBody: this.redactSnapshotForIdempotency(
+              snapshot,
+            ) as unknown as Prisma.InputJsonValue,
             expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
           },
         });
       }
 
       return {
-        isDuplicate: false,
+        isDuplicate: false as const,
+        snapshot,
         updatedCubicleId: cubicle.id,
         callNumber: nextCallNumber,
-        publicCode: ticket.publicCode,
+        isFirstCall,
+        publicCode: freshTicket.publicCode,
+        queueCategory: freshTicket.queueCategory,
+        prescriptionBarcode: freshTicket.prescriptionBarcode ?? null,
         cubicleCode: (cubicle as { code?: string }).code ?? '',
         cubicleDisplayName: cubicle.displayName,
       };
     });
 
     if (txResult.isDuplicate) {
-      const snapshot = await this.cubiclesService.buildCubicleSnapshot(txResult.updatedCubicleId);
-      return { statusCode: 200, data: snapshot };
+      return { statusCode: 200, data: txResult.snapshot };
     }
 
     // Emisión SSE a pantalla pública en sala (CERO PII)
     this.publicDisplayService.emitEvent({
-      type: isFirstCall ? 'ticket.called' : 'ticket.recalled',
+      type: txResult.isFirstCall ? 'ticket.called' : 'ticket.recalled',
       data: {
         publicCode: txResult.publicCode,
         cubicleDisplayName: txResult.cubicleDisplayName,
@@ -706,43 +1077,30 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     });
 
     if (this.telemetryService) {
-      void this.telemetryService.emitCubicleUpdate(txResult.updatedCubicleId);
-      void this.telemetryService.emitQueueUpdate();
-    }
-
-    if (this.wmsIntegrationService) {
-      void this.wmsIntegrationService.notifyPrePickingOnCall({
-        ticketId: ticket.id,
-        publicCode: txResult.publicCode,
-        queueCategory: ticket.queueCategory,
-        cubicleCode: txResult.cubicleCode || txResult.cubicleDisplayName,
-        prescriptionBarcode: ticket.prescriptionBarcode ?? null,
-        calledAt: now.toISOString(),
+      void this.telemetryService.emitCubicleUpdate(txResult.updatedCubicleId).catch((err) => {
+        this.logger.warn(`Error emitiendo cubículo tras llamado: ${(err as Error).message}`);
+      });
+      void this.telemetryService.emitQueueUpdate().catch((err) => {
+        this.logger.warn(`Error emitiendo cola tras llamado: ${(err as Error).message}`);
       });
     }
 
-    const snapshot = await this.cubiclesService.buildCubicleSnapshot(txResult.updatedCubicleId);
-
-    if (idempotencyKey) {
-      try {
-        await this.prisma.idempotencyKey.update({
-          where: {
-            uq_idempotency_key: {
-              actorUserId,
-              operation: `CALL_TICKET:${ticket.id}`,
-              idempotencyKey,
-            },
-          },
-          data: {
-            responseBody: snapshot as unknown as Prisma.InputJsonValue,
-          },
+    if (this.wmsIntegrationService) {
+      void this.wmsIntegrationService
+        .notifyPrePickingOnCall({
+          ticketId: ticket.id,
+          publicCode: txResult.publicCode,
+          queueCategory: txResult.queueCategory,
+          cubicleCode: txResult.cubicleCode || txResult.cubicleDisplayName,
+          prescriptionBarcode: txResult.prescriptionBarcode,
+          calledAt: now.toISOString(),
+        })
+        .catch((err) => {
+          this.logger.warn(`Error notificando WMS tras llamado: ${(err as Error).message}`);
         });
-      } catch {
-        // En caso de que se haya limpiado
-      }
     }
 
-    return { statusCode: 200, data: snapshot };
+    return { statusCode: 200, data: txResult.snapshot };
   }
 
   /**
@@ -758,25 +1116,30 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     actorUserRole?: UserRole,
     actorCubicleId?: string | null,
   ): Promise<{ statusCode: number; data: CubicleSnapshot }> {
+    const normalizedIdempotencyKey = this.validateIdempotencyKeyHeader(idempotencyKey);
     const ticket = await this.findTicket(ticketIdOrPublicId);
-    await this.validateCashierCubicleAssignment(ticket.cubicleId, actorUserId, actorUserRole, actorCubicleId);
+    await this.validateCashierCubicleAssignment(
+      ticket.cubicleId,
+      actorUserId,
+      actorUserRole,
+      actorCubicleId,
+    );
 
-    if (idempotencyKey) {
-      const existing = await this.prisma.idempotencyKey.findUnique({
-        where: {
-          uq_idempotency_key: {
-            actorUserId,
-            operation: `START_SERVICE:${ticket.id}`,
-            idempotencyKey,
-          },
-        },
-      });
-      if (existing?.responseBody) {
-        return {
-          statusCode: 200,
-          data: existing.responseBody as unknown as CubicleSnapshot,
-        };
-      }
+    const operation = `START_SERVICE:${ticket.id}`;
+    const requestHash = this.buildRequestHash({
+      operation: 'START_SERVICE',
+      ticketId: ticket.id,
+      expectedVersion: expectedVersion ?? null,
+    });
+
+    const preTxDuplicate = await this.checkIdempotencyPreTx<CubicleSnapshot>(
+      actorUserId,
+      operation,
+      normalizedIdempotencyKey,
+      requestHash,
+    );
+    if (preTxDuplicate) {
+      return preTxDuplicate;
     }
 
     this.checkVersion(ticket.version, expectedVersion);
@@ -788,26 +1151,56 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       });
     }
 
+    const cubicleId = ticket.cubicleId;
+    if (!cubicleId) {
+      throw new ConflictException({
+        code: ApiErrorCode.STATE_CONFLICT,
+        message: 'El turno no tiene un cubículo asignado para iniciar atención.',
+      });
+    }
     const now = new Date();
-    const cubicleId = ticket.cubicleId!;
 
-    await this.prisma.$transaction(async (tx) => {
-      try {
-        await tx.$executeRaw`SELECT id FROM tickets WHERE id = ${ticket.id} FOR UPDATE`;
-      } catch {
-        // Fallback para entornos donde executeRaw no soporte FOR UPDATE
+    const txResult = await this.prisma.$transaction(async (tx) => {
+      await this.lockTicketRow(tx, ticket.id);
+
+      const inTxDuplicate = await this.handleIdempotencyInTx<CubicleSnapshot>(
+        tx,
+        actorUserId,
+        operation,
+        normalizedIdempotencyKey,
+        requestHash,
+      );
+      if (inTxDuplicate) {
+        return { isDuplicate: true as const, snapshot: inTxDuplicate, updatedCubicleId: cubicleId };
       }
 
       const freshTicket = await tx.ticket.findUnique({ where: { id: ticket.id } });
-      if (!freshTicket || freshTicket.status !== TicketStatus.CALLED) {
-        throw new ConflictException({
-          code: ApiErrorCode.STATE_CONFLICT,
-          message: `Solo se puede iniciar atención de un turno en estado CALLED. Estado actual: ${freshTicket?.status || ticket.status}.`,
+      if (!freshTicket) {
+        throw new NotFoundException({
+          code: ApiErrorCode.RESOURCE_NOT_FOUND,
+          message: `Turno no encontrado con el identificador provisto: ${ticketIdOrPublicId}`,
         });
       }
 
+      await this.validateCashierCubicleAssignment(
+        freshTicket.cubicleId,
+        actorUserId,
+        actorUserRole,
+        actorCubicleId,
+      );
+      this.checkVersion(freshTicket.version, expectedVersion);
+
+      if (freshTicket.status !== TicketStatus.CALLED) {
+        throw new ConflictException({
+          code: ApiErrorCode.STATE_CONFLICT,
+          message: `Solo se puede iniciar atención de un turno en estado CALLED. Estado actual: ${freshTicket.status}.`,
+        });
+      }
+
+      const effectiveCubicleId = freshTicket.cubicleId ?? cubicleId;
+
       await tx.ticket.update({
-        where: { id: ticket.id },
+        where: { id: freshTicket.id },
         data: {
           status: TicketStatus.IN_SERVICE,
           serviceStartedAt: now,
@@ -816,7 +1209,7 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       });
 
       await tx.cubicle.update({
-        where: { id: cubicleId },
+        where: { id: effectiveCubicleId },
         data: {
           status: CubicleStatus.BUSY,
           version: { increment: 1 },
@@ -826,42 +1219,57 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       await tx.ticketStatusHistory.create({
         data: {
           id: ulid(),
-          ticketId: ticket.id,
+          ticketId: freshTicket.id,
           fromStatus: TicketStatus.CALLED,
           toStatus: TicketStatus.IN_SERVICE,
-          cubicleId,
+          cubicleId: effectiveCubicleId,
           actorUserId,
           reasonCode: 'SERVICE_STARTED',
           correlationId: correlationId || ulid(),
         },
       });
+
+      const snapshot = await this.cubiclesService.buildCubicleSnapshot(
+        effectiveCubicleId,
+        tx as unknown as Pick<PrismaService, 'cubicle' | 'ticket'>,
+      );
+
+      if (normalizedIdempotencyKey && tx.idempotencyKey?.create) {
+        await tx.idempotencyKey.create({
+          data: {
+            id: ulid(),
+            actorUserId,
+            operation,
+            idempotencyKey: normalizedIdempotencyKey,
+            requestHash,
+            resourceType: 'Cubicle',
+            resourcePublicId: effectiveCubicleId,
+            responseStatus: 200,
+            responseBody: this.redactSnapshotForIdempotency(
+              snapshot,
+            ) as unknown as Prisma.InputJsonValue,
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          },
+        });
+      }
+
+      return {
+        isDuplicate: false as const,
+        snapshot,
+        updatedCubicleId: effectiveCubicleId,
+      };
     });
 
-    const snapshot = await this.cubiclesService.buildCubicleSnapshot(cubicleId);
-
-    if (this.telemetryService) {
-      void this.telemetryService.emitCubicleUpdate(cubicleId);
-      void this.telemetryService.emitQueueUpdate();
-    }
-
-    if (idempotencyKey) {
-      await this.prisma.idempotencyKey.create({
-        data: {
-          id: ulid(),
-          actorUserId,
-          operation: `START_SERVICE:${ticket.id}`,
-          idempotencyKey,
-          requestHash: idempotencyKey,
-          resourceType: 'Cubicle',
-          resourcePublicId: cubicleId,
-          responseStatus: 200,
-          responseBody: snapshot as unknown as Prisma.InputJsonValue,
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        },
+    if (!txResult.isDuplicate && this.telemetryService) {
+      void this.telemetryService.emitCubicleUpdate(txResult.updatedCubicleId).catch((err) => {
+        this.logger.warn(`Error emitiendo cubículo al iniciar servicio: ${(err as Error).message}`);
+      });
+      void this.telemetryService.emitQueueUpdate().catch((err) => {
+        this.logger.warn(`Error emitiendo cola al iniciar servicio: ${(err as Error).message}`);
       });
     }
 
-    return { statusCode: 200, data: snapshot };
+    return { statusCode: 200, data: txResult.snapshot };
   }
 
   /**
@@ -884,25 +1292,45 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     actorCubicleId?: string | null,
     dto?: TicketCommandDto,
   ): Promise<{ statusCode: number; data: CubicleSnapshot }> {
+    const normalizedIdempotencyKey = this.validateIdempotencyKeyHeader(idempotencyKey);
     const ticket = await this.findTicket(ticketIdOrPublicId);
-    await this.validateCashierCubicleAssignment(ticket.cubicleId, actorUserId, actorUserRole, actorCubicleId);
+    await this.validateCashierCubicleAssignment(
+      ticket.cubicleId,
+      actorUserId,
+      actorUserRole,
+      actorCubicleId,
+    );
 
-    if (idempotencyKey) {
-      const existing = await this.prisma.idempotencyKey.findUnique({
-        where: {
-          uq_idempotency_key: {
-            actorUserId,
-            operation: `CLOSE_TICKET:${ticket.id}`,
-            idempotencyKey,
-          },
-        },
-      });
-      if (existing?.responseBody) {
-        return {
-          statusCode: 200,
-          data: existing.responseBody as unknown as CubicleSnapshot,
-        };
-      }
+    const resolution = dto?.resolution ?? DispensationResolution.TOTAL_DELIVERED;
+    this.validatePendingDetailsJsonOrThrow(dto?.pendingDetailsJson);
+
+    const operation = `CLOSE_TICKET:${ticket.id}`;
+    const requestHash = this.buildRequestHash({
+      operation: 'CLOSE_TICKET',
+      ticketId: ticket.id,
+      expectedVersion: expectedVersion ?? null,
+      resolution,
+      prescriptionCode: dto?.prescriptionCode?.trim() ?? null,
+      mipresNumber: dto?.mipresNumber?.trim() ?? null,
+      itemsDeliveredCount: dto?.itemsDeliveredCount ?? 0,
+      itemsPendingCount:
+        dto?.itemsPendingCount ?? (resolution === DispensationResolution.PENDING_48H ? 1 : 0),
+      pendingDetailsJson:
+        resolution === DispensationResolution.PENDING_48H
+          ? (dto?.pendingDetailsJson ?? null)
+          : null,
+      deliveryAddress: dto?.deliveryAddress?.trim() ?? null,
+      deliveryPhone: dto?.deliveryPhone?.trim() ?? null,
+    });
+
+    const preTxDuplicate = await this.checkIdempotencyPreTx<CubicleSnapshot>(
+      actorUserId,
+      operation,
+      normalizedIdempotencyKey,
+      requestHash,
+    );
+    if (preTxDuplicate) {
+      return preTxDuplicate;
     }
 
     this.checkVersion(ticket.version, expectedVersion);
@@ -914,7 +1342,6 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       });
     }
 
-    const resolution = dto?.resolution ?? DispensationResolution.TOTAL_DELIVERED;
     if (resolution === DispensationResolution.PENDING_48H) {
       if (!dto?.deliveryAddress?.trim() || !dto?.deliveryPhone?.trim()) {
         throw new BadRequestException({
@@ -925,31 +1352,62 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    const cubicleId = ticket.cubicleId!;
+    const cubicleId = ticket.cubicleId;
+    if (!cubicleId) {
+      throw new ConflictException({
+        code: ApiErrorCode.STATE_CONFLICT,
+        message: 'El turno no tiene un cubículo asignado para efectuar el cierre.',
+      });
+    }
     const now = new Date();
 
-    await this.prisma.$transaction(async (tx) => {
-      try {
-        await tx.$executeRaw`SELECT id FROM tickets WHERE id = ${ticket.id} FOR UPDATE`;
-      } catch {
-        // Fallback para entornos donde executeRaw no soporte FOR UPDATE
+    const txResult = await this.prisma.$transaction(async (tx) => {
+      await this.lockTicketRow(tx, ticket.id);
+
+      const inTxDuplicate = await this.handleIdempotencyInTx<CubicleSnapshot>(
+        tx,
+        actorUserId,
+        operation,
+        normalizedIdempotencyKey,
+        requestHash,
+      );
+      if (inTxDuplicate) {
+        return { isDuplicate: true as const, snapshot: inTxDuplicate, updatedCubicleId: cubicleId };
       }
 
       const freshTicket = await tx.ticket.findUnique({ where: { id: ticket.id } });
-      if (!freshTicket || freshTicket.status !== TicketStatus.IN_SERVICE) {
-        throw new ConflictException({
-          code: ApiErrorCode.STATE_CONFLICT,
-          message: `Solo se puede cerrar un turno que esté en estado IN_SERVICE. Estado actual: ${freshTicket?.status || ticket.status}.`,
+      if (!freshTicket) {
+        throw new NotFoundException({
+          code: ApiErrorCode.RESOURCE_NOT_FOUND,
+          message: `Turno no encontrado con el identificador provisto: ${ticketIdOrPublicId}`,
         });
       }
 
-      // 1. Cerrar el turno actual
+      await this.validateCashierCubicleAssignment(
+        freshTicket.cubicleId,
+        actorUserId,
+        actorUserRole,
+        actorCubicleId,
+      );
+      this.checkVersion(freshTicket.version, expectedVersion);
+
+      if (freshTicket.status !== TicketStatus.IN_SERVICE) {
+        throw new ConflictException({
+          code: ApiErrorCode.STATE_CONFLICT,
+          message: `Solo se puede cerrar un turno que esté en estado IN_SERVICE. Estado actual: ${freshTicket.status}.`,
+        });
+      }
+
+      const effectiveCubicleId = freshTicket.cubicleId ?? cubicleId;
+
+      // 1. Cerrar el turno actual preservando código de fórmula previo si no viene uno nuevo
       await tx.ticket.update({
-        where: { id: ticket.id },
+        where: { id: freshTicket.id },
         data: {
           status: TicketStatus.CLOSED,
           closedAt: now,
-          prescriptionBarcode: dto?.prescriptionCode?.trim() ?? null,
+          prescriptionBarcode:
+            dto?.prescriptionCode?.trim() || freshTicket.prescriptionBarcode || null,
           version: { increment: 1 },
         },
       });
@@ -965,8 +1423,8 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       await tx.dispensationRecord.create({
         data: {
           id: dispensationId,
-          ticketId: ticket.id,
-          cubicleId,
+          ticketId: freshTicket.id,
+          cubicleId: effectiveCubicleId,
           operatorUserId: actorUserId,
           resolution,
           prescriptionCode: dto?.prescriptionCode?.trim() ?? null,
@@ -974,7 +1432,10 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
           itemsDeliveredCount: dto?.itemsDeliveredCount ?? 0,
           itemsPendingCount:
             dto?.itemsPendingCount ?? (resolution === DispensationResolution.PENDING_48H ? 1 : 0),
-          pendingDetailsJson: (dto?.pendingDetailsJson as any) ?? Prisma.JsonNull,
+          pendingDetailsJson:
+            resolution === DispensationResolution.PENDING_48H
+              ? ((dto?.pendingDetailsJson as any) ?? Prisma.JsonNull)
+              : Prisma.JsonNull,
           deliveryAddress: dto?.deliveryAddress?.trim() ?? null,
           deliveryPhone: dto?.deliveryPhone?.trim() ?? null,
           deliveryDeadline: deadline,
@@ -1001,7 +1462,7 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
           })) ??
           (await txPharmacist.findFirst({
             where: {
-              cubicleId,
+              cubicleId: effectiveCubicleId,
               status: { not: PharmacistStatus.INACTIVE },
             },
             orderBy: { updatedAt: 'desc' },
@@ -1019,7 +1480,7 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       } else if (txPharmacist?.updateMany) {
         await txPharmacist.updateMany({
           where: {
-            cubicleId,
+            cubicleId: effectiveCubicleId,
             status: { not: PharmacistStatus.INACTIVE },
           },
           data: {
@@ -1032,66 +1493,18 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       await tx.ticketStatusHistory.create({
         data: {
           id: ulid(),
-          ticketId: ticket.id,
+          ticketId: freshTicket.id,
           fromStatus: TicketStatus.IN_SERVICE,
           toStatus: TicketStatus.CLOSED,
-          cubicleId,
+          cubicleId: effectiveCubicleId,
           actorUserId,
           reasonCode: 'SERVICE_COMPLETED',
           correlationId: correlationId || ulid(),
         },
       });
 
-      // 3. Buscar siguiente turno PENDING de manera concurrente y atómica
-      let nextTicketId: string | null = null;
-      const isPolicyApproved = this.isPreferentialPolicyEnabled();
-      try {
-        let pendingRows: { id: string }[];
-        if (isPolicyApproved) {
-          pendingRows = await tx.$queryRaw<{ id: string }[]>`
-            SELECT id FROM tickets 
-            WHERE status = 'PENDING' 
-            ORDER BY CASE WHEN queue_category = 'PREFERENTIAL' THEN 0 ELSE 1 END ASC, sequence_number ASC 
-            LIMIT 1 
-            FOR UPDATE SKIP LOCKED
-          `;
-        } else {
-          pendingRows = await tx.$queryRaw<{ id: string }[]>`
-            SELECT id FROM tickets 
-            WHERE status = 'PENDING' 
-            ORDER BY sequence_number ASC 
-            LIMIT 1 
-            FOR UPDATE SKIP LOCKED
-          `;
-        }
-        const firstRow = pendingRows[0];
-        if (firstRow) {
-          nextTicketId = firstRow.id;
-        }
-      } catch {
-        // Fallback para entornos donde SKIP LOCKED no esté disponible (mock Vitest / SQLite)
-        let nextPending;
-        if (isPolicyApproved) {
-          nextPending = await tx.ticket.findFirst({
-            where: { status: TicketStatus.PENDING, queueCategory: QueueCategory.PREFERENTIAL },
-            orderBy: { sequenceNumber: 'asc' },
-          });
-          if (!nextPending) {
-            nextPending = await tx.ticket.findFirst({
-              where: { status: TicketStatus.PENDING },
-              orderBy: { sequenceNumber: 'asc' },
-            });
-          }
-        } else {
-          nextPending = await tx.ticket.findFirst({
-            where: { status: TicketStatus.PENDING },
-            orderBy: { sequenceNumber: 'asc' },
-          });
-        }
-        if (nextPending) {
-          nextTicketId = nextPending.id;
-        }
-      }
+      // 3. Buscar siguiente turno PENDING de la misma sede de manera concurrente y atómica
+      const nextTicketId = await this.findNextPendingTicketForCubicle(tx, effectiveCubicleId);
 
       // 4. Asignar siguiente o dejar disponible
       if (nextTicketId) {
@@ -1099,14 +1512,14 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
           where: { id: nextTicketId },
           data: {
             status: TicketStatus.ASSIGNED,
-            cubicleId,
+            cubicleId: effectiveCubicleId,
             assignedAt: now,
             version: { increment: 1 },
           },
         });
 
         await tx.cubicle.update({
-          where: { id: cubicleId },
+          where: { id: effectiveCubicleId },
           data: {
             status: CubicleStatus.RESERVED,
             version: { increment: 1 },
@@ -1119,7 +1532,7 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
             ticketId: nextTicketId,
             fromStatus: TicketStatus.PENDING,
             toStatus: TicketStatus.ASSIGNED,
-            cubicleId,
+            cubicleId: effectiveCubicleId,
             actorUserId,
             reasonCode: 'AUTO_ASSIGNED_NEXT',
             correlationId: correlationId || ulid(),
@@ -1127,40 +1540,55 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
         });
       } else {
         await tx.cubicle.update({
-          where: { id: cubicleId },
+          where: { id: effectiveCubicleId },
           data: {
             status: CubicleStatus.AVAILABLE,
             version: { increment: 1 },
           },
         });
       }
+
+      const snapshot = await this.cubiclesService.buildCubicleSnapshot(
+        effectiveCubicleId,
+        tx as unknown as Pick<PrismaService, 'cubicle' | 'ticket'>,
+      );
+
+      if (normalizedIdempotencyKey && tx.idempotencyKey?.create) {
+        await tx.idempotencyKey.create({
+          data: {
+            id: ulid(),
+            actorUserId,
+            operation,
+            idempotencyKey: normalizedIdempotencyKey,
+            requestHash,
+            resourceType: 'Cubicle',
+            resourcePublicId: effectiveCubicleId,
+            responseStatus: 200,
+            responseBody: this.redactSnapshotForIdempotency(
+              snapshot,
+            ) as unknown as Prisma.InputJsonValue,
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          },
+        });
+      }
+
+      return {
+        isDuplicate: false as const,
+        snapshot,
+        updatedCubicleId: effectiveCubicleId,
+      };
     });
 
-    const snapshot = await this.cubiclesService.buildCubicleSnapshot(cubicleId);
-
-    if (this.telemetryService) {
-      void this.telemetryService.emitCubicleUpdate(cubicleId);
-      void this.telemetryService.emitQueueUpdate();
-    }
-
-    if (idempotencyKey) {
-      await this.prisma.idempotencyKey.create({
-        data: {
-          id: ulid(),
-          actorUserId,
-          operation: `CLOSE_TICKET:${ticket.id}`,
-          idempotencyKey,
-          requestHash: idempotencyKey,
-          resourceType: 'Cubicle',
-          resourcePublicId: cubicleId,
-          responseStatus: 200,
-          responseBody: snapshot as unknown as Prisma.InputJsonValue,
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        },
+    if (!txResult.isDuplicate && this.telemetryService) {
+      void this.telemetryService.emitCubicleUpdate(txResult.updatedCubicleId).catch((err) => {
+        this.logger.warn(`Error emitiendo cubículo al cerrar turno: ${(err as Error).message}`);
+      });
+      void this.telemetryService.emitQueueUpdate().catch((err) => {
+        this.logger.warn(`Error emitiendo cola al cerrar turno: ${(err as Error).message}`);
       });
     }
 
-    return { statusCode: 200, data: snapshot };
+    return { statusCode: 200, data: txResult.snapshot };
   }
 
   /**
@@ -1180,25 +1608,30 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     actorUserRole?: UserRole,
     actorCubicleId?: string | null,
   ): Promise<{ statusCode: number; data: CubicleSnapshot }> {
+    const normalizedIdempotencyKey = this.validateIdempotencyKeyHeader(idempotencyKey);
     const ticket = await this.findTicket(ticketIdOrPublicId);
-    await this.validateCashierCubicleAssignment(ticket.cubicleId, actorUserId, actorUserRole, actorCubicleId);
+    await this.validateCashierCubicleAssignment(
+      ticket.cubicleId,
+      actorUserId,
+      actorUserRole,
+      actorCubicleId,
+    );
 
-    if (idempotencyKey) {
-      const existing = await this.prisma.idempotencyKey.findUnique({
-        where: {
-          uq_idempotency_key: {
-            actorUserId,
-            operation: `NO_SHOW_TICKET:${ticket.id}`,
-            idempotencyKey,
-          },
-        },
-      });
-      if (existing?.responseBody) {
-        return {
-          statusCode: 200,
-          data: existing.responseBody as unknown as CubicleSnapshot,
-        };
-      }
+    const operation = `NO_SHOW_TICKET:${ticket.id}`;
+    const requestHash = this.buildRequestHash({
+      operation: 'NO_SHOW_TICKET',
+      ticketId: ticket.id,
+      expectedVersion: expectedVersion ?? null,
+    });
+
+    const preTxDuplicate = await this.checkIdempotencyPreTx<CubicleSnapshot>(
+      actorUserId,
+      operation,
+      normalizedIdempotencyKey,
+      requestHash,
+    );
+    if (preTxDuplicate) {
+      return preTxDuplicate;
     }
 
     this.checkVersion(ticket.version, expectedVersion);
@@ -1210,27 +1643,57 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       });
     }
 
-    const cubicleId = ticket.cubicleId!;
+    const cubicleId = ticket.cubicleId;
+    if (!cubicleId) {
+      throw new ConflictException({
+        code: ApiErrorCode.STATE_CONFLICT,
+        message: 'El turno no tiene un cubículo asignado para registrar inasistencia.',
+      });
+    }
     const now = new Date();
 
-    await this.prisma.$transaction(async (tx) => {
-      try {
-        await tx.$executeRaw`SELECT id FROM tickets WHERE id = ${ticket.id} FOR UPDATE`;
-      } catch {
-        // Fallback para entornos donde executeRaw no soporte FOR UPDATE
+    const txResult = await this.prisma.$transaction(async (tx) => {
+      await this.lockTicketRow(tx, ticket.id);
+
+      const inTxDuplicate = await this.handleIdempotencyInTx<CubicleSnapshot>(
+        tx,
+        actorUserId,
+        operation,
+        normalizedIdempotencyKey,
+        requestHash,
+      );
+      if (inTxDuplicate) {
+        return { isDuplicate: true as const, snapshot: inTxDuplicate, updatedCubicleId: cubicleId };
       }
 
       const freshTicket = await tx.ticket.findUnique({ where: { id: ticket.id } });
-      if (!freshTicket || freshTicket.status !== TicketStatus.CALLED) {
-        throw new ConflictException({
-          code: ApiErrorCode.STATE_CONFLICT,
-          message: `Solo se puede marcar no presentado un turno en estado CALLED. Estado actual: ${freshTicket?.status || ticket.status}.`,
+      if (!freshTicket) {
+        throw new NotFoundException({
+          code: ApiErrorCode.RESOURCE_NOT_FOUND,
+          message: `Turno no encontrado con el identificador provisto: ${ticketIdOrPublicId}`,
         });
       }
 
+      await this.validateCashierCubicleAssignment(
+        freshTicket.cubicleId,
+        actorUserId,
+        actorUserRole,
+        actorCubicleId,
+      );
+      this.checkVersion(freshTicket.version, expectedVersion);
+
+      if (freshTicket.status !== TicketStatus.CALLED) {
+        throw new ConflictException({
+          code: ApiErrorCode.STATE_CONFLICT,
+          message: `Solo se puede marcar no presentado un turno en estado CALLED. Estado actual: ${freshTicket.status}.`,
+        });
+      }
+
+      const effectiveCubicleId = freshTicket.cubicleId ?? cubicleId;
+
       // 1. Marcar NO_SHOW
       await tx.ticket.update({
-        where: { id: ticket.id },
+        where: { id: freshTicket.id },
         data: {
           status: TicketStatus.NO_SHOW,
           closedAt: now,
@@ -1243,65 +1706,18 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       await tx.ticketStatusHistory.create({
         data: {
           id: ulid(),
-          ticketId: ticket.id,
+          ticketId: freshTicket.id,
           fromStatus: TicketStatus.CALLED,
           toStatus: TicketStatus.NO_SHOW,
-          cubicleId,
+          cubicleId: effectiveCubicleId,
           actorUserId,
           reasonCode: 'PATIENT_NO_SHOW',
           correlationId: correlationId || ulid(),
         },
       });
 
-      // 3. Buscar siguiente turno PENDING
-      let nextTicketId: string | null = null;
-      const isPolicyApproved = this.isPreferentialPolicyEnabled();
-      try {
-        let pendingRows: { id: string }[];
-        if (isPolicyApproved) {
-          pendingRows = await tx.$queryRaw<{ id: string }[]>`
-            SELECT id FROM tickets 
-            WHERE status = 'PENDING' 
-            ORDER BY CASE WHEN queue_category = 'PREFERENTIAL' THEN 0 ELSE 1 END ASC, sequence_number ASC 
-            LIMIT 1 
-            FOR UPDATE SKIP LOCKED
-          `;
-        } else {
-          pendingRows = await tx.$queryRaw<{ id: string }[]>`
-            SELECT id FROM tickets 
-            WHERE status = 'PENDING' 
-            ORDER BY sequence_number ASC 
-            LIMIT 1 
-            FOR UPDATE SKIP LOCKED
-          `;
-        }
-        const firstRow = pendingRows[0];
-        if (firstRow) {
-          nextTicketId = firstRow.id;
-        }
-      } catch {
-        let nextPending;
-        if (isPolicyApproved) {
-          nextPending = await tx.ticket.findFirst({
-            where: { status: TicketStatus.PENDING, queueCategory: QueueCategory.PREFERENTIAL },
-            orderBy: { sequenceNumber: 'asc' },
-          });
-          if (!nextPending) {
-            nextPending = await tx.ticket.findFirst({
-              where: { status: TicketStatus.PENDING },
-              orderBy: { sequenceNumber: 'asc' },
-            });
-          }
-        } else {
-          nextPending = await tx.ticket.findFirst({
-            where: { status: TicketStatus.PENDING },
-            orderBy: { sequenceNumber: 'asc' },
-          });
-        }
-        if (nextPending) {
-          nextTicketId = nextPending.id;
-        }
-      }
+      // 3. Buscar siguiente turno PENDING de la misma sede
+      const nextTicketId = await this.findNextPendingTicketForCubicle(tx, effectiveCubicleId);
 
       // 4. Asignar siguiente o dejar disponible
       if (nextTicketId) {
@@ -1309,14 +1725,14 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
           where: { id: nextTicketId },
           data: {
             status: TicketStatus.ASSIGNED,
-            cubicleId,
+            cubicleId: effectiveCubicleId,
             assignedAt: now,
             version: { increment: 1 },
           },
         });
 
         await tx.cubicle.update({
-          where: { id: cubicleId },
+          where: { id: effectiveCubicleId },
           data: {
             status: CubicleStatus.RESERVED,
             version: { increment: 1 },
@@ -1329,7 +1745,7 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
             ticketId: nextTicketId,
             fromStatus: TicketStatus.PENDING,
             toStatus: TicketStatus.ASSIGNED,
-            cubicleId,
+            cubicleId: effectiveCubicleId,
             actorUserId,
             reasonCode: 'AUTO_ASSIGNED_NEXT',
             correlationId: correlationId || ulid(),
@@ -1337,40 +1753,55 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
         });
       } else {
         await tx.cubicle.update({
-          where: { id: cubicleId },
+          where: { id: effectiveCubicleId },
           data: {
             status: CubicleStatus.AVAILABLE,
             version: { increment: 1 },
           },
         });
       }
+
+      const snapshot = await this.cubiclesService.buildCubicleSnapshot(
+        effectiveCubicleId,
+        tx as unknown as Pick<PrismaService, 'cubicle' | 'ticket'>,
+      );
+
+      if (normalizedIdempotencyKey && tx.idempotencyKey?.create) {
+        await tx.idempotencyKey.create({
+          data: {
+            id: ulid(),
+            actorUserId,
+            operation,
+            idempotencyKey: normalizedIdempotencyKey,
+            requestHash,
+            resourceType: 'Cubicle',
+            resourcePublicId: effectiveCubicleId,
+            responseStatus: 200,
+            responseBody: this.redactSnapshotForIdempotency(
+              snapshot,
+            ) as unknown as Prisma.InputJsonValue,
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          },
+        });
+      }
+
+      return {
+        isDuplicate: false as const,
+        snapshot,
+        updatedCubicleId: effectiveCubicleId,
+      };
     });
 
-    const snapshot = await this.cubiclesService.buildCubicleSnapshot(cubicleId);
-
-    if (this.telemetryService) {
-      void this.telemetryService.emitCubicleUpdate(cubicleId);
-      void this.telemetryService.emitQueueUpdate();
-    }
-
-    if (idempotencyKey) {
-      await this.prisma.idempotencyKey.create({
-        data: {
-          id: ulid(),
-          actorUserId,
-          operation: `NO_SHOW_TICKET:${ticket.id}`,
-          idempotencyKey,
-          requestHash: idempotencyKey,
-          resourceType: 'Cubicle',
-          resourcePublicId: cubicleId,
-          responseStatus: 200,
-          responseBody: snapshot as unknown as Prisma.InputJsonValue,
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        },
+    if (!txResult.isDuplicate && this.telemetryService) {
+      void this.telemetryService.emitCubicleUpdate(txResult.updatedCubicleId).catch((err) => {
+        this.logger.warn(`Error emitiendo cubículo tras no-show: ${(err as Error).message}`);
+      });
+      void this.telemetryService.emitQueueUpdate().catch((err) => {
+        this.logger.warn(`Error emitiendo cola tras no-show: ${(err as Error).message}`);
       });
     }
 
-    return { statusCode: 200, data: snapshot };
+    return { statusCode: 200, data: txResult.snapshot };
   }
 
   /**
@@ -1388,6 +1819,7 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     actorCubicleId?: string | null,
     reason?: string,
   ): Promise<{ statusCode: number; data: CancelTicketResponse }> {
+    const normalizedIdempotencyKey = this.validateIdempotencyKeyHeader(idempotencyKey);
     const ticket = await this.findTicket(ticketIdOrPublicId);
 
     let effectiveRole = actorUserRole;
@@ -1415,24 +1847,40 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
             'Acceso denegado: el operador de caja solo puede cancelar turnos asignados a su propio cubículo.',
         });
       }
+    } else if (effectiveRole === UserRole.RECEPTION) {
+      if (!ticket.createdBy || ticket.createdBy !== actorUserId) {
+        throw new ForbiddenException({
+          code: ApiErrorCode.FORBIDDEN,
+          message:
+            'Acceso denegado: el operador de recepción solo puede cancelar turnos emitidos por su propia cuenta.',
+        });
+      }
+      if (ticket.status !== TicketStatus.PENDING || ticket.cubicleId) {
+        throw new ForbiddenException({
+          code: ApiErrorCode.FORBIDDEN,
+          message:
+            'Acceso denegado: recepción solo puede cancelar turnos en estado PENDING antes de su asignación a cubículo.',
+        });
+      }
     }
 
-    if (idempotencyKey) {
-      const existing = await this.prisma.idempotencyKey.findUnique({
-        where: {
-          uq_idempotency_key: {
-            actorUserId,
-            operation: `CANCEL_TICKET:${ticket.id}`,
-            idempotencyKey,
-          },
-        },
-      });
-      if (existing?.responseBody) {
-        return {
-          statusCode: 200,
-          data: existing.responseBody as unknown as CancelTicketResponse,
-        };
-      }
+    const normalizedReason = reason?.trim() || 'CANCELLED_BY_OPERATOR';
+    const operation = `CANCEL_TICKET:${ticket.id}`;
+    const requestHash = this.buildRequestHash({
+      operation: 'CANCEL_TICKET',
+      ticketId: ticket.id,
+      expectedVersion: expectedVersion ?? null,
+      reason: normalizedReason,
+    });
+
+    const preTxDuplicate = await this.checkIdempotencyPreTx<CancelTicketResponse>(
+      actorUserId,
+      operation,
+      normalizedIdempotencyKey,
+      requestHash,
+    );
+    if (preTxDuplicate) {
+      return preTxDuplicate;
     }
 
     this.checkVersion(ticket.version, expectedVersion);
@@ -1449,31 +1897,73 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       });
     }
 
-    const normalizedReason = reason?.trim() || 'CANCELLED_BY_OPERATOR';
     const now = new Date();
 
     const txResult = await this.prisma.$transaction(async (tx) => {
-      try {
-        await tx.$executeRaw`SELECT id FROM tickets WHERE id = ${ticket.id} FOR UPDATE`;
-      } catch {
-        // Fallback para entornos donde executeRaw no soporte FOR UPDATE
+      await this.lockTicketRow(tx, ticket.id);
+
+      const inTxDuplicate = await this.handleIdempotencyInTx<CancelTicketResponse>(
+        tx,
+        actorUserId,
+        operation,
+        normalizedIdempotencyKey,
+        requestHash,
+      );
+      if (inTxDuplicate) {
+        return {
+          isDuplicate: true as const,
+          response: inTxDuplicate,
+          assignedCubicleId: null,
+        };
       }
 
       const freshTicket = await tx.ticket.findUnique({ where: { id: ticket.id } });
-      if (
-        !freshTicket ||
-        !cancellableStatuses.includes(freshTicket.status as TicketStatus)
-      ) {
+      if (!freshTicket) {
+        throw new NotFoundException({
+          code: ApiErrorCode.RESOURCE_NOT_FOUND,
+          message: `Turno no encontrado con el identificador provisto: ${ticketIdOrPublicId}`,
+        });
+      }
+
+      this.checkVersion(freshTicket.version, expectedVersion);
+
+      if (!cancellableStatuses.includes(freshTicket.status as TicketStatus)) {
         throw new ConflictException({
           code: ApiErrorCode.STATE_CONFLICT,
-          message: `El turno en estado ${freshTicket?.status || ticket.status} no puede cancelarse.`,
+          message: `El turno en estado ${freshTicket.status} no puede cancelarse.`,
         });
+      }
+
+      if (effectiveRole === UserRole.RECEPTION) {
+        if (
+          freshTicket.createdBy !== actorUserId ||
+          freshTicket.status !== TicketStatus.PENDING ||
+          freshTicket.cubicleId
+        ) {
+          throw new ForbiddenException({
+            code: ApiErrorCode.FORBIDDEN,
+            message:
+              'Acceso denegado: el turno ya no pertenece al alcance cancelable por recepción.',
+          });
+        }
+      } else if (effectiveRole === UserRole.CASHIER) {
+        if (
+          !freshTicket.cubicleId ||
+          !effectiveCubicleId ||
+          freshTicket.cubicleId !== effectiveCubicleId
+        ) {
+          throw new ForbiddenException({
+            code: ApiErrorCode.FORBIDDEN,
+            message:
+              'Acceso denegado: el turno ya no pertenece al cubículo del operador de caja.',
+          });
+        }
       }
 
       const assignedCubicleId = freshTicket.cubicleId ?? null;
 
       await tx.ticket.update({
-        where: { id: ticket.id },
+        where: { id: freshTicket.id },
         data: {
           status: TicketStatus.CANCELLED,
           closedAt: now,
@@ -1485,7 +1975,7 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       await tx.ticketStatusHistory.create({
         data: {
           id: ulid(),
-          ticketId: ticket.id,
+          ticketId: freshTicket.id,
           fromStatus: freshTicket.status,
           toStatus: TicketStatus.CANCELLED,
           cubicleId: assignedCubicleId,
@@ -1496,53 +1986,7 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       });
 
       if (assignedCubicleId) {
-        let nextTicketId: string | null = null;
-        const isPolicyApproved = this.isPreferentialPolicyEnabled();
-        try {
-          let pendingRows: { id: string }[];
-          if (isPolicyApproved) {
-            pendingRows = await tx.$queryRaw<{ id: string }[]>`
-              SELECT id FROM tickets
-              WHERE status = 'PENDING'
-              ORDER BY CASE WHEN queue_category = 'PREFERENTIAL' THEN 0 ELSE 1 END ASC, sequence_number ASC
-              LIMIT 1
-              FOR UPDATE SKIP LOCKED
-            `;
-          } else {
-            pendingRows = await tx.$queryRaw<{ id: string }[]>`
-              SELECT id FROM tickets
-              WHERE status = 'PENDING'
-              ORDER BY sequence_number ASC
-              LIMIT 1
-              FOR UPDATE SKIP LOCKED
-            `;
-          }
-          if (pendingRows[0]) {
-            nextTicketId = pendingRows[0].id;
-          }
-        } catch {
-          let nextPending;
-          if (isPolicyApproved) {
-            nextPending = await tx.ticket.findFirst({
-              where: { status: TicketStatus.PENDING, queueCategory: QueueCategory.PREFERENTIAL },
-              orderBy: { sequenceNumber: 'asc' },
-            });
-            if (!nextPending) {
-              nextPending = await tx.ticket.findFirst({
-                where: { status: TicketStatus.PENDING },
-                orderBy: { sequenceNumber: 'asc' },
-              });
-            }
-          } else {
-            nextPending = await tx.ticket.findFirst({
-              where: { status: TicketStatus.PENDING },
-              orderBy: { sequenceNumber: 'asc' },
-            });
-          }
-          if (nextPending) {
-            nextTicketId = nextPending.id;
-          }
-        }
+        const nextTicketId = await this.findNextPendingTicketForCubicle(tx, assignedCubicleId);
 
         if (nextTicketId) {
           await tx.ticket.update({
@@ -1586,46 +2030,59 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
         }
       }
 
-      return { assignedCubicleId };
+      const cubicleSnapshot = assignedCubicleId
+        ? await this.cubiclesService.buildCubicleSnapshot(
+            assignedCubicleId,
+            tx as unknown as Pick<PrismaService, 'cubicle' | 'ticket'>,
+          )
+        : null;
+
+      const response: CancelTicketResponse = {
+        cancelled: true,
+        publicId: freshTicket.publicId,
+        publicCode: freshTicket.publicCode,
+        status: TicketStatus.CANCELLED,
+        cubicleSnapshot,
+      };
+
+      if (normalizedIdempotencyKey && tx.idempotencyKey?.create) {
+        await tx.idempotencyKey.create({
+          data: {
+            id: ulid(),
+            actorUserId,
+            operation,
+            idempotencyKey: normalizedIdempotencyKey,
+            requestHash,
+            resourceType: 'Ticket',
+            resourcePublicId: freshTicket.publicId,
+            responseStatus: 200,
+            responseBody: this.redactCancelResponseForIdempotency(
+              response,
+            ) as unknown as Prisma.InputJsonValue,
+            expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          },
+        });
+      }
+
+      return {
+        isDuplicate: false as const,
+        response,
+        assignedCubicleId,
+      };
     });
 
-    const cubicleSnapshot = txResult.assignedCubicleId
-      ? await this.cubiclesService.buildCubicleSnapshot(txResult.assignedCubicleId)
-      : null;
-
-    if (this.telemetryService) {
+    if (!txResult.isDuplicate && this.telemetryService) {
       if (txResult.assignedCubicleId) {
-        void this.telemetryService.emitCubicleUpdate(txResult.assignedCubicleId);
+        void this.telemetryService.emitCubicleUpdate(txResult.assignedCubicleId).catch((err) => {
+          this.logger.warn(`Error emitiendo cubículo al cancelar turno: ${(err as Error).message}`);
+        });
       }
-      void this.telemetryService.emitQueueUpdate();
-    }
-
-    const response: CancelTicketResponse = {
-      cancelled: true,
-      publicId: ticket.publicId,
-      publicCode: ticket.publicCode,
-      status: TicketStatus.CANCELLED,
-      cubicleSnapshot,
-    };
-
-    if (idempotencyKey && this.prisma.idempotencyKey?.create) {
-      await this.prisma.idempotencyKey.create({
-        data: {
-          id: ulid(),
-          actorUserId,
-          operation: `CANCEL_TICKET:${ticket.id}`,
-          idempotencyKey,
-          requestHash: idempotencyKey,
-          resourceType: 'Ticket',
-          resourcePublicId: ticket.publicId,
-          responseStatus: 200,
-          responseBody: response as unknown as Prisma.InputJsonValue,
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-        },
+      void this.telemetryService.emitQueueUpdate().catch((err) => {
+        this.logger.warn(`Error emitiendo cola al cancelar turno: ${(err as Error).message}`);
       });
     }
 
-    return { statusCode: 200, data: response };
+    return { statusCode: 200, data: txResult.response };
   }
 
   /**
@@ -1766,6 +2223,14 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
     limit: number;
   }): Promise<TicketHistoryResponse> {
     const { search, slaFilter, queueCategory, facilityId, page, limit } = params;
+    const safePage = Math.min(1000, Math.max(1, Math.trunc(Number(page) || 1)));
+    const safeLimit = Math.min(100, Math.max(1, Math.trunc(Number(limit) || 25)));
+    const normalizedSearch = search?.trim().slice(0, 80) ?? '';
+    const normalizedFacilityId =
+      facilityId && facilityId.trim().length > 0 && facilityId.trim() !== 'ALL'
+        ? facilityId.trim()
+        : null;
+    const hasExactDocumentPattern = /^[A-Za-z0-9.-]{6,30}$/.test(normalizedSearch);
 
     const where: Prisma.TicketWhereInput = {
       status: { in: [TicketStatus.CLOSED, TicketStatus.NO_SHOW, TicketStatus.CANCELLED] },
@@ -1777,8 +2242,7 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
 
     const andConditions: Prisma.TicketWhereInput[] = [];
 
-    if (facilityId && facilityId.trim().length > 0 && facilityId !== 'ALL') {
-      const normalizedFacilityId = facilityId.trim();
+    if (normalizedFacilityId) {
       andConditions.push({
         OR: [
           { facilityId: normalizedFacilityId },
@@ -1787,16 +2251,16 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       });
     }
 
-    if (search && search.trim().length > 0) {
-      const q = search.trim();
-      andConditions.push({
-        OR: [
-          { publicCode: { contains: q, mode: 'insensitive' } },
-          { patientName: { contains: q, mode: 'insensitive' } },
-          { patientDocument: { contains: q, mode: 'insensitive' } },
-          { prescriptionBarcode: { contains: q, mode: 'insensitive' } },
-        ],
-      });
+    if (normalizedSearch.length > 0) {
+      const searchOr: Prisma.TicketWhereInput[] = [
+        { publicCode: { contains: normalizedSearch, mode: 'insensitive' } },
+        { patientName: { contains: normalizedSearch, mode: 'insensitive' } },
+        { prescriptionBarcode: { contains: normalizedSearch, mode: 'insensitive' } },
+      ];
+      if (hasExactDocumentPattern) {
+        searchOr.push({ patientDocument: normalizedSearch });
+      }
+      andConditions.push({ OR: searchOr });
     }
 
     if (andConditions.length === 1 && andConditions[0]?.OR) {
@@ -1837,12 +2301,91 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
       },
     };
 
-    try {
-      if (requiresSlaSlice && this.prisma.ticket.findMany) {
+    if (requiresSlaSlice) {
+      let sqlHandled = false;
+
+      if (typeof this.prisma.$queryRaw === 'function') {
+        const sqlConditions: Prisma.Sql[] = [
+          Prisma.sql`t.status::text IN ('CLOSED', 'NO_SHOW', 'CANCELLED')`,
+        ];
+        if (queueCategory) {
+          sqlConditions.push(Prisma.sql`t.queue_category::text = ${queueCategory}`);
+        }
+        if (normalizedFacilityId) {
+          sqlConditions.push(
+            Prisma.sql`(t.facility_id = ${normalizedFacilityId} OR c.facility_id = ${normalizedFacilityId})`,
+          );
+        }
+        if (normalizedSearch.length > 0) {
+          const likePattern = `%${normalizedSearch.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`;
+          if (hasExactDocumentPattern) {
+            sqlConditions.push(
+              Prisma.sql`(t.public_code ILIKE ${likePattern} ESCAPE '\\' OR t.patient_name ILIKE ${likePattern} ESCAPE '\\' OR t.prescription_barcode ILIKE ${likePattern} ESCAPE '\\' OR t.patient_document = ${normalizedSearch})`,
+            );
+          } else {
+            sqlConditions.push(
+              Prisma.sql`(t.public_code ILIKE ${likePattern} ESCAPE '\\' OR t.patient_name ILIKE ${likePattern} ESCAPE '\\' OR t.prescription_barcode ILIKE ${likePattern} ESCAPE '\\')`,
+            );
+          }
+        }
+        if (slaFilter === 'IN_NORM') {
+          sqlConditions.push(
+            Prisma.sql`(t.status::text = 'CLOSED' AND ROUND(GREATEST(0, COALESCE(EXTRACT(EPOCH FROM (t.closed_at - t.service_started_at)), 0)))::int <= ${slaThresholdSeconds})`,
+          );
+        } else {
+          sqlConditions.push(
+            Prisma.sql`NOT (t.status::text = 'CLOSED' AND ROUND(GREATEST(0, COALESCE(EXTRACT(EPOCH FROM (t.closed_at - t.service_started_at)), 0)))::int <= ${slaThresholdSeconds})`,
+          );
+        }
+
+        const whereSql = Prisma.join(sqlConditions, ' AND ');
+        const countRows = await this.prisma.$queryRaw<Array<{ total: number | bigint }>>(
+          Prisma.sql`
+            SELECT COUNT(*)::int AS total
+            FROM tickets t
+            LEFT JOIN cubicles c ON c.id = t.cubicle_id
+            WHERE ${whereSql}
+          `,
+        );
+
+        if (Array.isArray(countRows) && countRows.length > 0 && countRows[0]?.total !== undefined) {
+          sqlHandled = true;
+          total = Number(countRows[0].total);
+          if (total > 0) {
+            const offset = (safePage - 1) * safeLimit;
+            const idRows = await this.prisma.$queryRaw<Array<{ id: string }>>(
+              Prisma.sql`
+                SELECT t.id
+                FROM tickets t
+                LEFT JOIN cubicles c ON c.id = t.cubicle_id
+                WHERE ${whereSql}
+                ORDER BY t.closed_at DESC NULLS LAST, t.created_at DESC
+                LIMIT ${safeLimit}
+                OFFSET ${offset}
+              `,
+            );
+            const pagedIds = idRows.map((row) => row.id);
+            if (pagedIds.length > 0 && this.prisma.ticket.findMany) {
+              const fetched = await this.prisma.ticket.findMany({
+                where: { id: { in: pagedIds } },
+                include: historyInclude,
+              });
+              const byId = new Map(fetched.map((row) => [row.id, row]));
+              items = pagedIds
+                .map((id) => byId.get(id))
+                .filter((row): row is NonNullable<typeof row> => Boolean(row))
+                .map((t) => this.mapTicketToHistoryItem(t, slaThresholdSeconds));
+            }
+          }
+        }
+      }
+
+      if (!sqlHandled && this.prisma.ticket.findMany) {
         const allMatching = await this.prisma.ticket.findMany({
           where,
           include: historyInclude,
           orderBy: [{ closedAt: 'desc' }, { createdAt: 'desc' }],
+          take: Math.min(safePage * safeLimit + 100, 1000),
         });
         const mapped = allMatching.map((t) =>
           this.mapTicketToHistoryItem(t, slaThresholdSeconds),
@@ -1852,32 +2395,30 @@ export class TicketsService implements OnModuleInit, OnModuleDestroy {
             ? mapped.filter((i) => i.slaCompliant)
             : mapped.filter((i) => !i.slaCompliant);
         total = filtered.length;
-        const startIndex = (page - 1) * limit;
-        items = filtered.slice(startIndex, startIndex + limit);
-      } else if (this.prisma.ticket.count && this.prisma.ticket.findMany) {
-        const [counted, tickets] = await Promise.all([
-          this.prisma.ticket.count({ where }),
-          this.prisma.ticket.findMany({
-            where,
-            include: historyInclude,
-            orderBy: [{ closedAt: 'desc' }, { createdAt: 'desc' }],
-            skip: (page - 1) * limit,
-            take: limit,
-          }),
-        ]);
-        total = counted;
-        items = tickets.map((t) => this.mapTicketToHistoryItem(t, slaThresholdSeconds));
+        const startIndex = (safePage - 1) * safeLimit;
+        items = filtered.slice(startIndex, startIndex + safeLimit);
       }
-    } catch (err) {
-      this.logger.warn(`Error al consultar historial de tickets en BD: ${(err as Error).message}`);
+    } else if (this.prisma.ticket.count && this.prisma.ticket.findMany) {
+      const [counted, tickets] = await Promise.all([
+        this.prisma.ticket.count({ where }),
+        this.prisma.ticket.findMany({
+          where,
+          include: historyInclude,
+          orderBy: [{ closedAt: 'desc' }, { createdAt: 'desc' }],
+          skip: (safePage - 1) * safeLimit,
+          take: safeLimit,
+        }),
+      ]);
+      total = counted;
+      items = tickets.map((t) => this.mapTicketToHistoryItem(t, slaThresholdSeconds));
     }
 
     return {
       items,
       total,
-      page,
-      limit,
-      totalPages: Math.max(1, Math.ceil(total / limit)),
+      page: safePage,
+      limit: safeLimit,
+      totalPages: Math.max(1, Math.ceil(total / safeLimit)),
       slaThresholdSeconds,
     };
   }

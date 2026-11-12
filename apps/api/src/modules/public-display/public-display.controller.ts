@@ -1,4 +1,4 @@
-import { Controller, Get, Sse } from '@nestjs/common';
+import { Controller, Get, Req, Sse } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { Public } from '../../common/decorators/public.decorator';
 import { PublicDisplayService, SseMessage } from './public-display.service';
@@ -28,7 +28,10 @@ export class PublicDisplayController {
    * Stream Server-Sent Events (SSE) para notificar llamados en tiempo real.
    */
   @Sse('events')
-  sendEvents(): Observable<SseMessage> {
-    return this.publicDisplayService.getEventStream();
+  sendEvents(
+    @Req() req?: { ip?: string; socket?: { remoteAddress?: string } },
+  ): Observable<SseMessage> {
+    const clientIp = req?.ip || req?.socket?.remoteAddress || 'unknown';
+    return this.publicDisplayService.getEventStream(clientIp);
   }
 }

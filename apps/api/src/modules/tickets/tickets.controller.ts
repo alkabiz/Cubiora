@@ -13,11 +13,12 @@ import {
 import type { Request, Response } from 'express';
 import { TicketsService } from './tickets.service';
 import { CreateTicketDto } from './dto/create-ticket.dto';
+import { GetTicketHistoryQueryDto } from './dto/get-ticket-history-query.dto';
 import { TicketCommandDto } from './dto/ticket-command.dto';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentUser, AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { ParsePublicIdPipe } from '../../common/pipes/parse-public-id.pipe';
-import { UserRole, QueueCategory } from '@cubiora/shared';
+import { UserRole } from '@cubiora/shared';
 
 @Controller('tickets')
 export class TicketsController {
@@ -33,24 +34,17 @@ export class TicketsController {
     };
   }
 
-  @Roles(UserRole.ADMIN, UserRole.CASHIER)
+  @Roles(UserRole.ADMIN)
   @Get('history')
-  async getTicketHistory(
-    @Query('search') search?: string,
-    @Query('slaFilter') slaFilter?: string,
-    @Query('queueCategory') queueCategory?: QueueCategory,
-    @Query('facilityId') facilityId?: string,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
-    const pageNum = Math.max(1, parseInt(page || '1', 10) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit || '25', 10) || 25));
+  async getTicketHistory(@Query() query: GetTicketHistoryQueryDto) {
+    const pageNum = Math.min(1000, Math.max(1, query.page ?? 1));
+    const limitNum = Math.min(100, Math.max(1, query.limit ?? 25));
 
     const data = await this.ticketsService.getTicketHistory({
-      search,
-      slaFilter,
-      queueCategory,
-      facilityId,
+      search: query.search,
+      slaFilter: query.slaFilter,
+      queueCategory: query.queueCategory,
+      facilityId: query.facilityId,
       page: pageNum,
       limit: limitNum,
     });

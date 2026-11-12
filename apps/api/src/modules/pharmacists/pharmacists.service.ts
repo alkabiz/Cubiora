@@ -15,12 +15,16 @@ import {
   PharmacistStatus,
   PharmacistsListResponseDto,
   TicketStatus,
+  UserRole,
   WorkShift,
 } from '@cubiora/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Prisma } from '../../generated/prisma/client';
 import { OperationalTelemetryService } from '../operational-telemetry/operational-telemetry.service';
-import { syncUserCubicleLink } from '../../common/utils/cubicle-assignment-sync.util';
+import {
+  lockCubicleRows,
+  syncUserCubicleLink,
+} from '../../common/utils/cubicle-assignment-sync.util';
 import { CreatePharmacistDto } from './dto/create-pharmacist.dto';
 import { UpdatePharmacistDto } from './dto/update-pharmacist.dto';
 
@@ -339,7 +343,7 @@ export class PharmacistsService {
           message: `El cubículo con id '${requestedCubicleId}' no existe.`,
         });
       }
-      if (resolvedFacilityId && cubicle.facilityId && cubicle.facilityId !== resolvedFacilityId) {
+      if (resolvedFacilityId && (!cubicle.facilityId || cubicle.facilityId !== resolvedFacilityId)) {
         throw new BadRequestException({
           code: ApiErrorCode.REQUEST_INVALID,
           message: 'El cubículo seleccionado no pertenece a la sede asignada.',
@@ -354,12 +358,21 @@ export class PharmacistsService {
       if ((this.prisma as { user?: { findUnique?: (...args: any[]) => Promise<any> } }).user?.findUnique) {
         const linkedUser = await (this.prisma as any).user.findUnique({
           where: { id: dto.userId },
-          select: { id: true },
+          select: { id: true, role: true, active: true },
         });
         if (!linkedUser) {
           throw new NotFoundException({
             code: ApiErrorCode.RESOURCE_NOT_FOUND,
             message: `La cuenta de usuario con id '${dto.userId}' no existe.`,
+          });
+        }
+        if (
+          linkedUser.active === false ||
+          (linkedUser.role !== undefined && linkedUser.role !== UserRole.CASHIER)
+        ) {
+          throw new ConflictException({
+            code: ApiErrorCode.STATE_CONFLICT,
+            message: 'Solo se pueden vincular cuentas operativas activas con rol CASHIER.',
           });
         }
       }
@@ -382,6 +395,8 @@ export class PharmacistsService {
 
     const created = await this.prisma.$transaction(async (tx) => {
       const pharmacistId = ulid();
+
+      await lockCubicleRows(tx, [requestedCubicleId]);
 
       if (requestedCubicleId) {
         await tx.pharmacist.updateMany({
@@ -492,12 +507,21 @@ export class PharmacistsService {
       if ((this.prisma as { user?: { findUnique?: (...args: any[]) => Promise<any> } }).user?.findUnique) {
         const linkedUser = await (this.prisma as any).user.findUnique({
           where: { id: dto.userId },
-          select: { id: true },
+          select: { id: true, role: true, active: true },
         });
         if (!linkedUser) {
           throw new NotFoundException({
             code: ApiErrorCode.RESOURCE_NOT_FOUND,
             message: `La cuenta de usuario con id '${dto.userId}' no existe.`,
+          });
+        }
+        if (
+          linkedUser.active === false ||
+          (linkedUser.role !== undefined && linkedUser.role !== UserRole.CASHIER)
+        ) {
+          throw new ConflictException({
+            code: ApiErrorCode.STATE_CONFLICT,
+            message: 'Solo se pueden vincular cuentas operativas activas con rol CASHIER.',
           });
         }
       }
@@ -553,7 +577,10 @@ export class PharmacistsService {
           message: `El cubículo con id '${finalCubicleId}' no existe.`,
         });
       }
-      if (resolvedFacilityId && targetCubicle.facilityId && targetCubicle.facilityId !== resolvedFacilityId) {
+      if (
+        resolvedFacilityId &&
+        (!targetCubicle.facilityId || targetCubicle.facilityId !== resolvedFacilityId)
+      ) {
         if (!hasCubicleUpdate) {
           finalCubicleId = null;
         } else {
@@ -568,6 +595,8 @@ export class PharmacistsService {
     }
 
     const updated = await this.prisma.$transaction(async (tx) => {
+      await lockCubicleRows(tx, [existing.cubicleId, finalCubicleId]);
+
       if (existing.cubicleId && existing.cubicleId !== finalCubicleId) {
         await tx.cubicle.updateMany({
           where: { id: existing.cubicleId, operatorName: existing.fullName },
@@ -667,6 +696,8 @@ export class PharmacistsService {
     }
 
     const updated = await this.prisma.$transaction(async (tx) => {
+      await lockCubicleRows(tx, [existing.cubicleId]);
+
       const persisted = await tx.pharmacist.update({
         where: { id },
         data: { status },
@@ -715,6 +746,8 @@ export class PharmacistsService {
     }
 
     await this.prisma.$transaction(async (tx) => {
+      await lockCubicleRows(tx, [existing.cubicleId]);
+
       if (existing.cubicleId) {
         await tx.cubicle.updateMany({
           where: { id: existing.cubicleId, operatorName: existing.fullName },

@@ -158,9 +158,7 @@ export interface TelemetryPongPayload {
 // ─── EVENTOS: Client → Server ─────────────────────────────────────────────────
 
 /** Solicitud manual de snapshot completo */
-export interface TelemetryRequestSnapshotPayload {
-  /* vacío intencionalmente */
-}
+export type TelemetryRequestSnapshotPayload = Record<string, never>;
 
 /** Ping de latencia */
 export interface TelemetryPingPayload {

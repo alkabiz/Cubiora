@@ -1,4 +1,4 @@
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import { Transform } from 'class-transformer';
 
 /**
@@ -19,6 +19,10 @@ export class AssignCubiclePharmacistDto {
   )
   @IsString()
   @MaxLength(120)
+  @Matches(/^(?!-)[a-zA-ZÀ-ÿ\s.-]*$/, {
+    message:
+      'operatorName solo puede contener letras, espacios, puntos y guiones, y no puede iniciar con guión.',
+  })
   operatorName?: string;
 }
 

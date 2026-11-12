@@ -32,6 +32,7 @@ import {
   resolveDailyTargetSeconds,
 } from '../../config/sla-target.util';
 import {
+  lockCubicleRows,
   resolveEffectiveOperatorName,
   syncFacilityEnabledCubiclesCount,
   syncUserCubicleLink,
@@ -232,8 +233,19 @@ export class CubiclesService {
   /**
    * Construye el snapshot completo del cubículo buscando el ticket activo si existe.
    */
-  async buildCubicleSnapshot(cubicleId: string): Promise<CubicleSnapshot> {
-    const cubicle = await this.prisma.cubicle.findUnique({
+  async buildCubicleSnapshot(
+    cubicleId: string,
+    dbClient?: Pick<PrismaService, 'cubicle' | 'ticket'>,
+  ): Promise<CubicleSnapshot> {
+    const db =
+      dbClient &&
+      typeof dbClient.cubicle?.findUnique === 'function' &&
+      typeof dbClient.ticket?.findFirst === 'function' &&
+      typeof dbClient.ticket?.count === 'function'
+        ? dbClient
+        : this.prisma;
+
+    const cubicle = await db.cubicle.findUnique({
       where: { id: cubicleId },
     });
 
@@ -247,7 +259,7 @@ export class CubiclesService {
     // El turno activo y la cola se consultan en paralelo. La cola cuenta
     // únicamente turnos PENDING: los que todavía no tienen cubículo asignado.
     const [activeTicketRaw, waitingCount] = await Promise.all([
-      this.prisma.ticket.findFirst({
+      db.ticket.findFirst({
         where: {
           cubicleId: cubicle.id,
           status: {
@@ -261,8 +273,11 @@ export class CubiclesService {
           },
         },
       }),
-      this.prisma.ticket.count({
-        where: { status: TicketStatus.PENDING },
+      db.ticket.count({
+        where: {
+          status: TicketStatus.PENDING,
+          ...(cubicle.facilityId ? { facilityId: cubicle.facilityId } : {}),
+        },
       }),
     ]);
 
@@ -369,6 +384,8 @@ export class CubiclesService {
         status: TicketStatus.CLOSED,
         closedAt: { gte: start, lt: end },
       },
+      orderBy: { closedAt: 'desc' },
+      take: 2000,
       select: {
         serviceStartedAt: true,
         closedAt: true,
@@ -423,6 +440,7 @@ export class CubiclesService {
     id: string,
     operatorName: string,
     pharmacistId?: string | null,
+    actor?: AuthenticatedUser,
   ): Promise<UpdateCubicleOperatorResponse> {
     let cubicle = await this.prisma.cubicle.findUnique({
       where: { id },
@@ -443,6 +461,21 @@ export class CubiclesService {
       });
     }
 
+    if (actor?.role === UserRole.CASHIER) {
+      if (!actor.cubicleId || actor.cubicleId !== cubicle.id) {
+        throw new ForbiddenException({
+          code: ApiErrorCode.FORBIDDEN,
+          message: 'Acceso denegado: el operador de caja solo puede actualizar su cubículo asignado.',
+        });
+      }
+      if (pharmacistId !== undefined) {
+        throw new ForbiddenException({
+          code: ApiErrorCode.FORBIDDEN,
+          message: 'Acceso denegado: solo el administrador puede vincular o desvincular farmacéuticos.',
+        });
+      }
+    }
+
     const resolvedOperatorName = operatorName.length > 0 ? operatorName : null;
     const targetCubicleId = cubicle.id;
 
@@ -450,6 +483,22 @@ export class CubiclesService {
       let previousCubicleId: string | null = null;
 
       const synced = await this.prisma.$transaction(async (tx) => {
+        if (actor?.role === UserRole.CASHIER) {
+          await lockCubicleRows(tx, [targetCubicleId]);
+          const updatedCub = await tx.cubicle.update({
+            where: { id: targetCubicleId },
+            data: {
+              operatorName: resolvedOperatorName,
+              version: { increment: 1 },
+            },
+            select: { id: true, operatorName: true },
+          });
+          return {
+            id: updatedCub.id,
+            operatorName: updatedCub.operatorName,
+          };
+        }
+
         if (typeof pharmacistId === 'string' && pharmacistId.length > 0) {
           const pharmacist = await tx.pharmacist.findUnique({
             where: { id: pharmacistId },
@@ -470,20 +519,47 @@ export class CubiclesService {
             });
           }
 
+          await lockCubicleRows(tx, [targetCubicleId, pharmacist.cubicleId]);
+
           const targetCubicle = await tx.cubicle.findUnique({
             where: { id: targetCubicleId },
             select: { id: true, facilityId: true },
           });
 
+          if (!targetCubicle) {
+            throw new NotFoundException({
+              code: ApiErrorCode.RESOURCE_NOT_FOUND,
+              message: `El cubículo con id '${targetCubicleId}' no existe.`,
+            });
+          }
+
           if (
             pharmacist.facilityId &&
-            targetCubicle?.facilityId &&
-            pharmacist.facilityId !== targetCubicle.facilityId
+            (!targetCubicle.facilityId || pharmacist.facilityId !== targetCubicle.facilityId)
           ) {
             throw new BadRequestException({
               code: ApiErrorCode.REQUEST_INVALID,
               message: 'El farmacéutico pertenece a otra sede hospitalaria.',
             });
+          }
+
+          const txUserFind = (tx as { user?: { findUnique?: (...args: any[]) => Promise<any> } }).user;
+          if (pharmacist.userId && typeof txUserFind?.findUnique === 'function') {
+            const linkedUser = await txUserFind.findUnique({
+              where: { id: pharmacist.userId },
+              select: { id: true, role: true, active: true },
+            });
+            if (
+              linkedUser &&
+              (linkedUser.active === false ||
+                (linkedUser.role !== undefined && linkedUser.role !== UserRole.CASHIER))
+            ) {
+              throw new ConflictException({
+                code: ApiErrorCode.STATE_CONFLICT,
+                message:
+                  'Solo se pueden vincular cuentas operativas activas con rol CASHIER a un cubículo.',
+              });
+            }
           }
 
           await tx.pharmacist.updateMany({
@@ -534,6 +610,8 @@ export class CubiclesService {
           };
         }
 
+        await lockCubicleRows(tx, [targetCubicleId]);
+
         if (pharmacistId === null || resolvedOperatorName === null) {
           await tx.pharmacist.updateMany({
             where: { cubicleId: targetCubicleId },
@@ -546,10 +624,30 @@ export class CubiclesService {
             clearTargetCubicleOtherUsers: true,
           });
         } else {
+          const txPharmacist = tx.pharmacist as {
+            findMany?: (...args: any[]) => Promise<Array<{ userId?: string | null }>>;
+          };
+          let displacedUserIds: string[] = [];
+          if (typeof txPharmacist.findMany === 'function') {
+            const displaced = await txPharmacist.findMany({
+              where: { cubicleId: targetCubicleId, fullName: { not: resolvedOperatorName } },
+              select: { userId: true },
+            });
+            displacedUserIds = displaced
+              .map((p) => p.userId)
+              .filter((uid): uid is string => typeof uid === 'string' && uid.length > 0);
+          }
           await tx.pharmacist.updateMany({
             where: { cubicleId: targetCubicleId, fullName: { not: resolvedOperatorName } },
             data: { cubicleId: null },
           });
+          const txUser = (tx as { user?: { updateMany?: (...args: any[]) => Promise<any> } }).user;
+          if (displacedUserIds.length > 0 && txUser?.updateMany) {
+            await txUser.updateMany({
+              where: { cubicleId: targetCubicleId, id: { in: displacedUserIds } },
+              data: { cubicleId: null },
+            });
+          }
         }
 
         const nextOperatorName = pharmacistId === null ? null : resolvedOperatorName;
@@ -630,41 +728,61 @@ export class CubiclesService {
     const { start, end } = resolveCurrentDayRange(new Date());
     const slaThresholdSeconds = resolveDailyTargetSeconds();
 
-    const [cubicles, closedToday] = await Promise.all([
-      this.prisma.cubicle.findMany({
-        where: whereClause,
-        orderBy: { code: 'asc' },
-        include: {
-          facility: { select: { id: true, code: true, name: true } },
-          currentOperator: {
-            select: { displayName: true, role: true, active: true },
-          },
-          pharmacists: {
-            orderBy: { updatedAt: 'desc' },
-            take: 1,
-            select: {
-              id: true,
-              fullName: true,
-              licenseNumber: true,
-              status: true,
-            },
+    const cubicles = await this.prisma.cubicle.findMany({
+      where: whereClause,
+      orderBy: { code: 'asc' },
+      include: {
+        facility: { select: { id: true, code: true, name: true } },
+        currentOperator: {
+          select: { displayName: true, role: true, active: true },
+        },
+        pharmacists: {
+          orderBy: { updatedAt: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+            fullName: true,
+            licenseNumber: true,
+            status: true,
           },
         },
-      }),
-      this.prisma.ticket.findMany({
-        where: {
-          status: TicketStatus.CLOSED,
-          closedAt: { gte: start, lt: end },
-          cubicleId: { not: null },
-        },
-        select: { cubicleId: true },
-      }),
-    ]);
+      },
+    });
 
     const countByCubicle = new Map<string, number>();
-    for (const row of closedToday) {
-      if (row.cubicleId) {
-        countByCubicle.set(row.cubicleId, (countByCubicle.get(row.cubicleId) ?? 0) + 1);
+    const cubicleIds = cubicles.map((c) => c.id);
+    if (cubicleIds.length > 0) {
+      if (typeof (this.prisma.ticket as { groupBy?: unknown }).groupBy === 'function') {
+        const grouped = await this.prisma.ticket.groupBy({
+          by: ['cubicleId'],
+          where: {
+            status: TicketStatus.CLOSED,
+            closedAt: { gte: start, lt: end },
+            cubicleId: { in: cubicleIds },
+          },
+          _count: { _all: true },
+        });
+        for (const grp of grouped) {
+          if (grp.cubicleId) {
+            countByCubicle.set(grp.cubicleId, grp._count._all);
+          }
+        }
+      } else {
+        const closedToday = await this.prisma.ticket.findMany({
+          where: {
+            status: TicketStatus.CLOSED,
+            closedAt: { gte: start, lt: end },
+            cubicleId: { in: cubicleIds },
+          },
+          orderBy: { closedAt: 'desc' },
+          take: 2000,
+          select: { cubicleId: true },
+        });
+        for (const row of closedToday) {
+          if (row.cubicleId) {
+            countByCubicle.set(row.cubicleId, (countByCubicle.get(row.cubicleId) ?? 0) + 1);
+          }
+        }
       }
     }
 
@@ -822,21 +940,64 @@ export class CubiclesService {
       }
     }
 
-    if (
-      cub.facilityId &&
+    const canRunInTx =
       typeof (this.prisma as { $transaction?: unknown }).$transaction === 'function' &&
-      typeof (this.prisma.facility as { update?: unknown })?.update === 'function' &&
-      typeof (this.prisma.cubicle as { count?: unknown })?.count === 'function'
-    ) {
+      (Boolean((this.prisma as { user?: unknown }).user) ||
+        (Boolean(cub.facilityId) &&
+          typeof (this.prisma.facility as { update?: unknown })?.update === 'function' &&
+          typeof (this.prisma.cubicle as { count?: unknown })?.count === 'function'));
+
+    if (canRunInTx) {
       await this.prisma.$transaction(async (tx) => {
+        await lockCubicleRows(tx, [cub.id]);
+
+        const txTicketDelegate = (
+          tx as { ticket?: { findFirst?: (...args: any[]) => Promise<any> } }
+        ).ticket;
+        if (!active && typeof txTicketDelegate?.findFirst === 'function') {
+          const inProgressInTx = await txTicketDelegate.findFirst({
+            where: {
+              cubicleId: cub.id,
+              status: { in: [TicketStatus.ASSIGNED, TicketStatus.CALLED, TicketStatus.IN_SERVICE] },
+            },
+            select: { publicCode: true },
+          });
+          if (inProgressInTx) {
+            throw new ConflictException({
+              code: ApiErrorCode.STATE_CONFLICT,
+              message: `No se puede desactivar el cubículo mientras tenga el turno activo ${inProgressInTx.publicCode}.`,
+            });
+          }
+        }
+
         await tx.cubicle.update({
           where: { id: cub.id },
           data: {
             active,
             status: active ? CubicleStatus.AVAILABLE : CubicleStatus.INACTIVE,
+            ...(!active ? { operatorName: null } : {}),
             version: { increment: 1 },
           },
         });
+
+        if (!active) {
+          const txPharmacist = (
+            tx as { pharmacist?: { updateMany?: (...args: any[]) => Promise<any> } }
+          ).pharmacist;
+          if (typeof txPharmacist?.updateMany === 'function') {
+            await txPharmacist.updateMany({
+              where: { cubicleId: cub.id },
+              data: { cubicleId: null },
+            });
+          }
+          await syncUserCubicleLink(tx, {
+            targetCubicleId: cub.id,
+            linkedUserId: null,
+            shouldOccupyCubicle: false,
+            clearTargetCubicleOtherUsers: true,
+          });
+        }
+
         await syncFacilityEnabledCubiclesCount(tx, cub.facilityId);
       });
     } else {
@@ -845,6 +1006,7 @@ export class CubiclesService {
         data: {
           active,
           status: active ? CubicleStatus.AVAILABLE : CubicleStatus.INACTIVE,
+          ...(!active ? { operatorName: null } : {}),
           version: { increment: 1 },
         },
       });

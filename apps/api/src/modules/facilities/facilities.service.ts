@@ -16,11 +16,14 @@ import {
   PharmacistOperationalRole,
   PharmacistStatus,
   QueueCategory,
+  TicketStatus,
+  UserRole,
   WorkShift,
 } from '@cubiora/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { OperationalTelemetryService } from '../operational-telemetry/operational-telemetry.service';
 import {
+  lockCubicleRows,
   resolveEffectiveOperatorName,
   syncFacilityEnabledCubiclesCount,
   syncUserCubicleLink,
@@ -231,6 +234,13 @@ export class FacilitiesService {
     const status = dto.status ?? FacilityStatus.ACTIVE;
     const isFacilityActive = status === FacilityStatus.ACTIVE;
 
+    if (!isFacilityActive && Boolean(dto.isPrimary)) {
+      throw new ConflictException({
+        code: ApiErrorCode.STATE_CONFLICT,
+        message: 'No se puede registrar una sede inactiva como sede primaria activa.',
+      });
+    }
+
     const createdId = await this.prisma.$transaction(async (tx) => {
       if (dto.isPrimary) {
         await tx.facility.updateMany({
@@ -314,6 +324,14 @@ export class FacilitiesService {
       });
     }
 
+    if (existing.isPrimary && dto.status === FacilityStatus.INACTIVE) {
+      throw new ConflictException({
+        code: ApiErrorCode.STATE_CONFLICT,
+        message:
+          'No se puede desactivar la sede primaria activa. Active otra sede como primaria primero.',
+      });
+    }
+
     const normalizedCode = dto.code?.trim().toUpperCase();
     if (normalizedCode && normalizedCode !== existing.code) {
       const conflict = await this.prisma.facility.findFirst({
@@ -329,9 +347,23 @@ export class FacilitiesService {
     }
 
     const targetStatus = dto.status ?? (existing.status as FacilityStatus);
+    const targetIsPrimary = dto.isPrimary ?? existing.isPrimary;
+    if (targetStatus === FacilityStatus.INACTIVE && targetIsPrimary) {
+      throw new ConflictException({
+        code: ApiErrorCode.STATE_CONFLICT,
+        message:
+          'Una sede inactiva no puede establecerse ni mantenerse como sede primaria activa.',
+      });
+    }
     const targetCount = dto.enabledCubiclesCount ?? existing.enabledCubiclesCount;
+    const deactivatedCubicleIds: string[] = [];
 
     await this.prisma.$transaction(async (tx) => {
+      await lockCubicleRows(
+        tx,
+        existing.cubicles.map((cub) => cub.id),
+      );
+
       if (dto.isPrimary === true) {
         await tx.facility.updateMany({
           where: { id: { not: id } },
@@ -395,22 +427,120 @@ export class FacilitiesService {
       } else if (dto.enabledCubiclesCount !== undefined && targetCount < currentCubicles.length) {
         // Desactivar ventanillas excedentes sin eliminar historial
         const excessCubicles = currentCubicles.slice(targetCount);
+        const excessIds = excessCubicles.map((cub) => cub.id);
+        const txTicket = (
+          tx as { ticket?: { findFirst?: (...args: any[]) => Promise<any> } }
+        ).ticket;
+        if (excessIds.length > 0 && typeof txTicket?.findFirst === 'function') {
+          const activeTicket = await txTicket.findFirst({
+            where: {
+              cubicleId: { in: excessIds },
+              status: {
+                in: [TicketStatus.ASSIGNED, TicketStatus.CALLED, TicketStatus.IN_SERVICE],
+              },
+            },
+            select: { publicCode: true },
+          });
+          if (activeTicket) {
+            throw new ConflictException({
+              code: ApiErrorCode.STATE_CONFLICT,
+              message: `No se pueden desactivar los cubículos excedentes mientras exista el turno activo ${activeTicket.publicCode}.`,
+            });
+          }
+        }
+
         for (const excess of excessCubicles) {
           await tx.cubicle.update({
             where: { id: excess.id },
             data: {
               active: false,
               status: CubicleStatus.INACTIVE,
+              operatorName: null,
+              version: { increment: 1 },
             },
           });
+          deactivatedCubicleIds.push(excess.id);
+        }
+
+        if (excessIds.length > 0) {
+          await tx.pharmacist.updateMany({
+            where: { cubicleId: { in: excessIds } },
+            data: { cubicleId: null },
+          });
+          const txUser = (
+            tx as { user?: { updateMany?: (...args: any[]) => Promise<any> } }
+          ).user;
+          if (typeof txUser?.updateMany === 'function') {
+            await txUser.updateMany({
+              where: { cubicleId: { in: excessIds } },
+              data: { cubicleId: null },
+            });
+          }
+        }
+      }
+
+      if (dto.status === FacilityStatus.INACTIVE && currentCubicles.length > 0) {
+        const allIds = currentCubicles.map((cub) => cub.id);
+        const txTicket = (
+          tx as { ticket?: { findFirst?: (...args: any[]) => Promise<any> } }
+        ).ticket;
+        if (typeof txTicket?.findFirst === 'function') {
+          const activeTicket = await txTicket.findFirst({
+            where: {
+              cubicleId: { in: allIds },
+              status: {
+                in: [TicketStatus.ASSIGNED, TicketStatus.CALLED, TicketStatus.IN_SERVICE],
+              },
+            },
+            select: { publicCode: true },
+          });
+          if (activeTicket) {
+            throw new ConflictException({
+              code: ApiErrorCode.STATE_CONFLICT,
+              message: `No se puede desactivar la sede mientras exista el turno activo ${activeTicket.publicCode}.`,
+            });
+          }
+        }
+
+        await tx.cubicle.updateMany({
+          where: { facilityId: id },
+          data: {
+            active: false,
+            status: CubicleStatus.INACTIVE,
+            operatorName: null,
+            version: { increment: 1 },
+          },
+        });
+        await tx.pharmacist.updateMany({
+          where: { cubicleId: { in: allIds } },
+          data: { cubicleId: null },
+        });
+        const txUser = (
+          tx as { user?: { updateMany?: (...args: any[]) => Promise<any> } }
+        ).user;
+        if (typeof txUser?.updateMany === 'function') {
+          await txUser.updateMany({
+            where: { cubicleId: { in: allIds } },
+            data: { cubicleId: null },
+          });
+        }
+        for (const cubId of allIds) {
+          if (!deactivatedCubicleIds.includes(cubId)) {
+            deactivatedCubicleIds.push(cubId);
+          }
         }
       }
 
       await syncFacilityEnabledCubiclesCount(tx as any, id);
     });
 
-    if (this.telemetryService && (dto.isPrimary || existing.isPrimary)) {
-      await this.telemetryService.broadcastSnapshot();
+    if (this.telemetryService) {
+      for (const cubId of deactivatedCubicleIds) {
+        await this.telemetryService.emitCubicleUpdate(cubId);
+      }
+      if (dto.isPrimary || existing.isPrimary || deactivatedCubicleIds.length > 0) {
+        await this.telemetryService.broadcastSnapshot();
+      }
     }
 
     return this.findFacilityDtoOrThrow(id);
@@ -484,6 +614,28 @@ export class FacilitiesService {
       });
     }
 
+    if (pharmacist.userId) {
+      const prismaUser = (
+        this.prisma as { user?: { findUnique?: (...args: any[]) => Promise<any> } }
+      ).user;
+      if (typeof prismaUser?.findUnique === 'function') {
+        const linkedUser = await prismaUser.findUnique({
+          where: { id: pharmacist.userId },
+          select: { id: true, role: true, active: true },
+        });
+        if (
+          linkedUser &&
+          (linkedUser.active === false ||
+            (linkedUser.role !== undefined && linkedUser.role !== UserRole.CASHIER))
+        ) {
+          throw new ConflictException({
+            code: ApiErrorCode.STATE_CONFLICT,
+            message: 'Solo se pueden vincular cuentas operativas activas con rol CASHIER.',
+          });
+        }
+      }
+    }
+
     const targetCubicleId = dto.cubicleId ?? null;
     if (targetCubicleId) {
       const targetCubicle = await this.prisma.cubicle.findUnique({
@@ -496,7 +648,7 @@ export class FacilitiesService {
           message: `El cubículo con id '${targetCubicleId}' no existe.`,
         });
       }
-      if (targetCubicle.facilityId && targetCubicle.facilityId !== facilityId) {
+      if (!targetCubicle.facilityId || targetCubicle.facilityId !== facilityId) {
         throw new BadRequestException({
           code: ApiErrorCode.REQUEST_INVALID,
           message: 'El cubículo indicado no pertenece a esta sede.',
@@ -505,6 +657,8 @@ export class FacilitiesService {
     }
 
     await this.prisma.$transaction(async (tx) => {
+      await lockCubicleRows(tx, [pharmacist.cubicleId, targetCubicleId]);
+
       if (pharmacist.cubicleId && pharmacist.cubicleId !== targetCubicleId) {
         await tx.cubicle.updateMany({
           where: { id: pharmacist.cubicleId, operatorName: pharmacist.fullName },
@@ -612,6 +766,11 @@ export class FacilitiesService {
     }
 
     await this.prisma.$transaction(async (tx) => {
+      await lockCubicleRows(
+        tx,
+        existing.cubicles.map((cub) => cub.id),
+      );
+
       await tx.pharmacist.updateMany({
         where: { facilityId: id },
         data: { facilityId: null, cubicleId: null },

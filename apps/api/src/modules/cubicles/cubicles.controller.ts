@@ -80,15 +80,23 @@ export class CubiclesController {
   async updateOperator(
     @Param('id') id: string,
     @Body() body: UpdateCubicleOperatorDto,
+    @CurrentUser() user?: AuthenticatedUser,
   ): Promise<{ success: true; data: UpdateCubicleOperatorResponse }> {
     const data =
-      body.pharmacistId !== undefined
+      user !== undefined
         ? await this.cubiclesService.updateOperator(
             id,
             body.operatorName,
             body.pharmacistId,
+            user,
           )
-        : await this.cubiclesService.updateOperator(id, body.operatorName);
+        : body.pharmacistId !== undefined
+          ? await this.cubiclesService.updateOperator(
+              id,
+              body.operatorName,
+              body.pharmacistId,
+            )
+          : await this.cubiclesService.updateOperator(id, body.operatorName);
     return { success: true, data };
   }
 }

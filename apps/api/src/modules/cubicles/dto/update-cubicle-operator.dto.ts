@@ -17,9 +17,9 @@ export class UpdateCubicleOperatorDto {
     typeof value === 'string' ? value.trim() : value,
   )
   @MaxLength(120)
-  @Matches(/^[a-zA-ZÀ-ÿ\s.-]*$/, {
+  @Matches(/^(?!-)[a-zA-ZÀ-ÿ\s.-]*$/, {
     message:
-      'operatorName solo puede contener letras, espacios, puntos y guiones.',
+      'operatorName solo puede contener letras, espacios, puntos y guiones, y no puede iniciar con guión.',
   })
   operatorName!: string;
 
