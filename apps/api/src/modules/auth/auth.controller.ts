@@ -22,7 +22,7 @@ import { AppEnv, getEnv } from '../../config/env.validation';
 
 export function resolveCookieSecure(
   request: Request | undefined,
-  env: Pick<AppEnv, 'NODE_ENV' | 'COOKIE_SECURE'>,
+  env: Pick<AppEnv, 'NODE_ENV'> & { COOKIE_SECURE?: AppEnv['COOKIE_SECURE'] },
 ): boolean {
   const mode = env.COOKIE_SECURE ?? 'auto';
   if (mode === 'true') {
@@ -33,21 +33,32 @@ export function resolveCookieSecure(
   }
 
   if (request) {
-    if (request.secure) {
-      return true;
-    }
-
     const forwardedProto = request.headers?.['x-forwarded-proto'];
     if (typeof forwardedProto === 'string') {
       const firstProto = forwardedProto.split(',')[0]?.trim().toLowerCase();
-      return firstProto === 'https';
+      if (firstProto === 'https') {
+        return true;
+      }
+      if (firstProto === 'http') {
+        return false;
+      }
     }
     if (Array.isArray(forwardedProto)) {
       const firstEntry = forwardedProto[0];
-      const firstProto = typeof firstEntry === 'string'
-        ? firstEntry.split(',')[0]?.trim().toLowerCase()
-        : undefined;
-      return firstProto === 'https';
+      const firstProto =
+        typeof firstEntry === 'string'
+          ? firstEntry.split(',')[0]?.trim().toLowerCase()
+          : undefined;
+      if (firstProto === 'https') {
+        return true;
+      }
+      if (firstProto === 'http') {
+        return false;
+      }
+    }
+
+    if (request.secure === true) {
+      return true;
     }
 
     return false;

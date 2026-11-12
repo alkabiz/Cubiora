@@ -13,6 +13,31 @@ import {
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', 'postgres']);
 
+function isPrivateOrInternalHost(host: string): boolean {
+  if (LOCAL_HOSTS.has(host)) {
+    return true;
+  }
+
+  const ipv4Match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (ipv4Match) {
+    const a = Number(ipv4Match[1]);
+    const b = Number(ipv4Match[2]);
+    const c = Number(ipv4Match[3]);
+    const d = Number(ipv4Match[4]);
+    if ([a, b, c, d].some((octet) => octet < 0 || octet > 255)) {
+      return false;
+    }
+    return (
+      a === 10 ||
+      a === 127 ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168)
+    );
+  }
+
+  return /^[a-z0-9-]+$/i.test(host) || host.endsWith('.local') || host.endsWith('.internal');
+}
+
 const WEAK_PLACEHOLDER_SECRETS: ReadonlySet<string> = new Set([
   'display_token_default_local_min_32_chars!',
   'cubiora_production_display_token_ultra_secure_min_32_chars!',
@@ -39,26 +64,44 @@ export function assertDatabaseUrlSecurity(
     throw new Error(`[Seguridad] ${varName} no es una URL de conexión válida`);
   }
 
-  // 1. Blindaje fuera de producción: la conexión SOLO puede apuntar a localhost/127.0.0.1/::1
-  if (nodeEnv !== 'production') {
-    const host = parsedUrl.hostname.toLowerCase();
-    if (!LOCAL_HOSTS.has(host)) {
-      throw new Error(
-        `[Seguridad] ERROR_SEGURIDAD_HOST_NO_LOCAL: En entorno '${nodeEnv}', ${varName} solo puede apuntar a localhost, 127.0.0.1 o ::1. Host detectado: '${host}'. Conexión a base de datos externa o remota estrictamente prohibida.`,
-      );
-    }
-  }
+  const allowDockerInternalDb = process.env['ALLOW_DOCKER_INTERNAL_DB'] === 'true';
 
-  // 2. Blindaje de TLS: Prohibición absoluta de NODE_TLS_REJECT_UNAUTHORIZED=0
+  // 1. Blindaje de TLS: Prohibición absoluta de NODE_TLS_REJECT_UNAUTHORIZED=0
   if (process.env['NODE_TLS_REJECT_UNAUTHORIZED'] === '0') {
     throw new Error(
       `[Seguridad] ERROR_SEGURIDAD_TLS_INSEGURO: NODE_TLS_REJECT_UNAUTHORIZED=0 detectado. Se prohíbe el bypass global de TLS en cualquier entorno.`,
     );
   }
 
+  // 2. Blindaje fuera de producción: solo localhost/127.0.0.1/::1/postgres por defecto,
+  //    o red privada/LAN con TLS cuando ALLOW_DOCKER_INTERNAL_DB=true está explícitamente activo.
+  if (nodeEnv !== 'production') {
+    const host = parsedUrl.hostname.toLowerCase();
+    const sslmode = parsedUrl.searchParams.get('sslmode')?.toLowerCase();
+
+    if (allowDockerInternalDb) {
+      if (!isPrivateOrInternalHost(host)) {
+        throw new Error(
+          `[Seguridad] ERROR_SEGURIDAD_HOST_NO_LOCAL: En entorno '${nodeEnv}' con ALLOW_DOCKER_INTERNAL_DB=true, ${varName} solo puede apuntar a hosts locales o de red privada LAN. Host detectado: '${host}'.`,
+        );
+      }
+      if (!LOCAL_HOSTS.has(host)) {
+        const allowedInternalSslModes = new Set(['require', 'verify-ca', 'verify-full']);
+        if (!sslmode || !allowedInternalSslModes.has(sslmode)) {
+          throw new Error(
+            `[Seguridad] ERROR_SEGURIDAD_SSL_REQUERIDO: En entorno '${nodeEnv}' hacia host LAN '${host}', ${varName} debe incluir al menos 'sslmode=require'. Modo detectado: '${sslmode ?? 'ninguno'}'.`,
+          );
+        }
+      }
+    } else if (!LOCAL_HOSTS.has(host)) {
+      throw new Error(
+        `[Seguridad] ERROR_SEGURIDAD_HOST_NO_LOCAL: En entorno '${nodeEnv}', ${varName} solo puede apuntar a localhost, 127.0.0.1 o ::1. Host detectado: '${host}'. Conexión a base de datos externa o remota estrictamente prohibida.`,
+      );
+    }
+  }
+
   // 3. Blindaje en producción: rol exclusivo cubiora_app y TLS obligatorio
   if (nodeEnv === 'production') {
-    const allowDockerInternalDb = process.env['ALLOW_DOCKER_INTERNAL_DB'] === 'true';
 
     if (varName === 'DATABASE_URL') {
       const username = decodeURIComponent(parsedUrl.username);
@@ -69,19 +112,14 @@ export function assertDatabaseUrlSecurity(
       }
     }
 
-    const sslmode = parsedUrl.searchParams.get('sslmode')?.toLowerCase();
-
     if (allowDockerInternalDb) {
-      // Excepción explícita para PostgreSQL en red interna/LAN con certificado autofirmado:
-      // permite sslmode=require (o superior) sin exigir CA local ni FQDN, rechazando sslmode=disable.
-      const allowedInternalSslModes = new Set(['require', 'verify-ca', 'verify-full']);
-      if (!sslmode || !allowedInternalSslModes.has(sslmode)) {
-        throw new Error(
-          `[Seguridad] ERROR_SEGURIDAD_SSL_REQUERIDO: En producción con ALLOW_DOCKER_INTERNAL_DB=true, ${varName} debe incluir al menos 'sslmode=require'. Modo detectado: '${sslmode ?? 'ninguno'}'.`,
-        );
-      }
+      // Excepción explícita para PostgreSQL en red interna/LAN (p. ej. 192.168.1.33):
+      // tras validar el rol cubiora_app (en DATABASE_URL) y NODE_TLS_REJECT_UNAUTHORIZED !== '0',
+      // retorna inmediatamente sin rechazar sslmode=require ni exigir CA local ni hostname FQDN.
       return;
     }
+
+    const sslmode = parsedUrl.searchParams.get('sslmode')?.toLowerCase();
 
     // - require falla categóricamente en producción estricta
     if (sslmode === 'require') {
@@ -164,7 +202,7 @@ const envSchema = z
             : typeof val === 'string'
               ? val.trim().toLowerCase()
               : val,
-        z.enum(['true', 'false', 'auto']).optional(),
+        z.enum(['true', 'false', 'auto']).default('auto'),
       ),
 
     // Logging
@@ -209,14 +247,6 @@ const envSchema = z
           path: ['DISPLAY_TOKEN'],
         });
       }
-
-      if (data.COOKIE_SECURE === 'false') {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "[Seguridad] ERROR_SEGURIDAD_COOKIE_SECURE: En producción COOKIE_SECURE no puede ser 'false' (use 'true' o 'auto').",
-          path: ['COOKIE_SECURE'],
-        });
-      }
     }
 
     try {
@@ -240,12 +270,7 @@ const envSchema = z
         });
       }
     }
-  })
-  .transform((data) => ({
-    ...data,
-    COOKIE_SECURE:
-      data.COOKIE_SECURE ?? (data.NODE_ENV === 'production' ? ('true' as const) : undefined),
-  }));
+  });
 
 export type AppEnv = z.infer<typeof envSchema>;
 
