@@ -1,7 +1,7 @@
 # ==============================================================================
 # Cubiora — Mega-Centros de Dispensación Farmacéutica (PMV Audifarma)
 # Despliegue de Producción para Coolify v4.6+ (Docker Compose Engine)
-# Base de Datos: PostgreSQL en servidor dedicado / LXC (192.168.1.33:5432)
+# Base de Datos: PostgreSQL externo con TLS verify-full y CA institucional
 # ==============================================================================
 
 services:
@@ -14,16 +14,19 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
-      DATABASE_URL: ${DATABASE_URL:?Defina DATABASE_URL para la conexion a PostgreSQL}
+      DATABASE_URL: ${DATABASE_URL:?Defina DATABASE_URL para la conexion a PostgreSQL con sslmode=verify-full}
       DIRECT_URL: ${DIRECT_URL:-}
-      ALLOW_DOCKER_INTERNAL_DB: "true"
-      COOKIE_SECURE: ${COOKIE_SECURE:-auto}
+      DATABASE_CA_CERT: ${DATABASE_CA_CERT:-}
+      DATABASE_CA_CERT_PATH: ${DATABASE_CA_CERT_PATH:-}
+      ALLOW_DOCKER_INTERNAL_DB: "false"
+      ALLOW_NUMERIC_IP_EXCEPTION: ${ALLOW_NUMERIC_IP_EXCEPTION:-false}
+      ALLOW_VERIFY_CA_EXCEPTION: ${ALLOW_VERIFY_CA_EXCEPTION:-false}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
       RUN_SEED_ON_BOOT: ${RUN_SEED_ON_BOOT:-false}
       RESET_SEED_PASSWORDS: ${RESET_SEED_PASSWORDS:-false}
       SESSION_SECRET: ${SESSION_SECRET:?Defina SESSION_SECRET con un minimo de 32 caracteres criptograficos}
-      DISPLAY_TOKEN: ${DISPLAY_TOKEN:-display_token_default_local_min_32_chars!}
-      CORS_ORIGINS: ${CORS_ORIGINS:-https://cubiora.samlapspeed.com,https://coolify.samlapspeed.com,http://localhost:5173,http://localhost,http://127.0.0.1}
-      CORS_ORIGIN: ${CORS_ORIGIN:-https://cubiora.samlapspeed.com,https://coolify.samlapspeed.com,http://localhost:5173,http://localhost,http://127.0.0.1}
+      DISPLAY_TOKEN: ${DISPLAY_TOKEN:-}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://cubiora.samlapspeed.com}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       NO_SHOW_MAX_CALLS: ${NO_SHOW_MAX_CALLS:-3}
       CUBICLE_DAILY_TARGET_SECONDS: ${CUBICLE_DAILY_TARGET_SECONDS:-600}
@@ -33,8 +36,8 @@ services:
       BOTTLENECK_OCCUPANCY_RATE_THRESHOLD: ${BOTTLENECK_OCCUPANCY_RATE_THRESHOLD:-0.90}
       WMS_WEBHOOK_URL: ${WMS_WEBHOOK_URL:-}
       WMS_WEBHOOK_SECRET: ${WMS_WEBHOOK_SECRET:-}
-      DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:-Admin2026!*}
-      DEV_SEED_USER_PASSWORD: ${DEV_SEED_USER_PASSWORD:-Admin2026!*}
+      DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:-}
+      DEV_SEED_USER_PASSWORD: ${DEV_SEED_USER_PASSWORD:-}
     expose:
       - "3000"
     healthcheck:

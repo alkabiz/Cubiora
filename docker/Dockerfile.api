@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # ─── Dockerfile.api (NestJS + Prisma 7 + PostgreSQL) ─────────────────────────
-FROM node:22-alpine AS base
+FROM node:22-alpine@sha256:5b05da3f938f1c604b24c633646d48805a6667f378cb4908438616f3cc48a0bf AS base
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
 
@@ -46,20 +46,21 @@ ENV NODE_ENV=production
 ENV PORT=3000
 
 # Copiar únicamente el workspace de api y shared (sin devDependencies ni artefactos de web)
-COPY --from=builder /app/package.json /app/pnpm-workspace.yaml /app/pnpm-lock.yaml ./
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/packages/shared/package.json ./packages/shared/package.json
-COPY --from=builder /app/packages/shared/dist ./packages/shared/dist
-COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
-COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
-COPY --from=builder /app/apps/api/prisma ./apps/api/prisma
-COPY --from=builder /app/apps/api/prisma.config.ts ./apps/api/prisma.config.ts
-COPY --from=builder /app/apps/api/src/generated ./apps/api/src/generated
-COPY --from=builder /app/apps/api/dist ./apps/api/dist
+COPY --chown=node:node --from=builder /app/package.json /app/pnpm-workspace.yaml /app/pnpm-lock.yaml ./
+COPY --chown=node:node --from=builder /app/node_modules ./node_modules
+COPY --chown=node:node --from=builder /app/packages/shared/package.json ./packages/shared/package.json
+COPY --chown=node:node --from=builder /app/packages/shared/dist ./packages/shared/dist
+COPY --chown=node:node --from=builder /app/apps/api/package.json ./apps/api/package.json
+COPY --chown=node:node --from=builder /app/apps/api/node_modules ./apps/api/node_modules
+COPY --chown=node:node --from=builder /app/apps/api/prisma ./apps/api/prisma
+COPY --chown=node:node --from=builder /app/apps/api/prisma.config.ts ./apps/api/prisma.config.ts
+COPY --chown=node:node --from=builder /app/apps/api/src/generated ./apps/api/src/generated
+COPY --chown=node:node --from=builder /app/apps/api/dist ./apps/api/dist
 
-# Copiar script de entrada para migraciones y arranque
-COPY docker/entrypoint.api.sh /usr/local/bin/entrypoint.api.sh
-RUN chmod +x /usr/local/bin/entrypoint.api.sh
+# Copiar script de entrada con permisos de solo ejecución para usuario no-root
+COPY --chmod=0755 docker/entrypoint.api.sh /usr/local/bin/entrypoint.api.sh
+
+USER node
 
 EXPOSE 3000
 
