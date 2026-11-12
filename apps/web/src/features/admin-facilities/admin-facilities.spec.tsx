@@ -203,7 +203,7 @@ function setupApiMock() {
         usersStore.push(created);
         return { success: true, data: created };
       }
-      if (endpoint.endsWith('/reset-password') && method === 'POST') {
+      if (endpoint.endsWith('/password') && method === 'PATCH') {
         return { success: true, data: { reset: true, id: 'usr-cashier-01' } };
       }
       if (method === 'PATCH') {
@@ -438,7 +438,7 @@ describe('[SCR-ADM-005] Gestión de Sedes y Usuarios Asociados', () => {
     });
   });
 
-  it('7. Permite restablecer la contraseña de un usuario operativo mediante POST /admin/users/:id/reset-password', async () => {
+  it('7. Permite restablecer la contraseña de un usuario operativo mediante PATCH /admin/users/:id/password', async () => {
     renderScreen();
 
     await waitFor(() => {
@@ -461,9 +461,9 @@ describe('[SCR-ADM-005] Gestión de Sedes y Usuarios Asociados', () => {
 
     await waitFor(() => {
       expect(apiClient).toHaveBeenCalledWith(
-        '/admin/users/usr-cashier-01/reset-password',
+        '/admin/users/usr-cashier-01/password',
         expect.objectContaining({
-          method: 'POST',
+          method: 'PATCH',
           body: JSON.stringify({ newPassword: 'NuevaClave2026!' }),
         }),
       );

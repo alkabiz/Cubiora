@@ -3,6 +3,7 @@ import { NotFoundException } from '@nestjs/common';
 import { UserRole } from '@cubiora/shared';
 import { CubiclesController } from '../src/modules/cubicles/cubicles.controller';
 import { CubiclesService } from '../src/modules/cubicles/cubicles.service';
+import { AssignCubiclePharmacistDto } from '../src/modules/cubicles/dto/assign-cubicle-pharmacist.dto';
 import { UpdateCubicleOperatorDto } from '../src/modules/cubicles/dto/update-cubicle-operator.dto';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
@@ -77,6 +78,25 @@ describe('UpdateCubicleOperatorDto – validación', () => {
   it('rechaza valores no-string', async () => {
     const errors = await validateDto({ operatorName: 42 as unknown as string });
     expect(errors.length).toBeGreaterThan(0);
+  });
+
+  it('rechaza nombres que inician con guión o prefijos de fórmula CSV (=, +, @)', async () => {
+    for (const payload of ['-cmd', ' -1+1', '=1+1', '+cmd', '@SUM(1,1)']) {
+      const errors = await validateDto({ operatorName: payload });
+      expect(errors.length).toBeGreaterThan(0);
+
+      const assignDto = plainToInstance(AssignCubiclePharmacistDto, {
+        operatorName: payload,
+      });
+      const assignErrors = await validate(assignDto);
+      expect(assignErrors.length).toBeGreaterThan(0);
+    }
+
+    const validAssign = plainToInstance(AssignCubiclePharmacistDto, {
+      pharmacistId: 'ph-1',
+      operatorName: 'J. Smith-Doe',
+    });
+    expect(await validate(validAssign)).toHaveLength(0);
   });
 });
 

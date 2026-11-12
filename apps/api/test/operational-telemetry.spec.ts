@@ -307,7 +307,15 @@ describe('Validación de Telemetría Operativa WebSocket (OperationalTelemetry)'
 
   it('4. Gateway responde a ping con pong intacto para medición de latencia RTT', () => {
     const mockSocket: any = {
+      id: 'sock-ping-admin',
       emit: vi.fn(),
+      disconnect: vi.fn(),
+      user: {
+        sub: 'usr-admin',
+        role: UserRole.ADMIN,
+        displayName: 'Director Técnico',
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      },
     };
     const now = Date.now();
 
@@ -327,7 +335,15 @@ describe('Validación de Telemetría Operativa WebSocket (OperationalTelemetry)'
     (gateway as any).server = { emit: serverEmit };
 
     const adminSocket: any = {
-      user: { role: UserRole.ADMIN, displayName: 'Director Técnico' },
+      id: 'sock-notice-admin',
+      emit: vi.fn(),
+      disconnect: vi.fn(),
+      user: {
+        sub: 'usr-admin',
+        role: UserRole.ADMIN,
+        displayName: 'Director Técnico',
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      },
     };
 
     gateway.handleBroadcastNotice(adminSocket, { message: '   ', severity: 'info' });
@@ -350,6 +366,260 @@ describe('Validación de Telemetría Operativa WebSocket (OperationalTelemetry)'
         sentBy: 'Director Técnico',
       }),
     );
+  });
+
+  it('6. Rechaza ping sin autenticación o con token expirado y desconecta el socket', () => {
+    const unauthSocket: any = { id: 'sock-unauth', emit: vi.fn(), disconnect: vi.fn() };
+    gateway.handlePing(unauthSocket, { clientSentAt: Date.now() });
+    expect(unauthSocket.emit).toHaveBeenCalledWith('exception', expect.objectContaining({ code: 'AUTH_REQUIRED' }));
+    expect(unauthSocket.disconnect).toHaveBeenCalledWith(true);
+
+    const expiredSocket: any = {
+      id: 'sock-expired',
+      emit: vi.fn(),
+      disconnect: vi.fn(),
+      user: {
+        sub: 'usr-admin',
+        role: UserRole.ADMIN,
+        displayName: 'Admin',
+        exp: Math.floor(Date.now() / 1000) - 60,
+      },
+    };
+    gateway.handlePing(expiredSocket, { clientSentAt: Date.now() });
+    expect(expiredSocket.emit).toHaveBeenCalledWith('exception', expect.objectContaining({ code: 'AUTH_REQUIRED' }));
+    expect(expiredSocket.disconnect).toHaveBeenCalledWith(true);
+  });
+
+  it('7. Resiste cookies malformadas en handshake sin lanzar excepción y enruta broadcasts al room admins', async () => {
+    const adminToken = SessionTokenUtil.sign(
+      {
+        sub: 'usr-admin-room',
+        publicId: 'adm-r1',
+        username: 'admin_room',
+        displayName: 'Admin Room',
+        role: UserRole.ADMIN,
+        cubicleId: null,
+        tokenVersion: 1,
+      },
+      SESSION_SECRET,
+    );
+
+    const roomEmit = vi.fn();
+    const toSpy = vi.fn().mockReturnValue({ emit: roomEmit });
+    const mockPrismaWithUsers: any = {
+      ...mockPrisma,
+      user: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'usr-admin-room',
+          role: UserRole.ADMIN,
+          active: true,
+          tokenVersion: 1,
+        }),
+      },
+    };
+    const roomGateway = new OperationalTelemetryGateway(
+      telemetryService,
+      mockPublicDisplayService,
+      mockPrismaWithUsers as PrismaService,
+    );
+    roomGateway.onModuleInit();
+    (roomGateway as any).server = { to: toSpy };
+
+    const clientWithMalformedCookie: any = {
+      id: 'sock-bad-cookie',
+      handshake: {
+        headers: { cookie: `broken=%E0%A4%A; cubiora_session=${encodeURIComponent(adminToken)}` },
+        auth: {},
+      },
+      join: vi.fn().mockResolvedValue(undefined),
+      emit: vi.fn(),
+      disconnect: vi.fn(),
+    };
+
+    await roomGateway.handleConnection(clientWithMalformedCookie);
+    expect(clientWithMalformedCookie.join).toHaveBeenCalledWith('admins');
+    expect(clientWithMalformedCookie.disconnect).not.toHaveBeenCalled();
+
+    roomGateway.emitQueueUpdate({
+      queue: [],
+      waitingCount: 0,
+      timestamp: new Date().toISOString(),
+    });
+    expect(toSpy).toHaveBeenCalledWith('admins');
+    expect(roomEmit).toHaveBeenCalledWith(TELEMETRY_EVENTS.QUEUE_UPDATED, expect.any(Object));
+    roomGateway.onModuleDestroy();
+  });
+
+  it('8. Valida tokenVersion en handshake/comandos y desconecta sockets activos ante revocación', async () => {
+    let currentDbTokenVersion = 2;
+    const mockPrismaAuth: any = {
+      ...mockPrisma,
+      user: {
+        findUnique: vi.fn().mockImplementation(async () => ({
+          id: 'usr-admin-rev',
+          role: UserRole.ADMIN,
+          active: true,
+          tokenVersion: currentDbTokenVersion,
+        })),
+      },
+    };
+
+    const revGateway = new OperationalTelemetryGateway(
+      telemetryService,
+      mockPublicDisplayService,
+      mockPrismaAuth as PrismaService,
+    );
+    revGateway.onModuleInit();
+
+    const staleToken = SessionTokenUtil.sign(
+      {
+        sub: 'usr-admin-rev',
+        publicId: 'adm-rev',
+        username: 'admin_rev',
+        displayName: 'Admin Revocado',
+        role: UserRole.ADMIN,
+        cubicleId: null,
+        tokenVersion: 1,
+      },
+      SESSION_SECRET,
+    );
+
+    const staleClient: any = {
+      id: 'sock-stale-tv',
+      handshake: { headers: {}, auth: { token: staleToken } },
+      emit: vi.fn(),
+      disconnect: vi.fn(),
+    };
+    await revGateway.handleConnection(staleClient);
+    expect(staleClient.disconnect).toHaveBeenCalledWith(true);
+
+    const validToken = SessionTokenUtil.sign(
+      {
+        sub: 'usr-admin-rev',
+        publicId: 'adm-rev',
+        username: 'admin_rev',
+        displayName: 'Admin Vigente',
+        role: UserRole.ADMIN,
+        cubicleId: null,
+        tokenVersion: 2,
+      },
+      SESSION_SECRET,
+    );
+    const activeClient: any = {
+      id: 'sock-active-tv',
+      handshake: { headers: {}, auth: { token: validToken } },
+      join: vi.fn().mockResolvedValue(undefined),
+      emit: vi.fn(),
+      disconnect: vi.fn(),
+    };
+    await revGateway.handleConnection(activeClient);
+    expect(activeClient.disconnect).not.toHaveBeenCalled();
+
+    // Revocación reactiva desde AuthService / UsersService
+    telemetryService.notifyUserSessionRevoked('usr-admin-rev');
+    expect(activeClient.disconnect).toHaveBeenCalledWith(true);
+
+    // Si un socket intenta solicitar snapshot después de cambio de tokenVersion en DB, se rechaza
+    currentDbTokenVersion = 3;
+    activeClient.disconnect.mockClear();
+    await revGateway.handleRequestSnapshot(activeClient);
+    expect(activeClient.disconnect).toHaveBeenCalledWith(true);
+
+    revGateway.onModuleDestroy();
+  });
+
+  it('9. Descarta avisos fuera de longitud (5..240) y sanea caracteres de control sin registrar el mensaje crudo', () => {
+    const serverEmit = vi.fn();
+    (gateway as any).server = { emit: serverEmit };
+
+    const adminSocket: any = {
+      id: 'sock-notice-bounds',
+      emit: vi.fn(),
+      disconnect: vi.fn(),
+      user: {
+        sub: 'usr-admin',
+        role: UserRole.ADMIN,
+        displayName: 'Admin\r\nHeader',
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      },
+    };
+
+    gateway.handleBroadcastNotice(adminSocket, { message: 'Hola', severity: 'info' }); // < 5
+    gateway.handleBroadcastNotice(adminSocket, { message: 'A'.repeat(241), severity: 'info' }); // > 240
+    expect(mockPublicDisplayService.emitNotice).not.toHaveBeenCalled();
+
+    gateway.handleBroadcastNotice(adminSocket, {
+      message: 'Aviso\r\nInstitucional\u0000Seguro',
+      severity: 'critical',
+    });
+    expect(mockPublicDisplayService.emitNotice).toHaveBeenCalledWith(
+      'Aviso Institucional Seguro',
+      'critical',
+    );
+    expect(serverEmit).toHaveBeenCalledWith(
+      'admin:notice',
+      expect.objectContaining({
+        sentBy: 'Admin Header',
+      }),
+    );
+  });
+
+  it('10. En producción rechaza handshake.auth.token y exige cookie cubiora_session y tokenVersion entero', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv(
+      'DATABASE_URL',
+      'postgresql://cubiora_app:StrongPass123!@postgres.internal:5432/cubiora_db?sslmode=verify-full',
+    );
+
+    const prodToken = SessionTokenUtil.sign(
+      {
+        sub: 'usr-admin-prod',
+        publicId: 'adm-prod',
+        username: 'admin_prod',
+        displayName: 'Admin Prod',
+        role: UserRole.ADMIN,
+        cubicleId: null,
+        tokenVersion: 4,
+      },
+      SESSION_SECRET,
+    );
+
+    const mockPrismaProd: any = {
+      ...mockPrisma,
+      user: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 'usr-admin-prod',
+          role: UserRole.ADMIN,
+          active: true,
+          tokenVersion: 4,
+        }),
+      },
+    };
+    const prodGateway = new OperationalTelemetryGateway(
+      telemetryService,
+      mockPublicDisplayService,
+      mockPrismaProd as PrismaService,
+    );
+
+    const authTokenClient: any = {
+      id: 'sock-prod-auth-fallback',
+      handshake: { headers: {}, auth: { token: prodToken } },
+      emit: vi.fn(),
+      disconnect: vi.fn(),
+    };
+    await prodGateway.handleConnection(authTokenClient);
+    expect(authTokenClient.disconnect).toHaveBeenCalledWith(true);
+
+    const cookieClient: any = {
+      id: 'sock-prod-cookie',
+      handshake: { headers: { cookie: `cubiora_session=${encodeURIComponent(prodToken)}` }, auth: {} },
+      join: vi.fn().mockResolvedValue(undefined),
+      emit: vi.fn(),
+      disconnect: vi.fn(),
+    };
+    await prodGateway.handleConnection(cookieClient);
+    expect(cookieClient.disconnect).not.toHaveBeenCalled();
+    expect(cookieClient.join).toHaveBeenCalledWith('admins');
   });
 });
 

@@ -427,5 +427,29 @@ describe('[SCR-ADM-005] FacilitiesModule – Sedes, Activación Primaria y Asign
     });
     await expect(service.remove('fac-with-tickets')).rejects.toThrow(ConflictException);
   });
+
+  it('impide crear o actualizar una sede INACTIVE como isPrimary: true (409 Conflict)', async () => {
+    mockPrisma.facility.findUnique.mockResolvedValueOnce(null);
+    await expect(
+      service.create({
+        code: 'SEDE-INACT-99',
+        name: 'Sede Inactiva Primaria',
+        address: 'Calle 99',
+        city: 'Bogotá',
+        status: FacilityStatus.INACTIVE,
+        isPrimary: true,
+      }),
+    ).rejects.toThrow(ConflictException);
+
+    mockPrisma.facility.findUnique.mockResolvedValueOnce({
+      id: 'fac-inact',
+      code: 'SEDE-OES-04',
+      status: FacilityStatus.INACTIVE,
+      isPrimary: false,
+      enabledCubiclesCount: 0,
+      cubicles: [],
+    });
+    await expect(service.update('fac-inact', { isPrimary: true })).rejects.toThrow(ConflictException);
+  });
 });
 

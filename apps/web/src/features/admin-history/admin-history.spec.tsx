@@ -11,6 +11,7 @@ import {
   type TicketHistoryResponse,
 } from '@cubiora/shared';
 import { AdminHistoryScreen } from './admin-history-screen';
+import { escapeCsvField } from './csv-export';
 import { DailyAuditTable } from './daily-audit-table';
 import { apiClient } from '../../lib/api';
 
@@ -483,5 +484,18 @@ describe('[SCR-ADM-003] Historial · Registro Operativo Diario', () => {
       expect(apiClient).toHaveBeenCalledWith(expect.stringContaining('page=2'));
       expect(screen.getByText('TUR-000201-GE')).toBeDefined();
     });
+  });
+
+  it('10. Neutraliza inyección de fórmulas en exportación CSV sin alterar valores normales', () => {
+    expect(escapeCsvField('=CMD("calc")')).toBe('"\'=CMD(""calc"")"');
+    expect(escapeCsvField('+1+1')).toBe('"\'+1+1"');
+    expect(escapeCsvField('-1+1')).toBe('"\'-1+1"');
+    expect(escapeCsvField('@SUM(1,2)')).toBe('"\'@SUM(1,2)"');
+    expect(escapeCsvField('\t=1')).toBe('"\'\t=1"');
+    expect(escapeCsvField('|cmd')).toBe('"\'|cmd"');
+    expect(escapeCsvField('\n=1')).toBe('"\'\n=1"');
+    expect(escapeCsvField(' =1')).toBe('"\' =1"');
+    expect(escapeCsvField('Lic. M. Arismendi')).toBe('"Lic. M. Arismendi"');
+    expect(escapeCsvField(null)).toBe('""');
   });
 });

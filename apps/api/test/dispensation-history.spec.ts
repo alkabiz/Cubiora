@@ -368,6 +368,7 @@ describe('Auditoría Farmacéutica · Dispensación y Resolución 1604 (Fases 1,
         publicCode: 'TUR-000601-GE',
         status: TicketStatus.PENDING,
         cubicleId: null,
+        createdBy: 'rec-1',
         version: 1,
         createdAt: new Date(),
       };
