@@ -334,6 +334,8 @@ describe('Seguridad TLS y Validación de Arranque en Producción (verify-full ob
 
     const dockerfileApi = fs.readFileSync(path.join(repoRoot, 'docker', 'Dockerfile.api'), 'utf8');
     expect(dockerfileApi).toMatch(/FROM node:22-alpine@sha256:[0-9a-f]{64}/);
+    expect(dockerfileApi).toContain('COREPACK_HOME="/pnpm/corepack"');
+    expect(dockerfileApi).toContain('chown -R node:node /pnpm /app /home/node');
     expect(dockerfileApi).toContain('USER node');
 
     const dockerfileWeb = fs.readFileSync(path.join(repoRoot, 'docker', 'Dockerfile.web'), 'utf8');
@@ -353,6 +355,10 @@ describe('Seguridad TLS y Validación de Arranque en Producción (verify-full ob
     expect(entrypointSh).toContain('NODE_EXTRA_CA_CERTS');
     expect(entrypointSh).toContain('sslrootcert');
     expect(entrypointSh).toContain('/tmp/cubiora-db-ca.crt');
+    expect(entrypointSh).toContain('node ./node_modules/prisma/build/index.js migrate deploy');
+    expect(entrypointSh).toContain('node ./node_modules/tsx/dist/cli.mjs prisma/seed.ts');
+    expect(entrypointSh).toContain('sslmode=no-verify');
+    expect(entrypointSh).not.toContain('pnpm --filter api');
 
     for (const wf of ['ci.yml', 'cd.yml', 'codeql.yml']) {
       const content = fs.readFileSync(path.join(repoRoot, '.github', 'workflows', wf), 'utf8');
