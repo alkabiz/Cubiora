@@ -24,6 +24,7 @@ import { AppModule } from './app.module';
 import { initEnv, getEnv } from './config/env.validation';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
+import { isOriginAllowed } from './common/utils/cors-origin.util';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -42,12 +43,18 @@ async function bootstrap() {
   // 4. Parseo de Cookies seguras firmadas con SESSION_SECRET
   app.use(cookieParser(env.SESSION_SECRET));
 
-  // 5. Configurar CORS estricto
-  const allowedOrigins = env.CORS_ORIGINS.split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
+  // 5. Configurar CORS dual estricto (orígenes explícitos en CORS_ORIGINS + subred LAN http://192.168.1.*)
   app.enableCors({
-    origin: allowedOrigins,
+    origin: (
+      origin: string | undefined,
+      callback: (err: Error | null, allow?: boolean) => void,
+    ) => {
+      if (!origin || isOriginAllowed(origin, env.CORS_ORIGINS)) {
+        callback(null, true);
+        return;
+      }
+      callback(new Error('Origen CORS no autorizado'), false);
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: [

@@ -7,30 +7,9 @@ import {
 import type { Request } from 'express';
 import { ApiErrorCode } from '@cubiora/shared';
 import { getEnv } from '../../config/env.validation';
+import { isOriginAllowed } from '../utils/cors-origin.util';
 
 const SAFE_HTTP_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
-
-function parseAllowedOriginSet(rawOrigins: string): Set<string> {
-  const result = new Set<string>();
-  for (const entry of rawOrigins.split(',')) {
-    const trimmed = entry.trim();
-    if (!trimmed || trimmed === '*') continue;
-    try {
-      result.add(new URL(trimmed).origin);
-    } catch {
-      // Ignorar entradas malformadas
-    }
-  }
-  return result;
-}
-
-function extractOriginFromUrl(rawValue: string): string | null {
-  try {
-    return new URL(rawValue).origin;
-  } catch {
-    return null;
-  }
-}
 
 /**
  * Guardia global anti-CSRF (defensa en profundidad junto a SameSite=Strict y CORS):
@@ -61,7 +40,7 @@ export class CsrfOriginGuard implements CanActivate {
       });
     }
 
-    const allowedOrigins = parseAllowedOriginSet(getEnv().CORS_ORIGINS);
+    const configuredOrigins = getEnv().CORS_ORIGINS;
     const rawOrigin = request.headers?.['origin'];
     const originHeader = typeof rawOrigin === 'string' ? rawOrigin.trim() : '';
 
@@ -73,8 +52,7 @@ export class CsrfOriginGuard implements CanActivate {
         });
       }
 
-      const parsedOrigin = extractOriginFromUrl(originHeader);
-      if (!parsedOrigin || !allowedOrigins.has(parsedOrigin)) {
+      if (!isOriginAllowed(originHeader, configuredOrigins)) {
         throw new ForbiddenException({
           code: ApiErrorCode.FORBIDDEN,
           message: 'Solicitud bloqueada por política anti-CSRF (Origin no autorizado).',
@@ -87,8 +65,7 @@ export class CsrfOriginGuard implements CanActivate {
     const rawReferer = request.headers?.['referer'];
     const refererHeader = typeof rawReferer === 'string' ? rawReferer.trim() : '';
     if (refererHeader.length > 0) {
-      const parsedRefererOrigin = extractOriginFromUrl(refererHeader);
-      if (!parsedRefererOrigin || !allowedOrigins.has(parsedRefererOrigin)) {
+      if (!isOriginAllowed(refererHeader, configuredOrigins)) {
         throw new ForbiddenException({
           code: ApiErrorCode.FORBIDDEN,
           message: 'Solicitud bloqueada por política anti-CSRF (Referer no autorizado).',

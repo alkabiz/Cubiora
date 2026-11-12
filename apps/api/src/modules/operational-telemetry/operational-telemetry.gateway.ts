@@ -13,6 +13,7 @@ import { Server, Socket } from 'socket.io';
 import { PrismaService } from '../../prisma/prisma.service';
 import { SessionTokenUtil } from '../auth/session-token.util';
 import { getEnv } from '../../config/env.validation';
+import { isOriginAllowed } from '../../common/utils/cors-origin.util';
 import { PublicBroadcastNoticeSeverity, UserRole } from '@cubiora/shared';
 import {
   TELEMETRY_EVENTS,
@@ -63,13 +64,10 @@ function sanitizeControlChars(input: string): string {
 @WebSocketGateway({
   namespace: '/operational-telemetry',
   cors: {
-    // CORS dinámico estricto sin comodín '*' en canales autenticados con credenciales
+    // CORS dual estricto: orígenes en CORS_ORIGINS + subred LAN http://192.168.1.* (sin comodín '*')
     origin: (origin: string | undefined, cb: (err: Error | null, allow?: boolean) => void) => {
       const env = getEnv();
-      const allowed = env.CORS_ORIGINS.split(',')
-        .map((o) => o.trim())
-        .filter((o) => o.length > 0 && o !== '*');
-      if (!origin || allowed.includes(origin)) {
+      if (!origin || isOriginAllowed(origin, env.CORS_ORIGINS)) {
         cb(null, true);
       } else {
         cb(new Error('Origen no autorizado'), false);
